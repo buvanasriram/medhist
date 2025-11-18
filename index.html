@@ -1,0 +1,72 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>medHist: Your Family's Medical Timeline</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/react-pdf@10.2.0/dist/esm/Page/AnnotationLayer.css">
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/react-pdf@10.2.0/dist/esm/Page/TextLayer.css">
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script>
+      // Polyfill process global for libraries that expect it (like @google/genai)
+      if (typeof process === 'undefined') {
+        window.process = { env: {} };
+      }
+
+      // This Tailwind config is great for development. For production, you'd typically
+      // use Tailwind as a PostCSS plugin as part of your build process.
+      tailwind.config = {
+        theme: {
+          extend: {
+            fontFamily: {
+              sans: ['Inter', 'sans-serif'],
+            },
+            colors: {
+              'brand-blue': {
+                '50': '#eff8ff',
+                '100': '#dff0ff',
+                '200': '#bce3ff',
+                '300': '#89d1ff',
+                '400': '#52b9ff',
+                '500': '#299dff',
+                '600': '#0f7ef1',
+                '700': '#0863d0',
+                '800': '#0a52ac',
+                '900': '#0f4489',
+                '950': '#0d2a55',
+              },
+              'brand-green': {
+                '500': '#10b981'
+              }
+            }
+          }
+        }
+      }
+    </script>
+
+<script type="importmap">
+{
+  "imports": {
+    "react": "https://aistudiocdn.com/react@^19.2.0",
+    "react-dom/": "https://aistudiocdn.com/react-dom@^19.2.0/",
+    "react-pdf": "https://aistudiocdn.com/react-pdf@^10.2.0",
+    "pdfjs-dist": "https://aistudiocdn.com/pdfjs-dist@^4.8.69",
+    "pdfjs-dist/": "https://aistudiocdn.com/pdfjs-dist@^4.8.69/",
+    "react/": "https://aistudiocdn.com/react@^19.2.0/",
+    "@google/genai": "https://aistudiocdn.com/@google/genai@^1.30.0",
+    "@supabase/supabase-js": "https://aistudiocdn.com/@supabase/supabase-js@^2.81.1",
+    "vite": "https://aistudiocdn.com/vite@^7.2.2",
+    "@vitejs/plugin-react": "https://aistudiocdn.com/@vitejs/plugin-react@^5.1.1"
+  }
+}
+</script>
+<link rel="stylesheet" href="/index.css">
+</head>
+  <body class="bg-slate-50 antialiased">
+    <div id="root"></div>
+    <script type="module" src="/index.tsx"></script>
+  </body>
+</html>

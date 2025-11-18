@@ -1,0 +1,7 @@
+{
+  "name": "medHist: Your Family's Medical Timeline",
+  "description": "A secure, family-focused web application that allows families to upload medical reports (PDFs/images) and automatically creates a chronological clinical timeline for every family member.",
+  "requestFramePermissions": [
+    "camera"
+  ]
+}
