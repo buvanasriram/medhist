@@ -3,9 +3,10 @@ import ReactDOM from 'react-dom/client';
 import App from './App';
 import { pdfjs } from 'react-pdf';
 
-// Configure the pdf.js worker globally. 
-// Updated to match react-pdf version 10.x (requires pdfjs-dist 4.8.69)
-pdfjs.GlobalWorkerOptions.workerSrc = `https://unpkg.com/pdfjs-dist@4.8.69/build/pdf.worker.min.mjs`;
+// Configure the pdf.js worker globally.
+// We use the `pdfjs.version` property to dynamically ensure the worker URL 
+// matches the installed API version exactly, preventing version mismatch errors.
+pdfjs.GlobalWorkerOptions.workerSrc = `https://unpkg.com/pdfjs-dist@${pdfjs.version}/build/pdf.worker.min.mjs`;
 
 const rootElement = document.getElementById('root');
 if (!rootElement) {
