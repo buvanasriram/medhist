@@ -1,5 +1,5 @@
 
-import React, { useState, useEffect, useMemo } from 'react';
+import React, { useState, useEffect, useMemo, useRef } from 'react';
 import { Document, Page } from 'react-pdf';
 
 import { CloseIcon } from './icons/CloseIcon';
@@ -24,12 +24,34 @@ export const ReportViewerModal: React.FC<ReportViewerModalProps> = ({ isOpen, on
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [loadTimeout, setLoadTimeout] = useState<boolean>(false);
+  const [pageWidth, setPageWidth] = useState<number>(800);
+  
+  const containerRef = useRef<HTMLDivElement>(null);
 
   // Optimize PDF options to prevent re-renders
   const options = useMemo(() => ({
     cMapUrl: 'https://unpkg.com/pdfjs-dist@4.8.69/cmaps/',
     cMapPacked: true,
   }), []);
+
+  // Responsive width calculation
+  useEffect(() => {
+    const updateWidth = () => {
+      if (containerRef.current) {
+        // Subtract padding (32px approx) from container width
+        const width = containerRef.current.clientWidth - 40;
+        // Limit max width to avoid getting too massive on large screens
+        setPageWidth(Math.min(width, 800));
+      }
+    };
+
+    // Initial calculation
+    updateWidth();
+
+    // Listen for window resize
+    window.addEventListener('resize', updateWidth);
+    return () => window.removeEventListener('resize', updateWidth);
+  }, [isOpen]);
 
   useEffect(() => {
     // Reset state when a new report is opened
@@ -79,7 +101,10 @@ export const ReportViewerModal: React.FC<ReportViewerModalProps> = ({ isOpen, on
           </button>
         </header>
         
-        <main className="flex-grow overflow-auto bg-slate-100 flex items-center justify-center relative">
+        <main 
+          ref={containerRef}
+          className="flex-grow overflow-auto bg-slate-100 flex items-start justify-center relative p-4"
+        >
           {/* Loading Spinner */}
           {isLoading && !loadTimeout && (
             <div className="absolute inset-0 flex flex-col items-center justify-center z-10 bg-slate-100 bg-opacity-80">
@@ -90,7 +115,7 @@ export const ReportViewerModal: React.FC<ReportViewerModalProps> = ({ isOpen, on
 
           {/* Error State */}
           {error && (
-            <div className="text-center p-4 z-20">
+            <div className="text-center p-4 z-20 mt-10">
                <WarningIcon className="w-12 h-12 text-red-500 mx-auto" />
                <p className="mt-2 font-semibold text-red-700">Could not display file</p>
                <p className="text-sm text-slate-500 mt-1">{error}</p>
@@ -99,7 +124,7 @@ export const ReportViewerModal: React.FC<ReportViewerModalProps> = ({ isOpen, on
 
           {/* Timeout / Fallback State */}
           {loadTimeout && !numPages && !error && (
-             <div className="text-center p-6 z-20 max-w-md">
+             <div className="text-center p-6 z-20 max-w-md mt-10">
                 <WarningIcon className="w-10 h-10 text-orange-500 mx-auto mb-3" />
                 <h3 className="text-lg font-semibold text-slate-800">Preview not available</h3>
                 <p className="text-slate-600 mb-4">
@@ -120,27 +145,30 @@ export const ReportViewerModal: React.FC<ReportViewerModalProps> = ({ isOpen, on
             // We keep the Document component mounted to attempt loading,
             // but if it times out, the UI above covers it.
             !error && (
-                <Document
-                    file={report.url}
-                    onLoadSuccess={onDocumentLoadSuccess}
-                    onLoadError={onDocumentLoadError}
-                    loading={null} 
-                    options={options}
-                    className={isLoading ? 'opacity-0' : 'opacity-100 transition-opacity duration-300'}
-                >
-                    <Page 
-                        pageNumber={pageNumber} 
-                        width={800} 
-                        renderTextLayer={true}
-                        renderAnnotationLayer={true}
-                    />
-                </Document>
+                <div className="shadow-lg">
+                    <Document
+                        file={report.url}
+                        onLoadSuccess={onDocumentLoadSuccess}
+                        onLoadError={onDocumentLoadError}
+                        loading={null} 
+                        options={options}
+                        className={isLoading ? 'opacity-0' : 'opacity-100 transition-opacity duration-300'}
+                    >
+                        <Page 
+                            pageNumber={pageNumber} 
+                            width={pageWidth}
+                            renderTextLayer={true}
+                            renderAnnotationLayer={true}
+                            className="bg-white"
+                        />
+                    </Document>
+                </div>
             )
           ) : (
             <img 
                 src={report.url} 
                 alt={report.file.name} 
-                className={`max-w-full max-h-full object-contain ${isLoading ? 'hidden' : 'block'}`}
+                className={`max-w-full max-h-full object-contain shadow-lg ${isLoading ? 'hidden' : 'block'}`}
                 onLoad={() => setIsLoading(false)}
                 onError={() => { setIsLoading(false); setError("Failed to load image."); }}
             />
