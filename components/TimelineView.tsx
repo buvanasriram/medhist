@@ -1,4 +1,3 @@
-
 import React, { useState, useMemo, useCallback, useEffect, useRef } from 'react';
 import { Header } from './Header';
 import { Timeline } from './Timeline';
@@ -6,6 +5,7 @@ import { UploadModal } from './UploadModal';
 import { AddMemberModal } from './AddMemberModal';
 import { ConfirmationModal } from './ConfirmationModal';
 import { ReportViewerModal } from './ReportViewerModal';
+import { InviteSuccessModal } from './InviteSuccessModal';
 import { extractReportInfo } from '../services/geminiService';
 import { fileToBase64 } from '../utils/fileUtils';
 import * as supabaseService from '../services/supabaseService';
@@ -51,6 +51,9 @@ export const TimelineView: React.FC<TimelineViewProps> = ({ onLogout, user }) =>
   const [reportToView, setReportToView] = useState<{ url: string, file: ReportFile } | null>(null);
   const [isConfirmModalOpen, setConfirmModalOpen] = useState<boolean>(false);
   const [entryToDelete, setEntryToDelete] = useState<TimelineEntry | null>(null);
+  
+  // Invite Modal State
+  const [inviteSuccessData, setInviteSuccessData] = useState<{name: string, email: string, link: string} | null>(null);
 
   const [isLoading, setIsLoading] = useState<boolean>(false);
   const [error, setError] = useState<string | null>(null);
@@ -231,16 +234,17 @@ export const TimelineView: React.FC<TimelineViewProps> = ({ onLogout, user }) =>
       const newInvite = await supabaseService.addPendingInvite(newInviteData);
       setPendingInvites(prev => [...prev, newInvite]);
 
-      // GENERATE INVITE LINK
-      // This uses the current URL. When deployed, it will be the Netlify URL.
-      // When in preview, it will be the Preview URL.
-      const appUrl = window.location.origin;
+      // GENERATE INVITE LINK & SHOW MODAL
+      // Use VITE_APP_URL if defined (production), otherwise fallback to window location (development)
+      // @ts-ignore
+      const envUrl = import.meta.env.VITE_APP_URL;
+      const appUrl = envUrl || window.location.origin;
       
-      const subject = encodeURIComponent("Join our family medical timeline on medHist");
-      const body = encodeURIComponent(`Hi ${details.name},\n\nI've added you to our family group on medHist to share and manage medical records.\n\nYou can create an account and join here:\n${appUrl}\n\nBest,\n${user.name}`);
-      
-      // Open user's email client
-      window.location.href = `mailto:${details.email}?subject=${subject}&body=${body}`;
+      setInviteSuccessData({
+        name: details.name,
+        email: details.email,
+        link: appUrl
+      });
     }
   };
 
@@ -456,7 +460,7 @@ export const TimelineView: React.FC<TimelineViewProps> = ({ onLogout, user }) =>
 
       {/* Footer to indicate version change */}
       <footer className="py-6 text-center text-slate-400 text-sm border-t border-slate-200 mt-8">
-        <p>© {new Date().getFullYear()} medHist. All rights reserved. v0.1.2</p>
+        <p>© {new Date().getFullYear()} medHist. All rights reserved. v0.1.3 (Stable)</p>
       </footer>
 
       {isUploadModalOpen && (
@@ -485,6 +489,15 @@ export const TimelineView: React.FC<TimelineViewProps> = ({ onLogout, user }) =>
             isOpen={isViewerOpen}
             onClose={handleCloseViewer}
             report={reportToView}
+        />
+      )}
+      
+      {/* New Invite Modal */}
+      {inviteSuccessData && (
+        <InviteSuccessModal
+          isOpen={!!inviteSuccessData}
+          onClose={() => setInviteSuccessData(null)}
+          inviteData={inviteSuccessData}
         />
       )}
 
