@@ -1,3 +1,4 @@
+
 import React, { useState } from 'react';
 import { CloseIcon } from './icons/CloseIcon';
 import { UserIcon } from './icons/UserIcon';
@@ -178,7 +179,7 @@ export const AddMemberModal: React.FC<AddMemberModalProps> = ({ isOpen, onClose,
               type="submit"
               className="bg-brand-blue-600 text-white font-semibold py-2 px-4 rounded-lg shadow-md hover:bg-brand-blue-700 focus:outline-none focus:ring-2 focus:ring-brand-blue-500 focus:ring-opacity-75 transition"
             >
-              {sendInvite ? 'Add & Invite Member' : 'Add Member'}
+              {sendInvite ? 'Add & Draft Invite' : 'Add Member'}
             </button>
           </div>
         </form>

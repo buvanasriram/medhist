@@ -230,6 +230,17 @@ export const TimelineView: React.FC<TimelineViewProps> = ({ onLogout, user }) =>
       };
       const newInvite = await supabaseService.addPendingInvite(newInviteData);
       setPendingInvites(prev => [...prev, newInvite]);
+
+      // GENERATE INVITE LINK
+      // This uses the current URL. When deployed, it will be the Netlify URL.
+      // When in preview, it will be the Preview URL.
+      const appUrl = window.location.origin;
+      
+      const subject = encodeURIComponent("Join our family medical timeline on medHist");
+      const body = encodeURIComponent(`Hi ${details.name},\n\nI've added you to our family group on medHist to share and manage medical records.\n\nYou can create an account and join here:\n${appUrl}\n\nBest,\n${user.name}`);
+      
+      // Open user's email client
+      window.location.href = `mailto:${details.email}?subject=${subject}&body=${body}`;
     }
   };
 
