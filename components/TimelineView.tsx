@@ -13,6 +13,7 @@ import type { FamilyMember, TimelineEntry, PendingInvite, User, ReportFile } fro
 import { PlusIcon } from './icons/PlusIcon';
 import { HourglassIcon } from './icons/HourglassIcon';
 import { SpinnerIcon } from './icons/SpinnerIcon';
+import { FilterIcon } from './icons/FilterIcon';
 
 interface TimelineViewProps {
   onLogout: () => void;
@@ -39,6 +40,11 @@ export const TimelineView: React.FC<TimelineViewProps> = ({ onLogout, user }) =>
 
   const [selectedMemberId, setSelectedMemberId] = useState<string>('');
   
+  // Filter States
+  const [filterReportType, setFilterReportType] = useState<string>('');
+  const [filterStartDate, setFilterStartDate] = useState<string>('');
+  const [filterEndDate, setFilterEndDate] = useState<string>('');
+
   const [isUploadModalOpen, setUploadModalOpen] = useState<boolean>(false);
   const [isAddMemberModalOpen, setAddMemberModalOpen] = useState<boolean>(false);
   const [isViewerOpen, setViewerOpen] = useState(false);
@@ -230,14 +236,58 @@ export const TimelineView: React.FC<TimelineViewProps> = ({ onLogout, user }) =>
       setAddMemberModalOpen(true);
     } else {
       setSelectedMemberId(value);
+      // Clear filters when switching members for better UX
+      setFilterReportType('');
+      setFilterStartDate('');
+      setFilterEndDate('');
     }
   };
   
   const selectedMember = useMemo(() => familyMembers.find(m => m.id === selectedMemberId), [familyMembers, selectedMemberId]);
   
-  const filteredTimelineEntries = useMemo(() => {
+  // 1. First, get entries for the selected member
+  const memberEntries = useMemo(() => {
     return timelineEntries.filter(entry => entry.family_member_id === selectedMemberId);
   }, [timelineEntries, selectedMemberId]);
+
+  // 2. Compute unique report types for the dropdown based on memberEntries
+  const uniqueReportTypes = useMemo(() => {
+    const types = new Set(memberEntries.map(e => e.report_type));
+    return Array.from(types).sort();
+  }, [memberEntries]);
+
+  // 3. Filter entries based on UI controls
+  const displayedEntries = useMemo(() => {
+    return memberEntries.filter(entry => {
+      // Filter by Report Type
+      if (filterReportType && entry.report_type !== filterReportType) {
+        return false;
+      }
+
+      // Filter by Date Range
+      const entryDate = new Date(entry.date);
+      
+      if (filterStartDate) {
+        const startDate = new Date(filterStartDate);
+        if (entryDate < startDate) return false;
+      }
+
+      if (filterEndDate) {
+        const endDate = new Date(filterEndDate);
+        if (entryDate > endDate) return false;
+      }
+
+      return true;
+    });
+  }, [memberEntries, filterReportType, filterStartDate, filterEndDate]);
+
+  const clearFilters = () => {
+    setFilterReportType('');
+    setFilterStartDate('');
+    setFilterEndDate('');
+  };
+
+  const hasActiveFilters = filterReportType || filterStartDate || filterEndDate;
 
   if (isPageLoading) {
     return (
@@ -290,8 +340,77 @@ export const TimelineView: React.FC<TimelineViewProps> = ({ onLogout, user }) =>
              </div>
           </div>
 
+          {/* Filter Section */}
+          {memberEntries.length > 0 && (
+            <div className="mb-8 p-4 bg-slate-50 rounded-lg border border-slate-200">
+              <div className="flex flex-col lg:flex-row items-start lg:items-end gap-4">
+                
+                <div className="flex items-center gap-2 mb-2 lg:mb-0 lg:mr-2">
+                   <FilterIcon className="w-5 h-5 text-slate-500" />
+                   <span className="text-sm font-semibold text-slate-700">Filter:</span>
+                </div>
+
+                {/* Report Type Filter */}
+                <div className="w-full lg:w-auto">
+                  <label htmlFor="filterType" className="block text-xs font-medium text-slate-500 mb-1">
+                    Report Type
+                  </label>
+                  <select
+                    id="filterType"
+                    value={filterReportType}
+                    onChange={(e) => setFilterReportType(e.target.value)}
+                    className="w-full bg-white border border-slate-300 rounded-md py-1.5 px-3 text-sm text-slate-700 focus:outline-none focus:ring-2 focus:ring-brand-blue-500"
+                  >
+                    <option value="">All Types</option>
+                    {uniqueReportTypes.map((type) => (
+                      <option key={type} value={type}>{type}</option>
+                    ))}
+                  </select>
+                </div>
+
+                {/* Date From */}
+                <div className="w-full lg:w-auto">
+                  <label htmlFor="dateFrom" className="block text-xs font-medium text-slate-500 mb-1">
+                    From Date
+                  </label>
+                  <input
+                    type="date"
+                    id="dateFrom"
+                    value={filterStartDate}
+                    onChange={(e) => setFilterStartDate(e.target.value)}
+                    className="w-full bg-white border border-slate-300 rounded-md py-1.5 px-3 text-sm text-slate-700 focus:outline-none focus:ring-2 focus:ring-brand-blue-500"
+                  />
+                </div>
+
+                {/* Date To */}
+                <div className="w-full lg:w-auto">
+                  <label htmlFor="dateTo" className="block text-xs font-medium text-slate-500 mb-1">
+                    To Date
+                  </label>
+                  <input
+                    type="date"
+                    id="dateTo"
+                    value={filterEndDate}
+                    onChange={(e) => setFilterEndDate(e.target.value)}
+                    className="w-full bg-white border border-slate-300 rounded-md py-1.5 px-3 text-sm text-slate-700 focus:outline-none focus:ring-2 focus:ring-brand-blue-500"
+                  />
+                </div>
+
+                {/* Clear Filters Button */}
+                {hasActiveFilters && (
+                  <button
+                    onClick={clearFilters}
+                    className="text-sm text-brand-blue-600 hover:text-brand-blue-800 font-medium underline mt-2 lg:mt-0 lg:mb-2 ml-1"
+                  >
+                    Clear Filters
+                  </button>
+                )}
+              </div>
+            </div>
+          )}
+
           <Timeline 
-            entries={filteredTimelineEntries} 
+            entries={displayedEntries} 
             onViewReport={handleViewReport} 
             onDeleteReport={handleDeleteReport}
             onIgnoreMismatch={handleIgnoreMismatch}
