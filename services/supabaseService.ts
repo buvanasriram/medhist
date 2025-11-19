@@ -183,11 +183,15 @@ export const getUserData = async (userId: string, userName:string): Promise<{ fa
         };
     }
 
-    // Fetch all data in parallel from Supabase
+    // Fetch all data in parallel from Supabase.
+    // Note: We intentionally do NOT filter family_members and timeline_entries by .eq('user_id', userId) here.
+    // We rely on Supabase Row Level Security (RLS) policies to return:
+    // 1. Records owned by the user
+    // 2. Records shared with the user via profile_permissions
     const [familyMembersRes, timelineEntriesRes, pendingInvitesRes] = await Promise.all([
-        supabase!.from('family_members').select('*').eq('user_id', userId),
-        supabase!.from('timeline_entries').select('*').eq('user_id', userId).order('date', { ascending: false }),
-        supabase!.from('pending_invites').select('*').eq('user_id', userId)
+        supabase!.from('family_members').select('*'),
+        supabase!.from('timeline_entries').select('*').order('date', { ascending: false }),
+        supabase!.from('pending_invites').select('*').eq('user_id', userId) // Invites are still owner-only visibility
     ]);
 
     if (familyMembersRes.error) throw new Error(`Error fetching members: ${familyMembersRes.error.message}`);
@@ -196,8 +200,9 @@ export const getUserData = async (userId: string, userName:string): Promise<{ fa
 
     let familyMembers = familyMembersRes.data as FamilyMember[];
 
-    // Ensure a 'Self' profile exists for the logged-in user
-    const selfExists = familyMembers.some(member => member.relationship === 'Self');
+    // Ensure a 'Self' profile exists for the logged-in user.
+    // We check if there is a 'Self' record specifically owned by this user.
+    const selfExists = familyMembers.some(member => member.relationship === 'Self' && member.user_id === userId);
     if (!selfExists) {
         const { data: newSelf, error } = await supabase!
             .from('family_members')

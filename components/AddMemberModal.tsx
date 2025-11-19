@@ -5,6 +5,7 @@ import { UserIcon } from './icons/UserIcon';
 import { UsersIcon } from './icons/UsersIcon';
 import { MailIcon } from './icons/MailIcon';
 import { CalendarIcon } from './icons/CalendarIcon';
+import { KeyIcon } from './icons/KeyIcon';
 
 interface AddMemberModalProps {
   isOpen: boolean;
@@ -54,7 +55,7 @@ export const AddMemberModal: React.FC<AddMemberModalProps> = ({ isOpen, onClose,
           <div className="flex items-start justify-between">
             <div>
               <h2 className="text-xl font-bold text-slate-800">Add Family Member</h2>
-              <p className="text-sm text-slate-500 mt-1">Create a profile to manage their records. You can optionally invite them to join.</p>
+              <p className="text-sm text-slate-500 mt-1">Create a profile to manage their records.</p>
             </div>
             <button onClick={handleClose} className="text-slate-400 hover:text-slate-600 transition">
               <CloseIcon className="w-6 h-6" />
@@ -122,7 +123,7 @@ export const AddMemberModal: React.FC<AddMemberModalProps> = ({ isOpen, onClose,
               </div>
             </div>
 
-            <div className="relative flex items-start">
+            <div className="relative flex items-start bg-slate-50 p-3 rounded-md border border-slate-200">
                 <div className="flex h-5 items-center">
                     <input
                     id="sendInvite"
@@ -134,17 +135,18 @@ export const AddMemberModal: React.FC<AddMemberModalProps> = ({ isOpen, onClose,
                     />
                 </div>
                 <div className="ml-3 text-sm">
-                    <label htmlFor="sendInvite" className="font-medium text-slate-700">
-                    Send email invitation
+                    <label htmlFor="sendInvite" className="font-medium text-slate-700 flex items-center gap-2">
+                      <KeyIcon className="w-4 h-4 text-brand-blue-500" />
+                      Generate Invite Code
                     </label>
-                    <p className="text-slate-500">Allow this member to sign up and view the family timeline.</p>
+                    <p className="text-slate-500 mt-0.5">Generates a secret code so this member can create their own account and access the timeline.</p>
                 </div>
             </div>
             
             {sendInvite && (
                  <div>
                     <label htmlFor="email" className="block text-sm font-medium text-slate-700">
-                        Email Address
+                        Email Address (to receive code)
                     </label>
                     <div className="mt-1 relative rounded-md shadow-sm">
                         <div className="pointer-events-none absolute inset-y-0 left-0 flex items-center pl-3">
@@ -179,7 +181,7 @@ export const AddMemberModal: React.FC<AddMemberModalProps> = ({ isOpen, onClose,
               type="submit"
               className="bg-brand-blue-600 text-white font-semibold py-2 px-4 rounded-lg shadow-md hover:bg-brand-blue-700 focus:outline-none focus:ring-2 focus:ring-brand-blue-500 focus:ring-opacity-75 transition"
             >
-              {sendInvite ? 'Add & Draft Invite' : 'Add Member'}
+              {sendInvite ? 'Add & Generate Code' : 'Add Member'}
             </button>
           </div>
         </form>
