@@ -89,7 +89,10 @@ export const TimelineView: React.FC<TimelineViewProps> = ({ onLogout, user }) =>
     setError(null);
     try {
       const { base64, mimeType } = await fileToBase64(file);
-      const extractedData = await extractReportInfo(base64, mimeType);
+      
+      // Pass the password to Gemini service. 
+      // If it's a PDF and has a password, the service will decrypt locally and send text.
+      const extractedData = await extractReportInfo(base64, mimeType, password);
 
       const newEntryData = {
         family_member_id: memberId,
@@ -340,7 +343,7 @@ export const TimelineView: React.FC<TimelineViewProps> = ({ onLogout, user }) =>
              </div>
           </div>
 
-          {/* Filter Section */}
+          {/* Filter Section - Updated for better horizontal responsiveness */}
           {memberEntries.length > 0 && (
             <div className="mb-8 p-4 bg-slate-50 rounded-lg border border-slate-200">
               <div className="flex flex-col lg:flex-row items-start lg:items-end gap-4">

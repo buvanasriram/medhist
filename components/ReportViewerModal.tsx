@@ -34,6 +34,12 @@ export const ReportViewerModal: React.FC<ReportViewerModalProps> = ({ isOpen, on
     cMapPacked: true,
   }), []);
 
+  // Create a memoized file object that includes the password if it exists
+  const fileObj = useMemo(() => ({
+    url: report.url,
+    password: report.file.password
+  }), [report.url, report.file.password]);
+
   // Responsive width calculation
   useEffect(() => {
     const updateWidth = () => {
@@ -119,6 +125,9 @@ export const ReportViewerModal: React.FC<ReportViewerModalProps> = ({ isOpen, on
                <WarningIcon className="w-12 h-12 text-red-500 mx-auto" />
                <p className="mt-2 font-semibold text-red-700">Could not display file</p>
                <p className="text-sm text-slate-500 mt-1">{error}</p>
+               {error.includes('Password') && (
+                 <p className="text-xs text-slate-400 mt-2">The password provided might be incorrect.</p>
+               )}
             </div>
           )}
 
@@ -147,7 +156,7 @@ export const ReportViewerModal: React.FC<ReportViewerModalProps> = ({ isOpen, on
             !error && (
                 <div className="shadow-lg">
                     <Document
-                        file={report.url}
+                        file={fileObj}
                         onLoadSuccess={onDocumentLoadSuccess}
                         onLoadError={onDocumentLoadError}
                         loading={null} 
