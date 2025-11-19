@@ -3,31 +3,30 @@ export interface User {
   id: string;
   name: string;
   email: string;
+  familyId?: string;
+  familyName?: string;
 }
 
 export interface FamilyMember {
   id: string;
-  user_id: string;
+  family_id: string; // Belongs to family, not user
   name: string;
   relationship: string;
   dob?: string;
-  invite_code?: string;
 }
 
 export interface ReportFile {
-  id?: string; // Will have an ID once saved
+  id?: string;
   timeline_entry_id?: string;
   name: string;
   type: string;
-  // The 'data' field has been removed as it was causing truncation issues.
-  // File content is now handled as a Blob and streamed via Object URLs.
   password?: string;
 }
 
 export interface TimelineEntry {
   id: string;
-  user_id: string;
   family_member_id: string;
+  uploaded_by_user_id?: string;
   date: string; // ISO 8601 format
   report_type: string;
   summary: string;
@@ -35,7 +34,7 @@ export interface TimelineEntry {
   facility_name?: string;
   patient_name?: string;
   mismatch_ignored?: boolean;
-  file?: ReportFile; // File metadata might not be loaded initially
+  file?: ReportFile;
 }
 
 export interface ExtractedReportData {

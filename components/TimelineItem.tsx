@@ -13,9 +13,10 @@ interface TimelineItemProps {
   onDeleteReport: (entry: TimelineEntry) => void;
   onIgnoreMismatch: (entry: TimelineEntry) => void;
   selectedMemberName?: string;
+  isReadOnly?: boolean;
 }
 
-export const TimelineItem: React.FC<TimelineItemProps> = ({ entry, onViewReport, onDeleteReport, onIgnoreMismatch, selectedMemberName }) => {
+export const TimelineItem: React.FC<TimelineItemProps> = ({ entry, onViewReport, onDeleteReport, onIgnoreMismatch, selectedMemberName, isReadOnly = false }) => {
   const formattedDate = new Date(entry.date).toLocaleDateString('en-US', {
     year: 'numeric',
     month: 'long',
@@ -45,14 +46,16 @@ export const TimelineItem: React.FC<TimelineItemProps> = ({ entry, onViewReport,
                     <p className="text-sm text-yellow-700">
                         This report lists the patient as <span className="font-bold">{entry.patient_name}</span>, but it was uploaded to <span className="font-bold">{selectedMemberName}'s</span> timeline.
                     </p>
-                    <div className="mt-2">
-                      <button 
-                        onClick={() => onIgnoreMismatch(entry)} 
-                        className="text-sm font-semibold text-yellow-800 hover:text-yellow-900 underline focus:outline-none"
-                      >
-                        Ignore (name is correct)
-                      </button>
-                    </div>
+                    {!isReadOnly && (
+                        <div className="mt-2">
+                        <button 
+                            onClick={() => onIgnoreMismatch(entry)} 
+                            className="text-sm font-semibold text-yellow-800 hover:text-yellow-900 underline focus:outline-none"
+                        >
+                            Ignore (name is correct)
+                        </button>
+                        </div>
+                    )}
                 </div>
             </div>
         )}
@@ -91,14 +94,16 @@ export const TimelineItem: React.FC<TimelineItemProps> = ({ entry, onViewReport,
           >
             View Report
           </button>
-          <button
-            onClick={() => onDeleteReport(entry)}
-            className="inline-flex items-center gap-2 px-4 py-2 border border-transparent text-sm font-medium rounded-md text-red-600 hover:bg-red-50 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-red-500 transition"
-            aria-label="Delete report"
-          >
-            <TrashIcon className="w-4 h-4" />
-            Delete
-          </button>
+          {!isReadOnly && (
+              <button
+                onClick={() => onDeleteReport(entry)}
+                className="inline-flex items-center gap-2 px-4 py-2 border border-transparent text-sm font-medium rounded-md text-red-600 hover:bg-red-50 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-red-500 transition"
+                aria-label="Delete report"
+              >
+                <TrashIcon className="w-4 h-4" />
+                Delete
+              </button>
+          )}
         </div>
       </div>
     </div>

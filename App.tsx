@@ -1,3 +1,4 @@
+
 import React, { useState, useEffect} from 'react';
 import { LoginPage } from './components/auth/LoginPage';
 import { SignupPage } from './components/auth/SignupPage';
@@ -54,8 +55,8 @@ const App: React.FC = () => {
     return null;
   };
 
-  const handleSignup = async (name: string, email: string, password: string, inviteCode?: string): Promise<string|null> => {
-    const error = await supabaseService.signUp(name, email, password, inviteCode);
+  const handleSignup = async (name: string, email: string, password: string, familyInput: { isJoin: boolean, value: string }): Promise<string|null> => {
+    const error = await supabaseService.signUp(name, email, password, familyInput);
     if(error) return error;
     setRoute('/');
     return null;
@@ -67,9 +68,7 @@ const App: React.FC = () => {
     setRoute('/login');
   };
   
-  if (isLoading) {
-      return null; // Or a loading spinner
-  }
+  if (isLoading) return null;
 
   if (!session) {
     return route === '/signup' ? (
@@ -79,9 +78,7 @@ const App: React.FC = () => {
     );
   }
   
-  if (!currentUser) {
-    return null; // Should not happen if authenticated
-  }
+  if (!currentUser) return null;
 
   return <TimelineView onLogout={handleLogout} user={currentUser} />;
 };

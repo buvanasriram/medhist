@@ -5,16 +5,13 @@ import type { FamilyMember, TimelineEntry, ReportFile } from '../types';
 import { base64ToBlob } from '../utils/fileUtils';
 import { CREDENTIALS } from '../credentials';
 
-// Safely retrieve environment variables to avoid crashes
 const getEnvVar = (key: string) => {
-  // 1. Try import.meta.env (Vite standard)
   try {
     if (typeof import.meta !== 'undefined' && import.meta.env && import.meta.env[key]) {
       return import.meta.env[key];
     }
   } catch (e) { /* ignore */ }
   
-  // 2. Try process.env (Node/Polyfill/Netlify)
   try {
     if (typeof process !== 'undefined' && process.env && process.env[key]) {
       return process.env[key];
@@ -24,11 +21,9 @@ const getEnvVar = (key: string) => {
   return undefined;
 };
 
-// PRIORITY: 1. Environment Variables (Netlify/Deployment) -> 2. credentials.ts (Local/Preview)
 const supabaseUrl = getEnvVar('VITE_SUPABASE_URL') || CREDENTIALS.SUPABASE_URL;
 const supabaseAnonKey = getEnvVar('VITE_SUPABASE_ANON_KEY') || CREDENTIALS.SUPABASE_ANON_KEY;
 
-// Initialize Supabase Client Safely
 let supabaseClient: SupabaseClient | null = null;
 let isMockMode = true;
 
@@ -45,10 +40,9 @@ try {
     }
 } catch (error) {
     console.warn(
-        "%c[medHist] Supabase connection failed or credentials missing. Running in MOCK MODE.", 
-        "background: #fff7ed; color: #ea580c; font-weight: bold; padding: 4px; border-radius: 4px; border: 1px solid #ea580c;"
+        "%c[medHist] Supabase connection failed. Running in MOCK MODE.", 
+        "color: #ea580c; font-weight: bold;"
     );
-    console.log("Details:", error);
     isMockMode = true;
     supabaseClient = null;
 }
@@ -56,31 +50,10 @@ try {
 export const isMock = isMockMode;
 export const supabase = supabaseClient;
 
-// --- MOCK DATA & STATE (Only used if isMock is true) ---
+// --- MOCK DATA ---
 const MOCK_USER_ID = 'mock-user-123';
+const MOCK_FAMILY_ID = 'mock-family-999';
 let mockSession: Session | null = null;
-const mockFileStore = new Map<string, string>();
-
-let mockFamilyMembers: FamilyMember[] = [
-    { id: '1', user_id: MOCK_USER_ID, name: 'Demo User', relationship: 'Self', dob: '1985-06-15' },
-    { id: '2', user_id: MOCK_USER_ID, name: 'Alice', relationship: 'Daughter', dob: '2019-03-10' },
-    { id: '3', user_id: MOCK_USER_ID, name: 'Robert', relationship: 'Father', dob: '1955-11-22', invite_code: 'ABC123' },
-];
-
-let mockTimelineEntries: TimelineEntry[] = [
-    {
-        id: '101',
-        user_id: MOCK_USER_ID,
-        family_member_id: '1',
-        date: '2023-10-15',
-        report_type: 'Annual Physical',
-        summary: 'Routine checkup results. Blood pressure is within normal range (120/80).',
-        doctor_name: 'Sarah Smith',
-        facility_name: 'Central City Clinic',
-        patient_name: 'Demo User',
-        mismatch_ignored: false
-    }
-];
 
 // --- AUTH FUNCTIONS ---
 
@@ -91,61 +64,99 @@ export const getSession = async (): Promise<Session | null> => {
 };
 
 export const onAuthStateChange = (callback: (event: string, session: Session | null) => void) => {
-    if (isMock) {
-        return { data: { subscription: { unsubscribe: () => {} } } };
-    }
+    if (isMock) return { data: { subscription: { unsubscribe: () => {} } } };
     return supabase!.auth.onAuthStateChange(callback);
 };
 
-export const signUp = async (name: string, email: string, password: string, inviteCode?: string): Promise<string|null> => {
+/**
+ * Sign Up Logic:
+ * 1. Create Auth User
+ * 2. If inviteCode provided: Join existing family.
+ * 3. If NO inviteCode: Create new Family.
+ * 4. Create Profile linked to Family.
+ */
+export const signUp = async (name: string, email: string, password: string, familyInput: { isJoin: boolean, value: string }): Promise<string|null> => {
     if (isMock) {
         mockSession = {
-            access_token: 'mock-token',
-            refresh_token: 'mock-refresh',
-            expires_in: 3600,
-            token_type: 'bearer',
-            user: {
-                id: MOCK_USER_ID,
-                aud: 'authenticated',
-                role: 'authenticated',
-                email: email,
-                app_metadata: { provider: 'email' },
-                user_metadata: { full_name: name, invite_code: inviteCode },
-                created_at: new Date().toISOString(),
-            }
-        } as Session;
+            access_token: 'mock', refresh_token: 'mock', expires_in: 3600, token_type: 'bearer',
+            user: { id: MOCK_USER_ID, email, user_metadata: { full_name: name } }
+        } as any;
         return null;
     }
-    const { error } = await supabase!.auth.signUp({
+
+    // 1. Sign up the user in Auth
+    const { data: authData, error: authError } = await supabase!.auth.signUp({
         email,
         password,
-        options: {
-            data: {
-                full_name: name,
-                invite_code: inviteCode, // Pass invite code to metadata
-            }
-        }
+        options: { data: { full_name: name } }
     });
-    return error ? error.message : null;
+
+    if (authError) return authError.message;
+    if (!authData.user) return "Signup failed: No user created.";
+
+    const userId = authData.user.id;
+    let familyId = '';
+
+    try {
+        if (familyInput.isJoin) {
+            // --- JOIN EXISTING FAMILY ---
+            const joinCode = familyInput.value.toUpperCase();
+            const { data: family, error: findError } = await supabase!
+                .from('families')
+                .select('id')
+                .eq('join_code', joinCode)
+                .single();
+            
+            if (findError || !family) throw new Error("Invalid Family Join Code. Please check and try again.");
+            familyId = family.id;
+        } else {
+            // --- CREATE NEW FAMILY ---
+            const familyName = familyInput.value;
+            const newJoinCode = Math.random().toString(36).substring(2, 8).toUpperCase();
+            
+            const { data: newFamily, error: createError } = await supabase!
+                .from('families')
+                .insert({ name: familyName, join_code: newJoinCode })
+                .select('id')
+                .single();
+
+            if (createError) throw new Error("Failed to create family group.");
+            familyId = newFamily.id;
+        }
+
+        // 2. Create User Profile linked to Family
+        const { error: profileError } = await supabase!
+            .from('profiles')
+            .insert({
+                id: userId,
+                family_id: familyId,
+                full_name: name
+            });
+
+        if (profileError) throw new Error("Failed to create user profile.");
+
+        // 3. (Optional) If creating new family, create a "Self" member for them automatically
+        if (!familyInput.isJoin) {
+             await supabase!.from('family_members').insert({
+                 family_id: familyId,
+                 name: name,
+                 relationship: 'Self' // Can be edited later
+             });
+        }
+
+    } catch (err: any) {
+        // Cleanup: If profile creation failed, we might leave the auth user hanging, 
+        // but for MVP we just return error.
+        console.error("Signup Process Error:", err);
+        return err.message;
+    }
+
+    return null;
 };
 
 export const signIn = async (email: string, password: string): Promise<string|null> => {
     if (isMock) {
-        mockSession = {
-            access_token: 'mock-token',
-            refresh_token: 'mock-refresh',
-            expires_in: 3600,
-            token_type: 'bearer',
-            user: {
-                id: MOCK_USER_ID,
-                aud: 'authenticated',
-                role: 'authenticated',
-                email: email,
-                app_metadata: { provider: 'email' },
-                user_metadata: { full_name: 'Demo User' },
-                created_at: new Date().toISOString(),
-            }
-        } as Session;
+        mockSession = { user: { id: MOCK_USER_ID, email } } as any;
         return null;
     }
     const { error } = await supabase!.auth.signInWithPassword({ email, password });
@@ -153,289 +164,157 @@ export const signIn = async (email: string, password: string): Promise<string|nu
 };
 
 export const signOut = async (): Promise<void> => {
-    if (isMock) {
-        mockSession = null;
-        return;
-    }
-    await supabase!.auth.signOut();
+    if (isMock) mockSession = null;
+    else await supabase!.auth.signOut();
 };
 
+// --- DATA FUNCTIONS ---
 
-// --- DATABASE FUNCTIONS ---
-
-export const getUserData = async (userId: string, userName:string): Promise<{ familyMembers: FamilyMember[], timelineEntries: TimelineEntry[] }> => {
+export const getUserData = async (userId: string): Promise<{ 
+    familyMembers: FamilyMember[], 
+    timelineEntries: TimelineEntry[],
+    familyInfo: { name: string, joinCode: string }
+}> => {
     if (isMock) {
-        const selfIndex = mockFamilyMembers.findIndex(m => m.relationship === 'Self');
-        if (selfIndex >= 0) {
-             mockFamilyMembers[selfIndex].name = userName;
-        } else {
-             mockFamilyMembers.unshift({ id: 'new-self', user_id: userId, name: userName, relationship: 'Self' });
-        }
-        await new Promise(resolve => setTimeout(resolve, 600));
         return {
-            familyMembers: [...mockFamilyMembers],
-            timelineEntries: [...mockTimelineEntries]
+            familyMembers: [{ id: '1', family_id: MOCK_FAMILY_ID, name: 'Demo User', relationship: 'Self' }],
+            timelineEntries: [],
+            familyInfo: { name: "Demo Family", joinCode: "DEMO12" }
         };
     }
 
-    // Fetch data in parallel.
-    const [familyMembersRes, timelineEntriesRes] = await Promise.all([
-        supabase!.from('family_members').select('*'),
-        supabase!.from('timeline_entries').select('*').order('date', { ascending: false }),
+    // 1. Get User's Profile to find Family ID
+    const { data: profile } = await supabase!
+        .from('profiles')
+        .select('family_id')
+        .eq('id', userId)
+        .single();
+
+    if (!profile) {
+        // Handle edge case where auth exists but profile missing (migration issue)
+        return { familyMembers: [], timelineEntries: [], familyInfo: { name: 'Unknown', joinCode: '' } };
+    }
+
+    const familyId = profile.family_id;
+
+    // 2. Fetch Family Details, Members, and Entries in parallel
+    const [familyRes, membersRes, entriesRes] = await Promise.all([
+        supabase!.from('families').select('name, join_code').eq('id', familyId).single(),
+        supabase!.from('family_members').select('*').eq('family_id', familyId),
+        supabase!.from('timeline_entries')
+            .select('*, family_members!inner(family_id)') // Ensure we only get entries for this family
+            .eq('family_members.family_id', familyId)
+            .order('date', { ascending: false })
     ]);
 
-    if (familyMembersRes.error) {
-        // Handle case where empty array returned as null or error
-        if (familyMembersRes.error.code === 'PGRST116') {
-             // no rows, that's fine
-        } else {
-             throw new Error(`Error fetching members: ${familyMembersRes.error.message}`);
-        }
-    }
-    
-    if (timelineEntriesRes.error) {
-         if (timelineEntriesRes.error.code === 'PGRST116') {
-             // no rows
-        } else {
-            throw new Error(`Error fetching timeline: ${timelineEntriesRes.error.message}`);
-        }
-    }
-    
-    let familyMembers = (familyMembersRes.data as FamilyMember[]) || [];
+    if (familyRes.error) throw new Error("Failed to fetch family info");
 
-    // Ensure a 'Self' profile exists for the logged-in user.
-    const selfExists = familyMembers.some(member => member.relationship === 'Self' && member.user_id === userId);
-    if (!selfExists) {
-        try {
-            const { data: newSelf, error } = await supabase!
-                .from('family_members')
-                .insert({ user_id: userId, name: userName, relationship: 'Self' })
-                .select()
-                .single();
-            if (!error && newSelf) {
-                familyMembers.unshift(newSelf as FamilyMember);
-            }
-        } catch (err) {
-             console.error("Error creating self profile:", err);
-        }
-    }
-    
     return {
-        familyMembers,
-        timelineEntries: (timelineEntriesRes.data as TimelineEntry[]) || [],
+        familyMembers: membersRes.data || [],
+        timelineEntries: entriesRes.data || [],
+        familyInfo: {
+            name: familyRes.data.name,
+            joinCode: familyRes.data.join_code
+        }
     };
 };
 
-export const addFamilyMember = async (member: { name: string, relationship: string, dob?: string, sendInvite?: boolean }): Promise<FamilyMember> => {
-    const inviteCode = member.sendInvite ? Math.random().toString(36).substring(2, 8).toUpperCase() : null;
+export const addFamilyMember = async (details: { name: string, relationship: string, dob?: string }): Promise<FamilyMember> => {
+    if (isMock) return { id: 'mock', family_id: MOCK_FAMILY_ID, ...details };
 
-    if (isMock) {
-        const newMember: FamilyMember = {
-            id: `mock-fam-${Date.now()}`,
-            user_id: MOCK_USER_ID,
-            name: member.name,
-            relationship: member.relationship,
-            dob: member.dob,
-            invite_code: inviteCode || undefined
-        };
-        mockFamilyMembers.push(newMember);
-        return newMember;
-    }
-
+    // Get current user's family_id via profile
     const { data: { user } } = await supabase!.auth.getUser();
-    if (!user) throw new Error("User not authenticated");
+    const { data: profile } = await supabase!.from('profiles').select('family_id').eq('id', user!.id).single();
 
-    const memberToInsert = {
-        user_id: user.id,
-        name: member.name,
-        relationship: member.relationship,
-        dob: member.dob || null, 
-        invite_code: inviteCode || null
-    };
-    
     const { data, error } = await supabase!
         .from('family_members')
-        .insert(memberToInsert)
+        .insert({
+            family_id: profile.family_id,
+            name: details.name,
+            relationship: details.relationship,
+            dob: details.dob || null
+        })
         .select()
         .single();
-        
+
     if (error) throw new Error(error.message);
     return data as FamilyMember;
 };
 
-export const addTimelineEntry = async (
-    entry: { 
-        family_member_id: string, 
-        date: string, 
-        report_type: string, 
-        summary: string,
-        doctor_name?: string,
-        facility_name?: string,
-        patient_name?: string,
-    },
-    file: { name: string, type: string, data: string, password?: string }
-): Promise<TimelineEntry> => {
-    if (isMock) {
-        const newId = `mock-entry-${Date.now()}`;
-        const newEntry: TimelineEntry = {
-            id: newId,
-            user_id: MOCK_USER_ID,
-            family_member_id: entry.family_member_id,
-            date: entry.date,
-            report_type: entry.report_type,
-            summary: entry.summary,
-            doctor_name: entry.doctor_name,
-            facility_name: entry.facility_name,
-            patient_name: entry.patient_name,
-            file: {
-                name: file.name,
-                type: file.type,
-                password: file.password
-            }
-        };
-        mockTimelineEntries.unshift(newEntry);
-        const dataUri = `data:${file.type};base64,${file.data}`;
-        mockFileStore.set(newId, dataUri);
-        return newEntry;
-    }
+export const addTimelineEntry = async (entryData: any, fileData: any): Promise<TimelineEntry> => {
+    if (isMock) return { id: 'mock-entry', ...entryData };
 
     const { data: { user } } = await supabase!.auth.getUser();
-    if (!user) throw new Error("User not authenticated");
-
+    
     // 1. Insert Metadata
     const { data: newEntry, error: entryError } = await supabase!
         .from('timeline_entries')
-        .insert({ ...entry, user_id: user.id })
+        .insert({ ...entryData, uploaded_by_user_id: user!.id })
         .select()
         .single();
     
-    if (entryError) throw new Error(`Failed to create timeline entry: ${entryError.message}`);
-    if (!newEntry) throw new Error("Failed to get ID for new timeline entry.");
+    if (entryError) throw new Error(entryError.message);
 
     // 2. Upload File
-    const filePath = `${user.id}/${newEntry.id}/${file.name}`;
-    const blob = base64ToBlob(file.data, file.type);
+    const filePath = `${entryData.family_member_id}/${newEntry.id}/${fileData.name}`;
+    const blob = base64ToBlob(fileData.data, fileData.type);
     
     const { error: uploadError } = await supabase!.storage
         .from('medical-reports')
-        .upload(filePath, blob, { contentType: file.type });
+        .upload(filePath, blob, { contentType: fileData.type });
 
     if (uploadError) {
-        // Cleanup entry if upload fails
         await supabase!.from('timeline_entries').delete().eq('id', newEntry.id);
-        throw new Error(`Failed to upload file to storage: ${uploadError.message}`);
+        throw new Error(uploadError.message);
     }
 
-    // 3. Record File Metadata
-    const fileMetadata = {
-        user_id: user.id,
+    // 3. File Metadata
+    const { error: fileError } = await supabase!.from('files').insert({
         timeline_entry_id: newEntry.id,
-        name: file.name, 
-        type: file.type, 
+        name: fileData.name, 
+        type: fileData.type, 
         file_path: filePath,
-        password: file.password,
-    };
+        password: fileData.password,
+    });
 
-    const { error: fileError } = await supabase!.from('files').insert(fileMetadata);
-
-    if (fileError) {
-        // Cleanup if metadata insert fails
-        await supabase!.storage.from('medical-reports').remove([filePath]);
-        await supabase!.from('timeline_entries').delete().eq('id', newEntry.id);
-        throw new Error(`Failed to save file metadata: ${fileError.message}`);
-    }
+    if (fileError) throw new Error(fileError.message);
 
     return newEntry as TimelineEntry;
 };
 
 export const deleteTimelineEntry = async (entryId: string): Promise<void> => {
-    if (isMock) {
-        mockTimelineEntries = mockTimelineEntries.filter(e => e.id !== entryId);
-        mockFileStore.delete(entryId);
-        return;
-    }
+    if (isMock) return;
 
     const { data: fileMeta } = await supabase!
-        .from('files')
-        .select('file_path')
-        .eq('timeline_entry_id', entryId)
-        .single();
+        .from('files').select('file_path').eq('timeline_entry_id', entryId).single();
 
-    if (fileMeta && fileMeta.file_path) {
-        await supabase!.storage
-            .from('medical-reports')
-            .remove([fileMeta.file_path]);
+    if (fileMeta?.file_path) {
+        await supabase!.storage.from('medical-reports').remove([fileMeta.file_path]);
     }
     
-    const { error: deleteError } = await supabase!
-        .from('timeline_entries')
-        .delete()
-        .eq('id', entryId);
-
-    if (deleteError) {
-        throw new Error(`Failed to delete timeline entry: ${deleteError.message}`);
-    }
+    await supabase!.from('timeline_entries').delete().eq('id', entryId);
 };
 
 export const getFileForEntry = async (timelineEntryId: string): Promise<{ metadata: ReportFile, signedUrl: string } | null> => {
-    if (isMock) {
-        const entry = mockTimelineEntries.find(e => e.id === timelineEntryId);
-        if (!entry) return null;
-        
-        if (mockFileStore.has(timelineEntryId)) {
-             return {
-                metadata: entry.file!,
-                signedUrl: mockFileStore.get(timelineEntryId)!
-            };
-        }
-        return {
-            metadata: entry.file || { name: 'mock_report.png', type: 'image/png' },
-            signedUrl: 'https://via.placeholder.com/800x1100.png?text=Mock+Report+File+Preview' 
-        };
-    }
+    if (isMock) return null;
 
     const { data: fileMetadata } = await supabase!
-        .from('files')
-        .select('*')
-        .eq('timeline_entry_id', timelineEntryId)
-        .single();
+        .from('files').select('*').eq('timeline_entry_id', timelineEntryId).single();
 
-    if (!fileMetadata || !fileMetadata.file_path) return null;
+    if (!fileMetadata?.file_path) return null;
 
-    const { data: signedUrlData, error: signedUrlError } = await supabase!.storage
-        .from('medical-reports')
-        .createSignedUrl(fileMetadata.file_path, 300); // Valid for 5 minutes
+    const { data: signedUrlData } = await supabase!.storage
+        .from('medical-reports').createSignedUrl(fileMetadata.file_path, 300);
 
-    if (signedUrlError || !signedUrlData?.signedUrl) return null;
+    if (!signedUrlData) return null;
     
-    const metadata: ReportFile = {
-        id: fileMetadata.id,
-        timeline_entry_id: fileMetadata.timeline_entry_id,
-        name: fileMetadata.name,
-        type: fileMetadata.type,
-        password: fileMetadata.password,
+    return { 
+        metadata: { ...fileMetadata }, 
+        signedUrl: signedUrlData.signedUrl 
     };
-    
-    return { metadata, signedUrl: signedUrlData.signedUrl };
 };
 
-export const ignoreMismatch = async (entryId: string): Promise<TimelineEntry> => {
-    if (isMock) {
-        const entry = mockTimelineEntries.find(e => e.id === entryId);
-        if (entry) {
-            entry.mismatch_ignored = true;
-            return { ...entry };
-        }
-        throw new Error("Entry not found");
-    }
-
-    const { data, error } = await supabase!
-        .from('timeline_entries')
-        .update({ mismatch_ignored: true })
-        .eq('id', entryId)
-        .select()
-        .single();
-    
-    if (error) throw new Error(error.message);
-    return data as TimelineEntry;
+export const ignoreMismatch = async (entryId: string) => {
+     const { data } = await supabase!.from('timeline_entries').update({ mismatch_ignored: true }).eq('id', entryId).select().single();
+     return data;
 };

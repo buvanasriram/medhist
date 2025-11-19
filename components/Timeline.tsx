@@ -1,4 +1,3 @@
-
 import React from 'react';
 import { TimelineItem } from './TimelineItem';
 import type { TimelineEntry } from '../types';
@@ -11,9 +10,10 @@ interface TimelineProps {
   onIgnoreMismatch: (entry: TimelineEntry) => void;
   selectedMemberName?: string;
   isShared?: boolean;
+  isReadOnly?: boolean;
 }
 
-export const Timeline: React.FC<TimelineProps> = ({ entries, onViewReport, onDeleteReport, onIgnoreMismatch, selectedMemberName, isShared }) => {
+export const Timeline: React.FC<TimelineProps> = ({ entries, onViewReport, onDeleteReport, onIgnoreMismatch, selectedMemberName, isShared, isReadOnly = false }) => {
   if (entries.length === 0) {
     return (
       <div className="text-center py-16 px-6 border-2 border-dashed border-slate-200 rounded-lg">
@@ -44,6 +44,7 @@ export const Timeline: React.FC<TimelineProps> = ({ entries, onViewReport, onDel
           onDeleteReport={onDeleteReport}
           onIgnoreMismatch={onIgnoreMismatch}
           selectedMemberName={selectedMemberName}
+          isReadOnly={isReadOnly}
         />
       ))}
     </div>
