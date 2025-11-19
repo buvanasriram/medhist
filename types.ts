@@ -52,4 +52,5 @@ export interface PendingInvite {
   name: string;
   email: string;
   relationship: string;
+  invite_code?: string;
 }

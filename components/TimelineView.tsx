@@ -53,7 +53,7 @@ export const TimelineView: React.FC<TimelineViewProps> = ({ onLogout, user }) =>
   const [entryToDelete, setEntryToDelete] = useState<TimelineEntry | null>(null);
   
   // Invite Modal State
-  const [inviteSuccessData, setInviteSuccessData] = useState<{name: string, email: string, link: string} | null>(null);
+  const [inviteSuccessData, setInviteSuccessData] = useState<{name: string, email: string, link: string, code: string} | null>(null);
 
   const [isLoading, setIsLoading] = useState<boolean>(false);
   const [error, setError] = useState<string | null>(null);
@@ -243,7 +243,8 @@ export const TimelineView: React.FC<TimelineViewProps> = ({ onLogout, user }) =>
       setInviteSuccessData({
         name: details.name,
         email: details.email,
-        link: appUrl
+        link: appUrl,
+        code: newInvite.invite_code || 'CODE-ERROR' // Pass the generated code
       });
     }
   };
@@ -450,7 +451,10 @@ export const TimelineView: React.FC<TimelineViewProps> = ({ onLogout, user }) =>
                     <span className="font-semibold text-slate-700">{invite.name}</span>
                     <span className="text-slate-500 text-sm"> ({invite.relationship})</span>
                   </div>
-                  <span className="text-sm text-slate-600">{invite.email}</span>
+                  <div className="text-right">
+                    <span className="block text-sm text-slate-600">{invite.email}</span>
+                    {invite.invite_code && <span className="text-xs font-mono text-slate-400 tracking-wider">Code: {invite.invite_code}</span>}
+                  </div>
                 </li>
               ))}
             </ul>
@@ -460,7 +464,7 @@ export const TimelineView: React.FC<TimelineViewProps> = ({ onLogout, user }) =>
 
       {/* Footer to indicate version change */}
       <footer className="py-6 text-center text-slate-400 text-sm border-t border-slate-200 mt-8">
-        <p>© {new Date().getFullYear()} medHist. All rights reserved. v0.1.3 (Stable)</p>
+        <p>© {new Date().getFullYear()} medHist. All rights reserved. v0.1.4 (Invite)</p>
       </footer>
 
       {isUploadModalOpen && (

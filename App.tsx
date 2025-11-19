@@ -54,8 +54,8 @@ const App: React.FC = () => {
     return null;
   };
 
-  const handleSignup = async (name: string, email: string, password: string): Promise<string|null> => {
-    const error = await supabaseService.signUp(name, email, password);
+  const handleSignup = async (name: string, email: string, password: string, inviteCode?: string): Promise<string|null> => {
+    const error = await supabaseService.signUp(name, email, password, inviteCode);
     if(error) return error;
     setRoute('/');
     return null;

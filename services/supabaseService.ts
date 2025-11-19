@@ -83,7 +83,7 @@ let mockTimelineEntries: TimelineEntry[] = [
 ];
 
 let mockPendingInvites: PendingInvite[] = [
-    { id: 'inv-1', user_id: MOCK_USER_ID, family_member_id: '3', name: 'Robert', relationship: 'Father', email: 'robert@example.com' }
+    { id: 'inv-1', user_id: MOCK_USER_ID, family_member_id: '3', name: 'Robert', relationship: 'Father', email: 'robert@example.com', invite_code: 'ABC123' }
 ];
 
 // --- AUTH FUNCTIONS ---
@@ -101,7 +101,7 @@ export const onAuthStateChange = (callback: (event: string, session: Session | n
     return supabase!.auth.onAuthStateChange(callback);
 };
 
-export const signUp = async (name: string, email: string, password: string): Promise<string|null> => {
+export const signUp = async (name: string, email: string, password: string, inviteCode?: string): Promise<string|null> => {
     if (isMock) {
         mockSession = {
             access_token: 'mock-token',
@@ -114,7 +114,7 @@ export const signUp = async (name: string, email: string, password: string): Pro
                 role: 'authenticated',
                 email: email,
                 app_metadata: { provider: 'email' },
-                user_metadata: { full_name: name },
+                user_metadata: { full_name: name, invite_code: inviteCode },
                 created_at: new Date().toISOString(),
             }
         } as Session;
@@ -126,6 +126,7 @@ export const signUp = async (name: string, email: string, password: string): Pro
         options: {
             data: {
                 full_name: name,
+                invite_code: inviteCode, // Pass invite code to metadata
             }
         }
     });
@@ -247,6 +248,8 @@ export const addFamilyMember = async (member: { name: string, relationship: stri
 };
 
 export const addPendingInvite = async (invite: { family_member_id: string, name: string, relationship: string, email: string }): Promise<PendingInvite> => {
+    const inviteCode = Math.random().toString(36).substring(2, 8).toUpperCase();
+
     if (isMock) {
         const newInvite: PendingInvite = {
             id: `mock-inv-${Date.now()}`,
@@ -254,7 +257,8 @@ export const addPendingInvite = async (invite: { family_member_id: string, name:
             family_member_id: invite.family_member_id,
             name: invite.name,
             relationship: invite.relationship,
-            email: invite.email
+            email: invite.email,
+            invite_code: inviteCode
         };
         mockPendingInvites.push(newInvite);
         return newInvite;
@@ -265,7 +269,11 @@ export const addPendingInvite = async (invite: { family_member_id: string, name:
     
     const { data, error } = await supabase!
         .from('pending_invites')
-        .insert({ ...invite, user_id: user.id })
+        .insert({ 
+            ...invite, 
+            user_id: user.id,
+            invite_code: inviteCode 
+        })
         .select()
         .single();
         

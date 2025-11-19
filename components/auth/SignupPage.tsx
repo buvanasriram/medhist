@@ -3,9 +3,10 @@ import { AuthLayout } from './AuthLayout';
 import { UserIcon } from '../icons/UserIcon';
 import { MailIcon } from '../icons/MailIcon';
 import { LockIcon } from '../icons/LockIcon';
+import { KeyIcon } from '../icons/KeyIcon';
 
 interface SignupPageProps {
-  onSignup: (name: string, email: string, password: string) => Promise<string | null>;
+  onSignup: (name: string, email: string, password: string, inviteCode?: string) => Promise<string | null>;
   onNavigateToLogin: () => void;
 }
 
@@ -13,6 +14,7 @@ export const SignupPage: React.FC<SignupPageProps> = ({ onSignup, onNavigateToLo
   const [name, setName] = useState('');
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
+  const [inviteCode, setInviteCode] = useState('');
   const [error, setError] = useState<string | null>(null);
   const [isLoading, setIsLoading] = useState(false);
 
@@ -21,7 +23,7 @@ export const SignupPage: React.FC<SignupPageProps> = ({ onSignup, onNavigateToLo
     setError(null);
     setIsLoading(true);
     if (name && email && password) {
-      const authError = await onSignup(name, email, password);
+      const authError = await onSignup(name, email, password, inviteCode);
        if (authError) {
         setError(authError);
       }
@@ -99,6 +101,29 @@ export const SignupPage: React.FC<SignupPageProps> = ({ onSignup, onNavigateToLo
               disabled={isLoading}
             />
           </div>
+        </div>
+        
+        <div>
+          <label htmlFor="inviteCode" className="block text-sm font-medium text-slate-700">
+            Invite Code <span className="text-slate-400 font-normal">(Optional)</span>
+          </label>
+          <div className="mt-1 relative rounded-md shadow-sm">
+            <div className="pointer-events-none absolute inset-y-0 left-0 flex items-center pl-3">
+               <KeyIcon className="h-5 w-5 text-slate-400" />
+            </div>
+            <input
+              type="text"
+              name="inviteCode"
+              id="inviteCode"
+              className="block w-full rounded-md border border-slate-300 py-2 pl-10 shadow-sm focus:border-brand-blue-500 focus:outline-none focus:ring-1 focus:ring-brand-blue-500 sm:text-sm uppercase tracking-widest"
+              placeholder="X792KS"
+              value={inviteCode}
+              onChange={(e) => setInviteCode(e.target.value.toUpperCase())}
+              maxLength={6}
+              disabled={isLoading}
+            />
+          </div>
+          <p className="mt-1 text-xs text-slate-500">Enter the 6-character code if a family member invited you.</p>
         </div>
         
         {error && <p className="text-sm text-red-600 text-center">{error}</p>}
