@@ -12,9 +12,10 @@ import { fileToBase64 } from '../utils/fileUtils';
 import * as supabaseService from '../services/supabaseService';
 import type { FamilyMember, TimelineEntry, User, ReportFile } from '../types';
 import { PlusIcon } from './icons/PlusIcon';
-import { HourglassIcon } from './icons/HourglassIcon';
+import { KeyIcon } from './icons/KeyIcon';
 import { SpinnerIcon } from './icons/SpinnerIcon';
 import { FilterIcon } from './icons/FilterIcon';
+import { ClipboardIcon } from './icons/ClipboardIcon';
 
 interface TimelineViewProps {
   onLogout: () => void;
@@ -229,10 +230,17 @@ export const TimelineView: React.FC<TimelineViewProps> = ({ onLogout, user }) =>
         
         if (details.sendInvite && newMember.invite_code) {
             // GENERATE INVITE LINK & SHOW MODAL
-            // Use VITE_APP_URL if defined (production), otherwise fallback to window location (development)
-            // @ts-ignore
-            const envUrl = import.meta.env.VITE_APP_URL;
-            const appUrl = envUrl || window.location.origin;
+            let appUrl = window.location.origin;
+            try {
+                // Safely attempt to read from environment variable
+                // @ts-ignore
+                if (typeof import.meta !== 'undefined' && import.meta.env && import.meta.env.VITE_APP_URL) {
+                     // @ts-ignore
+                    appUrl = import.meta.env.VITE_APP_URL;
+                }
+            } catch (e) {
+                console.warn("Could not determine VITE_APP_URL, defaulting to window.location.origin");
+            }
             
             setInviteSuccessData({
                 name: details.name,
@@ -261,6 +269,11 @@ export const TimelineView: React.FC<TimelineViewProps> = ({ onLogout, user }) =>
   
   const selectedMember = useMemo(() => familyMembers.find(m => m.id === selectedMemberId), [familyMembers, selectedMemberId]);
   
+  // Check if the selected member is shared (not owned by current user)
+  const isSelectedMemberShared = useMemo(() => {
+      return selectedMember && selectedMember.user_id !== user.id;
+  }, [selectedMember, user.id]);
+
   // 1. First, get entries for the selected member
   const memberEntries = useMemo(() => {
     return timelineEntries.filter(entry => entry.family_member_id === selectedMemberId);
@@ -310,6 +323,11 @@ export const TimelineView: React.FC<TimelineViewProps> = ({ onLogout, user }) =>
 
   const hasActiveFilters = filterReportType || filterStartDate || filterEndDate;
 
+  const copyCode = (code: string) => {
+    navigator.clipboard.writeText(code);
+    alert(`Invite code ${code} copied to clipboard!`);
+  };
+
   if (isPageLoading) {
     return (
         <div className="flex items-center justify-center min-h-screen bg-slate-50">
@@ -341,9 +359,10 @@ export const TimelineView: React.FC<TimelineViewProps> = ({ onLogout, user }) =>
                 >
                   {familyMembers.map(member => {
                     const age = calculateAge(member.dob);
+                    const isShared = member.user_id !== user.id;
                     return (
                         <option key={member.id} value={member.id}>
-                          {member.name} ({member.relationship}{age !== null ? `, Age ${age}` : ''})
+                          {member.name} ({member.relationship}{age !== null ? `, Age ${age}` : ''}) {isShared ? '(Shared)' : ''}
                         </option>
                     )
                   })}
@@ -436,16 +455,19 @@ export const TimelineView: React.FC<TimelineViewProps> = ({ onLogout, user }) =>
             onDeleteReport={handleDeleteReport}
             onIgnoreMismatch={handleIgnoreMismatch}
             selectedMemberName={selectedMember?.name}
+            isShared={isSelectedMemberShared}
           />
         </div>
         
         {pendingInvites.length > 0 && (
           <div className="mt-8 bg-white rounded-xl shadow-sm p-6 border border-slate-200">
             <div className="flex items-center gap-3">
-              <HourglassIcon className="w-6 h-6 text-brand-blue-600" />
-              <h2 className="text-xl font-bold text-brand-blue-800">Pending Invitations</h2>
+              <KeyIcon className="w-6 h-6 text-brand-blue-600" />
+              <h2 className="text-xl font-bold text-brand-blue-800">Active Invite Codes</h2>
             </div>
-            <p className="text-slate-500 mt-1 mb-4">These family members have been invited but have not yet joined medHist.</p>
+            <p className="text-slate-500 mt-1 mb-4">
+                Share these codes with family members. They can use them during signup to access these timelines.
+            </p>
             <ul className="space-y-3">
               {pendingInvites.map(member => (
                 <li key={member.id} className="p-3 bg-slate-50 rounded-lg flex justify-between items-center border border-slate-200">
@@ -453,11 +475,18 @@ export const TimelineView: React.FC<TimelineViewProps> = ({ onLogout, user }) =>
                     <span className="font-semibold text-slate-700">{member.name}</span>
                     <span className="text-slate-500 text-sm"> ({member.relationship})</span>
                   </div>
-                  <div className="text-right">
-                     <div className="flex items-center gap-1.5 bg-white px-2 py-1 rounded border border-slate-200">
+                  <div className="text-right flex items-center gap-3">
+                     <div className="flex items-center gap-2 bg-white px-3 py-1.5 rounded border border-slate-200">
                         <span className="text-xs text-slate-500 font-medium uppercase">Code:</span>
                         <span className="text-sm font-mono font-bold text-slate-800 tracking-wider">{member.invite_code}</span>
                      </div>
+                     <button 
+                        onClick={() => copyCode(member.invite_code || '')}
+                        className="text-slate-400 hover:text-brand-blue-600 transition"
+                        title="Copy Code"
+                     >
+                         <ClipboardIcon className="w-5 h-5" />
+                     </button>
                   </div>
                 </li>
               ))}
@@ -468,7 +497,7 @@ export const TimelineView: React.FC<TimelineViewProps> = ({ onLogout, user }) =>
 
       {/* Footer to indicate version change */}
       <footer className="py-6 text-center text-slate-400 text-sm border-t border-slate-200 mt-8">
-        <p>© {new Date().getFullYear()} medHist. All rights reserved. v0.1.7 (No Email Invite)</p>
+        <p>© {new Date().getFullYear()} medHist. All rights reserved. v0.2.0 (Shared Views)</p>
       </footer>
 
       {isUploadModalOpen && (
