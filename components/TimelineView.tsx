@@ -1,3 +1,4 @@
+
 import React, { useState, useMemo, useCallback, useEffect, useRef } from 'react';
 import { Header } from './Header';
 import { Timeline } from './Timeline';
@@ -9,7 +10,7 @@ import { InviteSuccessModal } from './InviteSuccessModal';
 import { extractReportInfo } from '../services/geminiService';
 import { fileToBase64 } from '../utils/fileUtils';
 import * as supabaseService from '../services/supabaseService';
-import type { FamilyMember, TimelineEntry, PendingInvite, User, ReportFile } from '../types';
+import type { FamilyMember, TimelineEntry, User, ReportFile } from '../types';
 import { PlusIcon } from './icons/PlusIcon';
 import { HourglassIcon } from './icons/HourglassIcon';
 import { SpinnerIcon } from './icons/SpinnerIcon';
@@ -35,7 +36,6 @@ const calculateAge = (dobString: string | undefined | null): number | null => {
 export const TimelineView: React.FC<TimelineViewProps> = ({ onLogout, user }) => {
   const [isPageLoading, setPageLoading] = useState<boolean>(true);
   const [familyMembers, setFamilyMembers] = useState<FamilyMember[]>([]);
-  const [pendingInvites, setPendingInvites] = useState<PendingInvite[]>([]);
   const [timelineEntries, setTimelineEntries] = useState<TimelineEntry[]>([]);
 
   const [selectedMemberId, setSelectedMemberId] = useState<string>('');
@@ -53,7 +53,7 @@ export const TimelineView: React.FC<TimelineViewProps> = ({ onLogout, user }) =>
   const [entryToDelete, setEntryToDelete] = useState<TimelineEntry | null>(null);
   
   // Invite Modal State
-  const [inviteSuccessData, setInviteSuccessData] = useState<{name: string, email: string, link: string, code: string} | null>(null);
+  const [inviteSuccessData, setInviteSuccessData] = useState<{name: string, link: string, code: string} | null>(null);
 
   const [isLoading, setIsLoading] = useState<boolean>(false);
   const [error, setError] = useState<string | null>(null);
@@ -66,7 +66,6 @@ export const TimelineView: React.FC<TimelineViewProps> = ({ onLogout, user }) =>
         const data = await supabaseService.getUserData(user.id, user.name);
         if (isMounted.current) {
           setFamilyMembers(data.familyMembers);
-          setPendingInvites(data.pendingInvites);
           setTimelineEntries(data.timelineEntries);
           
           const self = data.familyMembers.find(m => m.relationship === 'Self');
@@ -214,38 +213,36 @@ export const TimelineView: React.FC<TimelineViewProps> = ({ onLogout, user }) =>
       }
   };
 
-  const handleAddMember = async (details: { name: string; relationship: string; email: string; sendInvite: boolean; dob: string; }) => {
-    const newMemberData = {
-      name: details.name,
-      relationship: details.relationship,
-      dob: details.dob || undefined,
-    };
+  const handleAddMember = async (details: { name: string; relationship: string; sendInvite: boolean; dob: string; }) => {
+    try {
+        const newMember = await supabaseService.addFamilyMember({
+            name: details.name,
+            relationship: details.relationship,
+            dob: details.dob,
+            sendInvite: details.sendInvite
+        });
 
-    const newMember = await supabaseService.addFamilyMember(newMemberData);
-    setFamilyMembers(prev => [...prev, newMember]);
-    
-    if (details.sendInvite && details.email) {
-      const newInviteData = {
-        family_member_id: newMember.id,
-        name: details.name,
-        relationship: details.relationship,
-        email: details.email
-      };
-      const newInvite = await supabaseService.addPendingInvite(newInviteData);
-      setPendingInvites(prev => [...prev, newInvite]);
-
-      // GENERATE INVITE LINK & SHOW MODAL
-      // Use VITE_APP_URL if defined (production), otherwise fallback to window location (development)
-      // @ts-ignore
-      const envUrl = import.meta.env.VITE_APP_URL;
-      const appUrl = envUrl || window.location.origin;
-      
-      setInviteSuccessData({
-        name: details.name,
-        email: details.email,
-        link: appUrl,
-        code: newInvite.invite_code || 'CODE-ERROR' // Pass the generated code
-      });
+        setFamilyMembers(prev => [...prev, newMember]);
+        
+        // Automatically select the new member
+        setSelectedMemberId(newMember.id);
+        
+        if (details.sendInvite && newMember.invite_code) {
+            // GENERATE INVITE LINK & SHOW MODAL
+            // Use VITE_APP_URL if defined (production), otherwise fallback to window location (development)
+            // @ts-ignore
+            const envUrl = import.meta.env.VITE_APP_URL;
+            const appUrl = envUrl || window.location.origin;
+            
+            setInviteSuccessData({
+                name: details.name,
+                link: appUrl,
+                code: newMember.invite_code
+            });
+        }
+    } catch (error) {
+        // Re-throw the error so the modal can catch it and display it
+        throw error;
     }
   };
 
@@ -268,6 +265,11 @@ export const TimelineView: React.FC<TimelineViewProps> = ({ onLogout, user }) =>
   const memberEntries = useMemo(() => {
     return timelineEntries.filter(entry => entry.family_member_id === selectedMemberId);
   }, [timelineEntries, selectedMemberId]);
+  
+  // Derive pending invites from family members who have an invite code
+  const pendingInvites = useMemo(() => {
+      return familyMembers.filter(m => m.invite_code);
+  }, [familyMembers]);
 
   // 2. Compute unique report types for the dropdown based on memberEntries
   const uniqueReportTypes = useMemo(() => {
@@ -445,15 +447,17 @@ export const TimelineView: React.FC<TimelineViewProps> = ({ onLogout, user }) =>
             </div>
             <p className="text-slate-500 mt-1 mb-4">These family members have been invited but have not yet joined medHist.</p>
             <ul className="space-y-3">
-              {pendingInvites.map(invite => (
-                <li key={invite.id} className="p-3 bg-slate-50 rounded-lg flex justify-between items-center border border-slate-200">
+              {pendingInvites.map(member => (
+                <li key={member.id} className="p-3 bg-slate-50 rounded-lg flex justify-between items-center border border-slate-200">
                   <div>
-                    <span className="font-semibold text-slate-700">{invite.name}</span>
-                    <span className="text-slate-500 text-sm"> ({invite.relationship})</span>
+                    <span className="font-semibold text-slate-700">{member.name}</span>
+                    <span className="text-slate-500 text-sm"> ({member.relationship})</span>
                   </div>
                   <div className="text-right">
-                    <span className="block text-sm text-slate-600">{invite.email}</span>
-                    {invite.invite_code && <span className="text-xs font-mono text-slate-400 tracking-wider">Code: {invite.invite_code}</span>}
+                     <div className="flex items-center gap-1.5 bg-white px-2 py-1 rounded border border-slate-200">
+                        <span className="text-xs text-slate-500 font-medium uppercase">Code:</span>
+                        <span className="text-sm font-mono font-bold text-slate-800 tracking-wider">{member.invite_code}</span>
+                     </div>
                   </div>
                 </li>
               ))}
@@ -464,7 +468,7 @@ export const TimelineView: React.FC<TimelineViewProps> = ({ onLogout, user }) =>
 
       {/* Footer to indicate version change */}
       <footer className="py-6 text-center text-slate-400 text-sm border-t border-slate-200 mt-8">
-        <p>© {new Date().getFullYear()} medHist. All rights reserved. v0.1.4 (Invite)</p>
+        <p>© {new Date().getFullYear()} medHist. All rights reserved. v0.1.7 (No Email Invite)</p>
       </footer>
 
       {isUploadModalOpen && (

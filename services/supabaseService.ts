@@ -1,7 +1,7 @@
 
 import { createClient } from '@supabase/supabase-js';
 import type { Session, SupabaseClient } from '@supabase/supabase-js';
-import type { FamilyMember, TimelineEntry, PendingInvite, ReportFile } from '../types';
+import type { FamilyMember, TimelineEntry, ReportFile } from '../types';
 import { base64ToBlob } from '../utils/fileUtils';
 import { CREDENTIALS } from '../credentials';
 
@@ -64,7 +64,7 @@ const mockFileStore = new Map<string, string>();
 let mockFamilyMembers: FamilyMember[] = [
     { id: '1', user_id: MOCK_USER_ID, name: 'Demo User', relationship: 'Self', dob: '1985-06-15' },
     { id: '2', user_id: MOCK_USER_ID, name: 'Alice', relationship: 'Daughter', dob: '2019-03-10' },
-    { id: '3', user_id: MOCK_USER_ID, name: 'Robert', relationship: 'Father', dob: '1955-11-22' },
+    { id: '3', user_id: MOCK_USER_ID, name: 'Robert', relationship: 'Father', dob: '1955-11-22', invite_code: 'ABC123' },
 ];
 
 let mockTimelineEntries: TimelineEntry[] = [
@@ -80,10 +80,6 @@ let mockTimelineEntries: TimelineEntry[] = [
         patient_name: 'Demo User',
         mismatch_ignored: false
     }
-];
-
-let mockPendingInvites: PendingInvite[] = [
-    { id: 'inv-1', user_id: MOCK_USER_ID, family_member_id: '3', name: 'Robert', relationship: 'Father', email: 'robert@example.com', invite_code: 'ABC123' }
 ];
 
 // --- AUTH FUNCTIONS ---
@@ -167,7 +163,7 @@ export const signOut = async (): Promise<void> => {
 
 // --- DATABASE FUNCTIONS ---
 
-export const getUserData = async (userId: string, userName:string): Promise<{ familyMembers: FamilyMember[], timelineEntries: TimelineEntry[], pendingInvites: PendingInvite[] }> => {
+export const getUserData = async (userId: string, userName:string): Promise<{ familyMembers: FamilyMember[], timelineEntries: TimelineEntry[] }> => {
     if (isMock) {
         const selfIndex = mockFamilyMembers.findIndex(m => m.relationship === 'Self');
         if (selfIndex >= 0) {
@@ -178,56 +174,69 @@ export const getUserData = async (userId: string, userName:string): Promise<{ fa
         await new Promise(resolve => setTimeout(resolve, 600));
         return {
             familyMembers: [...mockFamilyMembers],
-            timelineEntries: [...mockTimelineEntries],
-            pendingInvites: [...mockPendingInvites]
+            timelineEntries: [...mockTimelineEntries]
         };
     }
 
-    // Fetch all data in parallel from Supabase.
-    // Note: We intentionally do NOT filter family_members and timeline_entries by .eq('user_id', userId) here.
-    // We rely on Supabase Row Level Security (RLS) policies to return:
-    // 1. Records owned by the user
-    // 2. Records shared with the user via profile_permissions
-    const [familyMembersRes, timelineEntriesRes, pendingInvitesRes] = await Promise.all([
+    // Fetch data in parallel.
+    const [familyMembersRes, timelineEntriesRes] = await Promise.all([
         supabase!.from('family_members').select('*'),
         supabase!.from('timeline_entries').select('*').order('date', { ascending: false }),
-        supabase!.from('pending_invites').select('*').eq('user_id', userId) // Invites are still owner-only visibility
     ]);
 
-    if (familyMembersRes.error) throw new Error(`Error fetching members: ${familyMembersRes.error.message}`);
-    if (timelineEntriesRes.error) throw new Error(`Error fetching timeline: ${timelineEntriesRes.error.message}`);
-    if (pendingInvitesRes.error) throw new Error(`Error fetching invites: ${pendingInvitesRes.error.message}`);
-
-    let familyMembers = familyMembersRes.data as FamilyMember[];
+    if (familyMembersRes.error) {
+        // Handle case where empty array returned as null or error
+        if (familyMembersRes.error.code === 'PGRST116') {
+             // no rows, that's fine
+        } else {
+             throw new Error(`Error fetching members: ${familyMembersRes.error.message}`);
+        }
+    }
+    
+    if (timelineEntriesRes.error) {
+         if (timelineEntriesRes.error.code === 'PGRST116') {
+             // no rows
+        } else {
+            throw new Error(`Error fetching timeline: ${timelineEntriesRes.error.message}`);
+        }
+    }
+    
+    let familyMembers = (familyMembersRes.data as FamilyMember[]) || [];
 
     // Ensure a 'Self' profile exists for the logged-in user.
-    // We check if there is a 'Self' record specifically owned by this user.
     const selfExists = familyMembers.some(member => member.relationship === 'Self' && member.user_id === userId);
     if (!selfExists) {
-        const { data: newSelf, error } = await supabase!
-            .from('family_members')
-            .insert({ user_id: userId, name: userName, relationship: 'Self' })
-            .select()
-            .single();
-        if (error) throw new Error(error.message);
-        familyMembers.unshift(newSelf as FamilyMember);
+        try {
+            const { data: newSelf, error } = await supabase!
+                .from('family_members')
+                .insert({ user_id: userId, name: userName, relationship: 'Self' })
+                .select()
+                .single();
+            if (!error && newSelf) {
+                familyMembers.unshift(newSelf as FamilyMember);
+            }
+        } catch (err) {
+             console.error("Error creating self profile:", err);
+        }
     }
     
     return {
         familyMembers,
-        timelineEntries: timelineEntriesRes.data as TimelineEntry[],
-        pendingInvites: pendingInvitesRes.data as PendingInvite[],
+        timelineEntries: (timelineEntriesRes.data as TimelineEntry[]) || [],
     };
 };
 
-export const addFamilyMember = async (member: { name: string, relationship: string, dob?: string }): Promise<FamilyMember> => {
+export const addFamilyMember = async (member: { name: string, relationship: string, dob?: string, sendInvite?: boolean }): Promise<FamilyMember> => {
+    const inviteCode = member.sendInvite ? Math.random().toString(36).substring(2, 8).toUpperCase() : null;
+
     if (isMock) {
         const newMember: FamilyMember = {
             id: `mock-fam-${Date.now()}`,
             user_id: MOCK_USER_ID,
             name: member.name,
             relationship: member.relationship,
-            dob: member.dob
+            dob: member.dob,
+            invite_code: inviteCode || undefined
         };
         mockFamilyMembers.push(newMember);
         return newMember;
@@ -237,9 +246,11 @@ export const addFamilyMember = async (member: { name: string, relationship: stri
     if (!user) throw new Error("User not authenticated");
 
     const memberToInsert = {
-        ...member,
         user_id: user.id,
+        name: member.name,
+        relationship: member.relationship,
         dob: member.dob || null, 
+        invite_code: inviteCode || null
     };
     
     const { data, error } = await supabase!
@@ -250,40 +261,6 @@ export const addFamilyMember = async (member: { name: string, relationship: stri
         
     if (error) throw new Error(error.message);
     return data as FamilyMember;
-};
-
-export const addPendingInvite = async (invite: { family_member_id: string, name: string, relationship: string, email: string }): Promise<PendingInvite> => {
-    const inviteCode = Math.random().toString(36).substring(2, 8).toUpperCase();
-
-    if (isMock) {
-        const newInvite: PendingInvite = {
-            id: `mock-inv-${Date.now()}`,
-            user_id: MOCK_USER_ID,
-            family_member_id: invite.family_member_id,
-            name: invite.name,
-            relationship: invite.relationship,
-            email: invite.email,
-            invite_code: inviteCode
-        };
-        mockPendingInvites.push(newInvite);
-        return newInvite;
-    }
-
-    const { data: { user } } = await supabase!.auth.getUser();
-    if (!user) throw new Error("User not authenticated");
-    
-    const { data, error } = await supabase!
-        .from('pending_invites')
-        .insert({ 
-            ...invite, 
-            user_id: user.id,
-            invite_code: inviteCode 
-        })
-        .select()
-        .single();
-        
-    if (error) throw new Error(error.message);
-    return data as PendingInvite;
 };
 
 export const addTimelineEntry = async (

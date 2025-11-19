@@ -3,47 +3,57 @@ import React, { useState } from 'react';
 import { CloseIcon } from './icons/CloseIcon';
 import { UserIcon } from './icons/UserIcon';
 import { UsersIcon } from './icons/UsersIcon';
-import { MailIcon } from './icons/MailIcon';
 import { CalendarIcon } from './icons/CalendarIcon';
 import { KeyIcon } from './icons/KeyIcon';
+import { SpinnerIcon } from './icons/SpinnerIcon';
 
 interface AddMemberModalProps {
   isOpen: boolean;
   onClose: () => void;
-  onAddMember: (details: { name: string; relationship: string; email: string; sendInvite: boolean; dob: string; }) => void;
+  onAddMember: (details: { name: string; relationship: string; sendInvite: boolean; dob: string; }) => Promise<void>;
 }
 
 export const AddMemberModal: React.FC<AddMemberModalProps> = ({ isOpen, onClose, onAddMember }) => {
   const [name, setName] = useState('');
   const [relationship, setRelationship] = useState('');
   const [dob, setDob] = useState('');
-  const [email, setEmail] = useState('');
   const [sendInvite, setSendInvite] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [isLoading, setIsLoading] = useState(false);
 
   const handleClose = () => {
+    if (isLoading) return;
     onClose();
     setName('');
     setRelationship('');
     setDob('');
-    setEmail('');
     setSendInvite(false);
     setError(null);
   };
 
-  const handleSubmit = (e: React.FormEvent) => {
+  const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setError(null);
     if (!name.trim() || !relationship.trim()) {
       setError('Please fill out the name and relationship.');
       return;
     }
-    if (sendInvite && !email.trim()) {
-        setError('Please enter an email address for the invitation.');
-        return;
+    
+    setIsLoading(true);
+    try {
+        await onAddMember({ name, relationship, sendInvite, dob });
+        // Reset form on success before closing
+        setName('');
+        setRelationship('');
+        setDob('');
+        setSendInvite(false);
+        onClose();
+    } catch (err: any) {
+        console.error("Error in AddMemberModal:", err);
+        setError(err.message || "Failed to add family member.");
+    } finally {
+        setIsLoading(false);
     }
-    onAddMember({ name, relationship, email, sendInvite, dob });
-    handleClose();
   };
 
   if (!isOpen) return null;
@@ -57,7 +67,7 @@ export const AddMemberModal: React.FC<AddMemberModalProps> = ({ isOpen, onClose,
               <h2 className="text-xl font-bold text-slate-800">Add Family Member</h2>
               <p className="text-sm text-slate-500 mt-1">Create a profile to manage their records.</p>
             </div>
-            <button onClick={handleClose} className="text-slate-400 hover:text-slate-600 transition">
+            <button onClick={handleClose} className="text-slate-400 hover:text-slate-600 transition" disabled={isLoading}>
               <CloseIcon className="w-6 h-6" />
             </button>
           </div>
@@ -81,6 +91,7 @@ export const AddMemberModal: React.FC<AddMemberModalProps> = ({ isOpen, onClose,
                   className="block w-full rounded-md border border-slate-300 py-2 pl-10 shadow-sm focus:border-brand-blue-500 focus:outline-none focus:ring-1 focus:ring-brand-blue-500 sm:text-sm"
                   placeholder="e.g., John Doe"
                   required
+                  disabled={isLoading}
                 />
               </div>
             </div>
@@ -101,6 +112,7 @@ export const AddMemberModal: React.FC<AddMemberModalProps> = ({ isOpen, onClose,
                   className="block w-full rounded-md border border-slate-300 py-2 pl-10 shadow-sm focus:border-brand-blue-500 focus:outline-none focus:ring-1 focus:ring-brand-blue-500 sm:text-sm"
                   placeholder="e.g., Father, Son"
                   required
+                  disabled={isLoading}
                 />
               </div>
             </div>
@@ -119,6 +131,7 @@ export const AddMemberModal: React.FC<AddMemberModalProps> = ({ isOpen, onClose,
                   value={dob}
                   onChange={(e) => setDob(e.target.value)}
                   className="block w-full rounded-md border border-slate-300 py-2 pl-10 shadow-sm focus:border-brand-blue-500 focus:outline-none focus:ring-1 focus:ring-brand-blue-500 sm:text-sm"
+                  disabled={isLoading}
                 />
               </div>
             </div>
@@ -132,6 +145,7 @@ export const AddMemberModal: React.FC<AddMemberModalProps> = ({ isOpen, onClose,
                     checked={sendInvite}
                     onChange={(e) => setSendInvite(e.target.checked)}
                     className="h-4 w-4 rounded border-slate-300 text-brand-blue-600 focus:ring-brand-blue-500"
+                    disabled={isLoading}
                     />
                 </div>
                 <div className="ml-3 text-sm">
@@ -143,28 +157,6 @@ export const AddMemberModal: React.FC<AddMemberModalProps> = ({ isOpen, onClose,
                 </div>
             </div>
             
-            {sendInvite && (
-                 <div>
-                    <label htmlFor="email" className="block text-sm font-medium text-slate-700">
-                        Email Address (to receive code)
-                    </label>
-                    <div className="mt-1 relative rounded-md shadow-sm">
-                        <div className="pointer-events-none absolute inset-y-0 left-0 flex items-center pl-3">
-                        <MailIcon className="h-5 w-5 text-slate-400" />
-                        </div>
-                        <input
-                        type="email"
-                        id="email"
-                        value={email}
-                        onChange={(e) => setEmail(e.target.value)}
-                        className="block w-full rounded-md border border-slate-300 py-2 pl-10 shadow-sm focus:border-brand-blue-500 focus:outline-none focus:ring-1 focus:ring-brand-blue-500 sm:text-sm"
-                        placeholder="member@example.com"
-                        required
-                        />
-                    </div>
-                </div>
-            )}
-            
             {error && <p className="text-sm text-red-600">{error}</p>}
 
           </div>
@@ -173,15 +165,24 @@ export const AddMemberModal: React.FC<AddMemberModalProps> = ({ isOpen, onClose,
             <button
               type="button"
               onClick={handleClose}
+              disabled={isLoading}
               className="px-4 py-2 text-sm font-semibold text-slate-700 bg-slate-100 hover:bg-slate-200 rounded-lg transition"
             >
               Cancel
             </button>
             <button
               type="submit"
-              className="bg-brand-blue-600 text-white font-semibold py-2 px-4 rounded-lg shadow-md hover:bg-brand-blue-700 focus:outline-none focus:ring-2 focus:ring-brand-blue-500 focus:ring-opacity-75 transition"
+              disabled={isLoading}
+              className="bg-brand-blue-600 text-white font-semibold py-2 px-4 rounded-lg shadow-md hover:bg-brand-blue-700 focus:outline-none focus:ring-2 focus:ring-brand-blue-500 focus:ring-opacity-75 transition flex items-center gap-2 disabled:bg-brand-blue-300"
             >
-              {sendInvite ? 'Add & Generate Code' : 'Add Member'}
+              {isLoading ? (
+                <>
+                  <SpinnerIcon className="w-4 h-4 animate-spin" />
+                  Processing...
+                </>
+              ) : (
+                sendInvite ? 'Add & Generate Code' : 'Add Member'
+              )}
             </button>
           </div>
         </form>

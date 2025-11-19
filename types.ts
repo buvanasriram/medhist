@@ -1,3 +1,4 @@
+
 export interface User {
   id: string;
   name: string;
@@ -10,6 +11,7 @@ export interface FamilyMember {
   name: string;
   relationship: string;
   dob?: string;
+  invite_code?: string;
 }
 
 export interface ReportFile {
@@ -43,14 +45,4 @@ export interface ExtractedReportData {
     doctorName?: string;
     facilityName?: string;
     patientName?: string;
-}
-
-export interface PendingInvite {
-  id: string;
-  user_id: string;
-  family_member_id: string;
-  name: string;
-  email: string;
-  relationship: string;
-  invite_code?: string;
 }
