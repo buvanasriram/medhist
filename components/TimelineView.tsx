@@ -1,4 +1,3 @@
-
 import React, { useState, useMemo, useCallback, useEffect, useRef } from 'react';
 import { Header } from './Header';
 import { Timeline } from './Timeline';
@@ -386,7 +385,7 @@ export const TimelineView: React.FC<TimelineViewProps> = ({ onLogout, user }) =>
       </main>
 
       <footer className="py-6 text-center text-slate-400 text-sm border-t border-slate-200 mt-8">
-        <p>© {new Date().getFullYear()} medHist. v1.0 (Family Group)</p>
+        <p>© {new Date().getFullYear()} medHist. v0.2 (Family Group)</p>
       </footer>
 
       {isUploadModalOpen && (

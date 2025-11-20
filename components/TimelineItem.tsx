@@ -1,11 +1,13 @@
-import React from 'react';
+
+import React, { useState } from 'react';
 import type { TimelineEntry } from '../types';
 import { DocumentIcon } from './icons/DocumentIcon';
 import { UserIcon } from './icons/UserIcon';
 import { BuildingIcon } from './icons/BuildingIcon';
-import { CalendarIcon } from './icons/CalendarIcon';
 import { TrashIcon } from './icons/TrashIcon';
 import { WarningIcon } from './icons/WarningIcon';
+import { ChevronDownIcon } from './icons/ChevronDownIcon';
+import { ChevronUpIcon } from './icons/ChevronUpIcon';
 
 interface TimelineItemProps {
   entry: TimelineEntry;
@@ -17,6 +19,8 @@ interface TimelineItemProps {
 }
 
 export const TimelineItem: React.FC<TimelineItemProps> = ({ entry, onViewReport, onDeleteReport, onIgnoreMismatch, selectedMemberName, isReadOnly = false }) => {
+  const [showSummary, setShowSummary] = useState(false);
+
   const formattedDate = new Date(entry.date).toLocaleDateString('en-US', {
     year: 'numeric',
     month: 'long',
@@ -28,14 +32,17 @@ export const TimelineItem: React.FC<TimelineItemProps> = ({ entry, onViewReport,
                        selectedMemberName && 
                        entry.patient_name.trim().toLowerCase() !== selectedMemberName.trim().toLowerCase();
 
+  const summaryText = entry.summary || "No summary available for this report.";
+
   return (
     <div className="mb-10">
       <div className="absolute -left-5 bg-brand-blue-600 h-9 w-9 rounded-full flex items-center justify-center ring-8 ring-white">
         <DocumentIcon className="w-5 h-5 text-white" />
       </div>
       <div className="pl-4">
-        <div className="mb-2">
+        <div className="mb-2 flex flex-wrap items-baseline gap-3">
           <h3 className="text-lg font-bold text-slate-800">{entry.report_type}</h3>
+          <span className="text-sm font-bold text-slate-800">{formattedDate}</span>
         </div>
 
         {isMismatched && (
@@ -61,10 +68,6 @@ export const TimelineItem: React.FC<TimelineItemProps> = ({ entry, onViewReport,
         )}
 
         <div className="flex flex-wrap items-center gap-x-6 gap-y-2 text-sm text-slate-500 mb-3">
-          <div className="flex items-center gap-2">
-            <CalendarIcon className="w-4 h-4 text-slate-400" />
-            <time className="font-medium">{formattedDate}</time>
-          </div>
           {entry.patient_name && (
             <div className="flex items-center gap-2">
               <UserIcon className="w-4 h-4 text-slate-400" />
@@ -83,9 +86,28 @@ export const TimelineItem: React.FC<TimelineItemProps> = ({ entry, onViewReport,
               <span className="font-medium">{entry.facility_name}</span>
             </div>
           )}
+
+          <button
+            onClick={() => setShowSummary(!showSummary)}
+            className="flex items-center gap-1 font-medium text-brand-blue-600 hover:text-brand-blue-800 focus:outline-none transition-colors"
+          >
+            {showSummary ? (
+                <>
+                    Hide Summary <ChevronUpIcon className="w-4 h-4" />
+                </>
+            ) : (
+                <>
+                    Show Summary <ChevronDownIcon className="w-4 h-4" />
+                </>
+            )}
+          </button>
         </div>
 
-        <p className="text-slate-600 leading-relaxed mb-4">{entry.summary}</p>
+        {showSummary && (
+             <div className="mb-4 p-3 bg-slate-50 rounded-md border border-slate-100 text-slate-600 text-sm leading-relaxed animate-fadeIn">
+                 {summaryText}
+             </div>
+        )}
         
         <div className="flex items-center gap-4">
           <button
@@ -109,3 +131,4 @@ export const TimelineItem: React.FC<TimelineItemProps> = ({ entry, onViewReport,
     </div>
   );
 };
+    

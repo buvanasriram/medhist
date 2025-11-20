@@ -1,16 +1,15 @@
-
-# medHist: Your Family's Medical Timeline (v0.1.2)
+# medHist: Your Family's Medical Timeline (v0.2.0)
 
 medHist is a secure, family-focused web application that allows families to upload medical reports (PDFs/images). It uses Google Gemini AI to automatically extract key details (diagnosis, doctor, date) and creates a chronological clinical timeline for every family member.
 
-## Project Status: v0.1.2
-*   **Updated**: Manual version bump to resolve deployment synchronization issues.
-*   **Status**: Ready for fresh deployment.
+## Project Status: v0.2.0
+*   **Architecture**: Family Group Model (Multi-tenant).
+*   **Status**: Stable release.
 
 ## Features
 
 *   **AI-Powered Extraction**: Upload a PDF or Image, and Gemini AI extracts the summary, doctor's name, and date automatically.
-*   **Family Management**: Specialized timelines for different family members.
+*   **Family Management**: Create a family group and invite members via a simplified Join Code.
 *   **Secure Storage**: Files are stored securely using Supabase Storage.
 *   **Responsive Design**: Works on desktop and mobile.
 
