@@ -71,11 +71,21 @@ export const TimelineView: React.FC<TimelineViewProps> = ({ onLogout, user }) =>
           setTimelineEntries(data.timelineEntries);
           setFamilyInfo(data.familyInfo);
           
-          // Select first member by default
+          // Select Default Member Logic:
+          // 1. Look for member linked to this user (Me)
+          // 2. Look for relationship 'Self' (Legacy/Fallback)
+          // 3. Fallback to first member
           if (data.familyMembers.length > 0) {
-              // Try to find "Self" first, otherwise first member
-              const self = data.familyMembers.find(m => m.relationship === 'Self' || m.name === user.name);
-              setSelectedMemberId(self ? self.id : data.familyMembers[0].id);
+              const me = data.familyMembers.find(m => m.linked_user_id === user.id);
+              const selfFallback = data.familyMembers.find(m => m.relationship === 'Self' || m.relationship === 'Admin');
+              
+              if (me) {
+                  setSelectedMemberId(me.id);
+              } else if (selfFallback) {
+                  setSelectedMemberId(selfFallback.id);
+              } else {
+                  setSelectedMemberId(data.familyMembers[0].id);
+              }
           }
         }
       } catch (e) {
@@ -87,7 +97,7 @@ export const TimelineView: React.FC<TimelineViewProps> = ({ onLogout, user }) =>
     loadData();
 
     return () => { isMounted.current = false; };
-  }, [user.id, user.name]);
+  }, [user.id]);
   
   const handleUpload = useCallback(async (file: File, memberId: string, password?: string) => {
     setIsLoading(true);
@@ -280,9 +290,23 @@ export const TimelineView: React.FC<TimelineViewProps> = ({ onLogout, user }) =>
                       {familyMembers.length === 0 && <option>No members yet</option>}
                       {familyMembers.map(member => {
                         const age = calculateAge(member.dob);
+                        let label = member.relationship;
+                        
+                        // SMART LABEL LOGIC
+                        if (member.linked_user_id) {
+                            // If this is the CURRENT logged-in user
+                            if (member.linked_user_id === user.id) {
+                                label = "Me";
+                            } else {
+                                // If this is ANOTHER user in the family (e.g. Wife, Husband)
+                                // Display 'Member' instead of 'Self'/'Admin'
+                                label = "Member";
+                            }
+                        }
+
                         return (
                             <option key={member.id} value={member.id}>
-                              {member.name} ({member.relationship}{age !== null ? `, Age ${age}` : ''})
+                              {member.name} ({label}{age !== null ? `, Age ${age}` : ''})
                             </option>
                         )
                       })}

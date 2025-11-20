@@ -74,8 +74,11 @@ export const onAuthStateChange = (callback: (event: string, session: Session | n
  * 2. If inviteCode provided: Join existing family.
  * 3. If NO inviteCode: Create new Family.
  * 4. Create Profile linked to Family.
+ * 5. (DB Trigger) Automatically creates 'Self' Family Member.
  */
 export const signUp = async (name: string, email: string, password: string, familyInput: { isJoin: boolean, value: string }): Promise<string|null> => {
+    console.log(`[medHist] Starting Signup for ${email}...`);
+    
     if (isMock) {
         mockSession = {
             access_token: 'mock', refresh_token: 'mock', expires_in: 3600, token_type: 'bearer',
@@ -91,13 +94,27 @@ export const signUp = async (name: string, email: string, password: string, fami
         options: { data: { full_name: name } }
     });
 
-    if (authError) return authError.message;
+    if (authError) {
+        console.error('[medHist] Auth Error:', authError);
+        return authError.message;
+    }
+    
     if (!authData.user) return "Signup failed: No user created.";
 
     // CRITICAL CHECK: If email verification is enabled, session will be null.
     if (!authData.session) {
+        console.warn('[medHist] No session returned. Email verification likely enabled.');
         return "Please disable 'Confirm email' in Supabase Dashboard -> Authentication -> Providers -> Email. This app requires instant login to create the family group.";
     }
+
+    console.log('[medHist] Auth Successful. User ID:', authData.user.id);
+
+    // Force set the session on the client to ensure subsequent DB calls use this user
+    const { error: sessionError } = await supabase!.auth.setSession({
+        access_token: authData.session.access_token,
+        refresh_token: authData.session.refresh_token,
+    });
+    if (sessionError) console.warn("[medHist] Failed to force set session:", sessionError);
 
     const userId = authData.user.id;
     let familyId = '';
@@ -106,19 +123,32 @@ export const signUp = async (name: string, email: string, password: string, fami
         if (familyInput.isJoin) {
             // --- JOIN EXISTING FAMILY ---
             const joinCode = familyInput.value.toUpperCase();
+            console.log('[medHist] Joining family with code:', joinCode);
+            
+            // Use maybeSingle to avoid 406/400 crashes
             const { data: family, error: findError } = await supabase!
                 .from('families')
                 .select('id')
                 .eq('join_code', joinCode)
-                .single();
+                .maybeSingle();
             
-            if (findError || !family) throw new Error("Invalid Family Join Code. Please check and try again.");
+            if (findError) {
+                console.error('[medHist] Family Lookup DB Error:', findError);
+                throw new Error(`Database error looking up family: ${findError.message}`);
+            }
+            if (!family) {
+                throw new Error("Invalid Family Join Code. Please check and try again.");
+            }
+            
             familyId = family.id;
+            console.log('[medHist] Found Family:', familyId);
+
         } else {
             // --- CREATE NEW FAMILY ---
             const familyName = familyInput.value;
             const newJoinCode = Math.random().toString(36).substring(2, 8).toUpperCase();
-            
+            console.log('[medHist] Creating new family:', familyName);
+
             const { data: newFamily, error: createError } = await supabase!
                 .from('families')
                 .insert({ name: familyName, join_code: newJoinCode })
@@ -126,13 +156,16 @@ export const signUp = async (name: string, email: string, password: string, fami
                 .single();
 
             if (createError) {
-                console.error("Family Creation Error:", createError);
-                throw new Error("Failed to create family group. Please check database permissions (RLS).");
+                console.error("[medHist] Family Creation Error:", createError);
+                throw new Error(`Failed to create family group: ${createError.message} (Check RLS Policies)`);
             }
             familyId = newFamily.id;
+            console.log('[medHist] Family Created:', familyId);
         }
 
         // 2. Create User Profile linked to Family
+        // NOTE: The DB Trigger 'on_profile_created' will automatically create the 'Self' family member row.
+        console.log('[medHist] Creating Profile for user:', userId);
         const { error: profileError } = await supabase!
             .from('profiles')
             .insert({
@@ -142,23 +175,13 @@ export const signUp = async (name: string, email: string, password: string, fami
             });
 
         if (profileError) {
-            console.error("Profile Creation Error:", profileError);
-            throw new Error("Failed to create user profile.");
+            console.error("[medHist] Profile Creation Error:", profileError);
+            throw new Error(`Failed to create user profile: ${profileError.message}`);
         }
-
-        // 3. (Optional) If creating new family, create a "Self" member for them automatically
-        if (!familyInput.isJoin) {
-             await supabase!.from('family_members').insert({
-                 family_id: familyId,
-                 name: name,
-                 relationship: 'Self' // Can be edited later
-             });
-        }
+        console.log('[medHist] Profile Created. DB Trigger should have created Member row.');
 
     } catch (err: any) {
-        // Cleanup: If profile creation failed, we might leave the auth user hanging, 
-        // but for MVP we just return error.
-        console.error("Signup Process Error:", err);
+        console.error("[medHist] Process Aborted:", err);
         return err.message;
     }
 
@@ -179,6 +202,20 @@ export const signOut = async (): Promise<void> => {
     else await supabase!.auth.signOut();
 };
 
+export const sendPasswordResetEmail = async (email: string): Promise<string | null> => {
+    if (isMock) return null;
+    const { error } = await supabase!.auth.resetPasswordForEmail(email, {
+        redirectTo: window.location.origin, // Redirect back to this app
+    });
+    return error ? error.message : null;
+};
+
+export const updatePassword = async (newPassword: string): Promise<string | null> => {
+    if (isMock) return null;
+    const { error } = await supabase!.auth.updateUser({ password: newPassword });
+    return error ? error.message : null;
+};
+
 // --- DATA FUNCTIONS ---
 
 export const getUserData = async (userId: string): Promise<{ 
@@ -186,6 +223,8 @@ export const getUserData = async (userId: string): Promise<{
     timelineEntries: TimelineEntry[],
     familyInfo: { name: string, joinCode: string }
 }> => {
+    console.log('[medHist] Fetching User Data for:', userId);
+
     if (isMock) {
         return {
             familyMembers: [{ id: '1', family_id: MOCK_FAMILY_ID, name: 'Demo User', relationship: 'Self' }],
@@ -195,37 +234,48 @@ export const getUserData = async (userId: string): Promise<{
     }
 
     // 1. Get User's Profile to find Family ID
-    const { data: profile } = await supabase!
+    // Fix: Use maybeSingle() to prevent 406 Not Acceptable errors if RLS hides the row
+    const { data: profile, error: profileError } = await supabase!
         .from('profiles')
-        .select('family_id')
+        .select('family_id, full_name')
         .eq('id', userId)
-        .single();
+        .maybeSingle();
+
+    if (profileError) {
+        console.error('[medHist] Profile fetch error:', profileError);
+        throw new Error("Could not load your profile. Please try logging out and back in.");
+    }
 
     if (!profile) {
-        // Handle edge case where auth exists but profile missing (migration issue)
-        return { familyMembers: [], timelineEntries: [], familyInfo: { name: 'Unknown', joinCode: '' } };
+        console.warn('[medHist] Profile not found (returned null). RLS might be blocking access or creation failed.');
+        // If auth exists but profile missing, return empty state rather than crashing
+        return { familyMembers: [], timelineEntries: [], familyInfo: { name: 'Loading...', joinCode: '' } };
     }
 
     const familyId = profile.family_id;
+    console.log('[medHist] Found Family ID:', familyId);
 
-    // 2. Fetch Family Details, Members, and Entries in parallel
+    // 2. Fetch Family Details, Members, and Entries
     const [familyRes, membersRes, entriesRes] = await Promise.all([
-        supabase!.from('families').select('name, join_code').eq('id', familyId).single(),
+        supabase!.from('families').select('name, join_code').eq('id', familyId).maybeSingle(),
         supabase!.from('family_members').select('*').eq('family_id', familyId),
         supabase!.from('timeline_entries')
-            .select('*, family_members!inner(family_id)') // Ensure we only get entries for this family
+            .select('*, family_members!inner(family_id)') 
             .eq('family_members.family_id', familyId)
             .order('date', { ascending: false })
     ]);
 
-    if (familyRes.error) throw new Error("Failed to fetch family info");
+    if (familyRes.error) console.error('[medHist] Family fetch error:', familyRes.error);
+    if (membersRes.error) console.error('[medHist] Members fetch error:', membersRes.error);
+    
+    // No Self-Healing logic needed. The DB Trigger guarantees consistency.
 
     return {
         familyMembers: membersRes.data || [],
         timelineEntries: entriesRes.data || [],
         familyInfo: {
-            name: familyRes.data.name,
-            joinCode: familyRes.data.join_code
+            name: familyRes.data?.name || 'My Family',
+            joinCode: familyRes.data?.join_code || '---'
         }
     };
 };
@@ -233,9 +283,11 @@ export const getUserData = async (userId: string): Promise<{
 export const addFamilyMember = async (details: { name: string, relationship: string, dob?: string }): Promise<FamilyMember> => {
     if (isMock) return { id: 'mock', family_id: MOCK_FAMILY_ID, ...details };
 
-    // Get current user's family_id via profile
     const { data: { user } } = await supabase!.auth.getUser();
-    const { data: profile } = await supabase!.from('profiles').select('family_id').eq('id', user!.id).single();
+    // Use maybeSingle for safety
+    const { data: profile } = await supabase!.from('profiles').select('family_id').eq('id', user!.id).maybeSingle();
+
+    if (!profile) throw new Error("Profile not found. Cannot add member.");
 
     const { data, error } = await supabase!
         .from('family_members')
@@ -297,7 +349,7 @@ export const deleteTimelineEntry = async (entryId: string): Promise<void> => {
     if (isMock) return;
 
     const { data: fileMeta } = await supabase!
-        .from('files').select('file_path').eq('timeline_entry_id', entryId).single();
+        .from('files').select('file_path').eq('timeline_entry_id', entryId).maybeSingle();
 
     if (fileMeta?.file_path) {
         await supabase!.storage.from('medical-reports').remove([fileMeta.file_path]);
@@ -310,7 +362,7 @@ export const getFileForEntry = async (timelineEntryId: string): Promise<{ metada
     if (isMock) return null;
 
     const { data: fileMetadata } = await supabase!
-        .from('files').select('*').eq('timeline_entry_id', timelineEntryId).single();
+        .from('files').select('*').eq('timeline_entry_id', timelineEntryId).maybeSingle();
 
     if (!fileMetadata?.file_path) return null;
 

@@ -9,10 +9,11 @@ export interface User {
 
 export interface FamilyMember {
   id: string;
-  family_id: string; // Belongs to family, not user
+  family_id: string;
   name: string;
-  relationship: string;
+  relationship: string; // 'Self', 'Father', 'Child', etc.
   dob?: string;
+  linked_user_id?: string; // Links this member folder to a login user
 }
 
 export interface ReportFile {

@@ -2,15 +2,18 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { LoginPage } from './components/auth/LoginPage';
 import { SignupPage } from './components/auth/SignupPage';
+import { UpdatePasswordPage } from './components/auth/UpdatePasswordPage';
 import { TimelineView } from './components/TimelineView';
 import type { User } from './types';
 import * as supabaseService from './services/supabaseService';
+import { SpinnerIcon } from './components/icons/SpinnerIcon';
 
 const App: React.FC = () => {
   const [session, setSession] = useState<any>(null);
   const [currentUser, setCurrentUser] = useState<User | null>(null);
   const [route, setRoute] = useState<string>('/login');
   const [isLoading, setIsLoading] = useState<boolean>(true);
+  const [isRecoveryMode, setIsRecoveryMode] = useState<boolean>(false);
   
   // Prevents race conditions: Ensures we don't route to dashboard 
   // until the DB profile creation is fully complete.
@@ -26,7 +29,11 @@ const App: React.FC = () => {
           name: currentSession.user.user_metadata?.full_name || currentSession.user.email,
           email: currentSession.user.email || ''
         });
-        setRoute('/');
+        // If we found a session on load, go to dashboard (unless we were explicitly at signup? No, assume dashboard)
+        // But we respect the default state if checking session initially.
+        if (window.location.pathname !== '/signup') {
+             setRoute('/');
+        }
       } else {
         setRoute('/login');
       }
@@ -34,8 +41,14 @@ const App: React.FC = () => {
     };
     checkSession();
     
-    const { data: { subscription } } = supabaseService.onAuthStateChange((_event, session) => {
+    const { data: { subscription } } = supabaseService.onAuthStateChange((event, session) => {
       setSession(session);
+
+      // Handle Password Recovery Event
+      if (event === 'PASSWORD_RECOVERY') {
+        setIsRecoveryMode(true);
+      }
+
        if (session?.user) {
         setCurrentUser({ 
           id: session.user.id, 
@@ -45,17 +58,20 @@ const App: React.FC = () => {
         
         // ONLY route to dashboard if we are NOT in the middle of a signup process.
         // If we are signing up, handleSignup will manually route us when DB is ready.
-        if (!isSigningUpRef.current) {
+        if (!isSigningUpRef.current && route !== '/signup') {
              setRoute('/');
         }
       } else {
         setCurrentUser(null);
-        setRoute('/login');
+        // Only redirect to login if we aren't doing something else specific
+        if (!isRecoveryMode) {
+          setRoute('/login');
+        }
       }
     });
 
     return () => subscription.unsubscribe();
-  }, []);
+  }, [route, isRecoveryMode]);
   
   const handleLogin = async (email: string, password: string):Promise<string|null> => {
     const error = await supabaseService.signIn(email, password);
@@ -71,7 +87,6 @@ const App: React.FC = () => {
     try {
         const error = await supabaseService.signUp(name, email, password, familyInput);
         if(error) {
-            // If error, allow routing again (though we stay on signup page)
             return error;
         }
         
@@ -88,18 +103,48 @@ const App: React.FC = () => {
     await supabaseService.signOut();
     setCurrentUser(null);
     setRoute('/login');
+    setIsRecoveryMode(false);
   };
   
   if (isLoading) return null;
 
+  // Priority 1: Recovery Mode (Updating Password)
+  if (isRecoveryMode) {
+    return (
+      <UpdatePasswordPage 
+        onSuccess={() => {
+          setIsRecoveryMode(false);
+          setRoute('/');
+        }} 
+      />
+    );
+  }
+
   if (!session) {
-    return route === '/signup' ? (
-      <SignupPage onSignup={handleSignup} onNavigateToLogin={() => setRoute('/login')} />
-    ) : (
-      <LoginPage onLogin={handleLogin} onNavigateToSignup={() => setRoute('/signup')} />
+    if (route === '/signup') {
+      return <SignupPage onSignup={handleSignup} onNavigateToLogin={() => setRoute('/login')} />;
+    }
+    
+    // Default to Login
+    return (
+      <LoginPage 
+        onLogin={handleLogin} 
+        onNavigateToSignup={() => setRoute('/signup')} 
+      />
     );
   }
   
+  // RACE CONDITION FIX:
+  if (route === '/signup') {
+      return (
+          <div className="min-h-screen bg-slate-50 flex flex-col items-center justify-center text-slate-600">
+              <SpinnerIcon className="w-10 h-10 text-brand-blue-600 animate-spin mb-4" />
+              <h2 className="text-xl font-semibold">Setting up your account...</h2>
+              <p className="text-slate-400 mt-2">Creating your family space</p>
+          </div>
+      );
+  }
+
   if (!currentUser) return null;
 
   return <TimelineView onLogout={handleLogout} user={currentUser} />;

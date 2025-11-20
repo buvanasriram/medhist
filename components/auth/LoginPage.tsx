@@ -1,3 +1,4 @@
+
 import React, { useState } from 'react';
 import { AuthLayout } from './AuthLayout';
 import { MailIcon } from '../icons/MailIcon';
@@ -56,10 +57,12 @@ export const LoginPage: React.FC<LoginPageProps> = ({ onLogin, onNavigateToSignu
         </div>
 
         <div>
-          <label htmlFor="password"className="block text-sm font-medium text-slate-700">
-            Password
-          </label>
-          <div className="mt-1 relative rounded-md shadow-sm">
+          <div className="flex items-center justify-between mb-1">
+            <label htmlFor="password"className="block text-sm font-medium text-slate-700">
+              Password
+            </label>
+          </div>
+          <div className="relative rounded-md shadow-sm">
             <div className="pointer-events-none absolute inset-y-0 left-0 flex items-center pl-3">
                <LockIcon className="h-5 w-5 text-slate-400" />
             </div>
