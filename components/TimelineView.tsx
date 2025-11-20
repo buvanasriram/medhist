@@ -16,7 +16,7 @@ import { KeyIcon } from './icons/KeyIcon';
 import { SpinnerIcon } from './icons/SpinnerIcon';
 import { FilterIcon } from './icons/FilterIcon';
 import { UsersIcon } from './icons/UsersIcon';
-import { ClipboardIcon } from './icons/ClipboardIcon';
+import { UserIcon } from './icons/UserIcon';
 
 interface TimelineViewProps {
   onLogout: () => void;
@@ -198,14 +198,10 @@ export const TimelineView: React.FC<TimelineViewProps> = ({ onLogout, user }) =>
 
   const handleMemberSelectionChange = (e: React.ChangeEvent<HTMLSelectElement>) => {
     const value = e.target.value;
-    if (value === 'add-new-member') {
-      setAddMemberModalOpen(true);
-    } else {
-      setSelectedMemberId(value);
-      setFilterReportType('');
-      setFilterStartDate('');
-      setFilterEndDate('');
-    }
+    setSelectedMemberId(value);
+    setFilterReportType('');
+    setFilterStartDate('');
+    setFilterEndDate('');
   };
   
   const selectedMember = useMemo(() => familyMembers.find(m => m.id === selectedMemberId), [familyMembers, selectedMemberId]);
@@ -273,28 +269,49 @@ export const TimelineView: React.FC<TimelineViewProps> = ({ onLogout, user }) =>
               </h2>
               <p className="text-slate-500 mt-1">Medical history & reports.</p>
             </div>
-             <div className="flex items-center gap-4 w-full sm:w-auto">
-                <select
-                  value={selectedMemberId}
-                  onChange={handleMemberSelectionChange}
-                  className="w-full sm:w-auto bg-slate-100 border border-slate-300 rounded-md py-2 px-3 text-slate-700 focus:outline-none focus:ring-2 focus:ring-brand-blue-500 transition"
+             <div className="flex items-center gap-3 w-full sm:w-auto">
+                <div className="relative flex-grow sm:flex-grow-0">
+                    <select
+                      value={selectedMemberId}
+                      onChange={handleMemberSelectionChange}
+                      className="w-full sm:w-auto bg-slate-100 border border-slate-300 rounded-md py-2 pl-3 pr-8 text-slate-700 focus:outline-none focus:ring-2 focus:ring-brand-blue-500 transition appearance-none"
+                      disabled={familyMembers.length === 0}
+                    >
+                      {familyMembers.length === 0 && <option>No members yet</option>}
+                      {familyMembers.map(member => {
+                        const age = calculateAge(member.dob);
+                        return (
+                            <option key={member.id} value={member.id}>
+                              {member.name} ({member.relationship}{age !== null ? `, Age ${age}` : ''})
+                            </option>
+                        )
+                      })}
+                    </select>
+                    {/* Chevron for better custom styling feel */}
+                    <div className="pointer-events-none absolute inset-y-0 right-0 flex items-center px-2 text-slate-500">
+                        <svg className="h-4 w-4 fill-current" viewBox="0 0 20 20">
+                            <path d="M5.293 7.293a1 1 0 011.414 0L10 10.586l3.293-3.293a1 1 0 111.414 1.414l-4 4a1 1 0 01-1.414 0l-4-4a1 1 0 010-1.414z" />
+                        </svg>
+                    </div>
+                </div>
+
+                <button
+                    onClick={() => setAddMemberModalOpen(true)}
+                    className="flex-shrink-0 p-2.5 bg-white border border-slate-300 rounded-lg text-slate-600 hover:text-brand-blue-600 hover:border-brand-blue-500 hover:bg-brand-blue-50 transition shadow-sm"
+                    title="Add New Family Member"
                 >
-                  {familyMembers.map(member => {
-                    const age = calculateAge(member.dob);
-                    return (
-                        <option key={member.id} value={member.id}>
-                          {member.name} ({member.relationship}{age !== null ? `, Age ${age}` : ''})
-                        </option>
-                    )
-                  })}
-                  <option value="add-new-member" className="font-semibold text-brand-blue-600">
-                    + Add Family Member...
-                  </option>
-                </select>
+                    <div className="flex items-center gap-1">
+                         <UserIcon className="w-5 h-5" />
+                         <PlusIcon className="w-3 h-3 -ml-2 -mt-2 bg-white rounded-full" />
+                    </div>
+                </button>
                 
+                <div className="w-px h-8 bg-slate-200 mx-1"></div>
+
                 <button
                     onClick={() => setUploadModalOpen(true)}
-                    className="flex-shrink-0 bg-brand-blue-600 text-white font-semibold py-2 px-4 rounded-lg shadow-md hover:bg-brand-blue-700 transition flex items-center gap-2"
+                    disabled={familyMembers.length === 0}
+                    className="flex-shrink-0 bg-brand-blue-600 text-white font-semibold py-2 px-4 rounded-lg shadow-md hover:bg-brand-blue-700 transition flex items-center gap-2 disabled:bg-slate-300 disabled:cursor-not-allowed"
                 >
                     <PlusIcon className="w-5 h-5" />
                     <span className="hidden sm:inline">Upload</span>
@@ -378,7 +395,7 @@ export const TimelineView: React.FC<TimelineViewProps> = ({ onLogout, user }) =>
           isOpen={showInviteModal}
           onClose={() => setShowInviteModal(false)}
           inviteData={{
-              name: "Family Member",
+              familyName: familyInfo.name,
               link: window.location.origin,
               code: familyInfo.joinCode
           }}
