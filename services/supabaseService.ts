@@ -94,6 +94,11 @@ export const signUp = async (name: string, email: string, password: string, fami
     if (authError) return authError.message;
     if (!authData.user) return "Signup failed: No user created.";
 
+    // CRITICAL CHECK: If email verification is enabled, session will be null.
+    if (!authData.session) {
+        return "Please disable 'Confirm email' in Supabase Dashboard -> Authentication -> Providers -> Email. This app requires instant login to create the family group.";
+    }
+
     const userId = authData.user.id;
     let familyId = '';
 
@@ -120,7 +125,10 @@ export const signUp = async (name: string, email: string, password: string, fami
                 .select('id')
                 .single();
 
-            if (createError) throw new Error("Failed to create family group.");
+            if (createError) {
+                console.error("Family Creation Error:", createError);
+                throw new Error("Failed to create family group. Please check database permissions (RLS).");
+            }
             familyId = newFamily.id;
         }
 
@@ -133,7 +141,10 @@ export const signUp = async (name: string, email: string, password: string, fami
                 full_name: name
             });
 
-        if (profileError) throw new Error("Failed to create user profile.");
+        if (profileError) {
+            console.error("Profile Creation Error:", profileError);
+            throw new Error("Failed to create user profile.");
+        }
 
         // 3. (Optional) If creating new family, create a "Self" member for them automatically
         if (!familyInput.isJoin) {

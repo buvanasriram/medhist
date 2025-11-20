@@ -1,5 +1,5 @@
 
-import React, { useState, useEffect} from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { LoginPage } from './components/auth/LoginPage';
 import { SignupPage } from './components/auth/SignupPage';
 import { TimelineView } from './components/TimelineView';
@@ -11,6 +11,10 @@ const App: React.FC = () => {
   const [currentUser, setCurrentUser] = useState<User | null>(null);
   const [route, setRoute] = useState<string>('/login');
   const [isLoading, setIsLoading] = useState<boolean>(true);
+  
+  // Prevents race conditions: Ensures we don't route to dashboard 
+  // until the DB profile creation is fully complete.
+  const isSigningUpRef = useRef<boolean>(false);
 
   useEffect(() => {
     const checkSession = async () => {
@@ -38,7 +42,12 @@ const App: React.FC = () => {
           name: session.user.user_metadata?.full_name || session.user.email, 
           email: session.user.email || '' 
         });
-        setRoute('/');
+        
+        // ONLY route to dashboard if we are NOT in the middle of a signup process.
+        // If we are signing up, handleSignup will manually route us when DB is ready.
+        if (!isSigningUpRef.current) {
+             setRoute('/');
+        }
       } else {
         setCurrentUser(null);
         setRoute('/login');
@@ -56,10 +65,23 @@ const App: React.FC = () => {
   };
 
   const handleSignup = async (name: string, email: string, password: string, familyInput: { isJoin: boolean, value: string }): Promise<string|null> => {
-    const error = await supabaseService.signUp(name, email, password, familyInput);
-    if(error) return error;
-    setRoute('/');
-    return null;
+    // Lock routing to prevent premature dashboard load
+    isSigningUpRef.current = true;
+    
+    try {
+        const error = await supabaseService.signUp(name, email, password, familyInput);
+        if(error) {
+            // If error, allow routing again (though we stay on signup page)
+            return error;
+        }
+        
+        // Success! Database is ready. Now we can safely go to dashboard.
+        setRoute('/');
+        return null;
+    } finally {
+        // Unlock in all cases
+        isSigningUpRef.current = false;
+    }
   };
 
   const handleLogout = async () => {
