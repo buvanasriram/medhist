@@ -16,6 +16,20 @@ export interface FamilyMember {
   linked_user_id?: string; // Links this member folder to a login user
 }
 
+export interface Medication {
+  id: string;
+  family_member_id: string;
+  timeline_entry_id?: string;
+  name: string;
+  dosage?: string;
+  frequency?: string;
+  purpose?: string; // e.g. "High Blood Pressure"
+  start_date?: string; // Date medication started
+  active: boolean;
+  created_at?: string;
+  stopped_at?: string; // Timestamp when medication was archived
+}
+
 export interface ReportFile {
   id?: string;
   timeline_entry_id?: string;
@@ -38,6 +52,14 @@ export interface TimelineEntry {
   file?: ReportFile;
 }
 
+export interface ExtractedMedication {
+    name: string;
+    dosage?: string;
+    frequency?: string;
+    purpose?: string;
+    startDate?: string;
+}
+
 export interface ExtractedReportData {
     date: string;
     reportType: string;
@@ -45,4 +67,5 @@ export interface ExtractedReportData {
     doctorName?: string;
     facilityName?: string;
     patientName?: string;
+    medications?: ExtractedMedication[];
 }

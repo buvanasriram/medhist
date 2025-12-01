@@ -13,7 +13,7 @@ export const ConfirmationModal: React.FC<ConfirmationModalProps> = ({ isOpen, on
   if (!isOpen) return null;
 
   return (
-    <div className="fixed inset-0 bg-black bg-opacity-60 z-50 flex items-center justify-center p-4">
+    <div className="fixed inset-0 bg-black bg-opacity-60 z-[60] flex items-center justify-center p-4">
       <div className="bg-white rounded-lg shadow-2xl w-full max-w-md relative" role="dialog" aria-modal="true" aria-labelledby="modal-title">
         <div className="p-6">
           <div className="sm:flex sm:items-start">
@@ -38,7 +38,7 @@ export const ConfirmationModal: React.FC<ConfirmationModalProps> = ({ isOpen, on
             className="inline-flex w-full justify-center rounded-md bg-red-600 px-4 py-2 text-sm font-semibold text-white shadow-sm hover:bg-red-500 sm:ml-3 sm:w-auto transition"
             onClick={onConfirm}
           >
-            Delete
+            Confirm
           </button>
           <button
             type="button"

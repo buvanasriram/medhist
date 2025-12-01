@@ -1,25 +1,29 @@
-import React, { useState, useMemo, useCallback, useEffect, useRef } from 'react';
+
+import React, { useState, useMemo, useCallback } from 'react';
 import { Header } from './Header';
 import { Timeline } from './Timeline';
 import { UploadModal } from './UploadModal';
-import { AddMemberModal } from './AddMemberModal';
 import { ConfirmationModal } from './ConfirmationModal';
 import { ReportViewerModal } from './ReportViewerModal';
-import { InviteSuccessModal } from './InviteSuccessModal';
 import { extractReportInfo } from '../services/geminiService';
 import { fileToBase64 } from '../utils/fileUtils';
 import * as supabaseService from '../services/supabaseService';
 import type { FamilyMember, TimelineEntry, User, ReportFile } from '../types';
 import { PlusIcon } from './icons/PlusIcon';
-import { KeyIcon } from './icons/KeyIcon';
 import { SpinnerIcon } from './icons/SpinnerIcon';
 import { FilterIcon } from './icons/FilterIcon';
-import { UsersIcon } from './icons/UsersIcon';
-import { UserIcon } from './icons/UserIcon';
+import { ArrowLeftIcon } from './icons/ArrowLeftIcon';
+import { SearchIcon } from './icons/SearchIcon';
 
 interface TimelineViewProps {
   onLogout: () => void;
   user: User;
+  initialSelectedMemberId?: string;
+  onBackToDashboard: () => void;
+  // Data passed from App to avoid re-fetching
+  familyMembers: FamilyMember[];
+  timelineEntries: TimelineEntry[];
+  onRefreshData: () => void; // Callback to re-fetch if upload happens
 }
 
 const calculateAge = (dobString: string | undefined | null): number | null => {
@@ -34,70 +38,36 @@ const calculateAge = (dobString: string | undefined | null): number | null => {
     return age;
 };
 
-export const TimelineView: React.FC<TimelineViewProps> = ({ onLogout, user }) => {
-  const [isPageLoading, setPageLoading] = useState<boolean>(true);
-  const [familyMembers, setFamilyMembers] = useState<FamilyMember[]>([]);
-  const [timelineEntries, setTimelineEntries] = useState<TimelineEntry[]>([]);
-  const [familyInfo, setFamilyInfo] = useState<{name: string, joinCode: string} | null>(null);
+export const TimelineView: React.FC<TimelineViewProps> = ({ 
+    onLogout, user, initialSelectedMemberId, onBackToDashboard, familyMembers, timelineEntries, onRefreshData 
+}) => {
+  // Logic to determine initial selection
+  const defaultMemberId = useMemo(() => {
+      if (initialSelectedMemberId) return initialSelectedMemberId;
+      if (familyMembers.length > 0) {
+           const me = familyMembers.find(m => m.linked_user_id === user.id);
+           return me ? me.id : familyMembers[0].id;
+      }
+      return '';
+  }, [initialSelectedMemberId, familyMembers, user.id]);
 
-  const [selectedMemberId, setSelectedMemberId] = useState<string>('');
+  const [selectedMemberId, setSelectedMemberId] = useState<string>(defaultMemberId);
   
   // Filter States
+  const [searchQuery, setSearchQuery] = useState<string>('');
   const [filterReportType, setFilterReportType] = useState<string>('');
   const [filterStartDate, setFilterStartDate] = useState<string>('');
   const [filterEndDate, setFilterEndDate] = useState<string>('');
 
   const [isUploadModalOpen, setUploadModalOpen] = useState<boolean>(false);
-  const [isAddMemberModalOpen, setAddMemberModalOpen] = useState<boolean>(false);
   const [isViewerOpen, setViewerOpen] = useState(false);
   const [reportToView, setReportToView] = useState<{ url: string, file: ReportFile } | null>(null);
   const [isConfirmModalOpen, setConfirmModalOpen] = useState<boolean>(false);
   const [entryToDelete, setEntryToDelete] = useState<TimelineEntry | null>(null);
   
-  const [showInviteModal, setShowInviteModal] = useState(false);
-
   const [isLoading, setIsLoading] = useState<boolean>(false);
   const [error, setError] = useState<string | null>(null);
-  const isMounted = useRef(true);
 
-  // Fetch initial data
-  useEffect(() => {
-    const loadData = async () => {
-      try {
-        const data = await supabaseService.getUserData(user.id);
-        if (isMounted.current) {
-          setFamilyMembers(data.familyMembers);
-          setTimelineEntries(data.timelineEntries);
-          setFamilyInfo(data.familyInfo);
-          
-          // Select Default Member Logic:
-          // 1. Look for member linked to this user (Me)
-          // 2. Look for relationship 'Self' (Legacy/Fallback)
-          // 3. Fallback to first member
-          if (data.familyMembers.length > 0) {
-              const me = data.familyMembers.find(m => m.linked_user_id === user.id);
-              const selfFallback = data.familyMembers.find(m => m.relationship === 'Self' || m.relationship === 'Admin');
-              
-              if (me) {
-                  setSelectedMemberId(me.id);
-              } else if (selfFallback) {
-                  setSelectedMemberId(selfFallback.id);
-              } else {
-                  setSelectedMemberId(data.familyMembers[0].id);
-              }
-          }
-        }
-      } catch (e) {
-        console.error("Failed to load family data", e);
-      } finally {
-        if (isMounted.current) setPageLoading(false);
-      }
-    };
-    loadData();
-
-    return () => { isMounted.current = false; };
-  }, [user.id]);
-  
   const handleUpload = useCallback(async (file: File, memberId: string, password?: string) => {
     setIsLoading(true);
     setError(null);
@@ -122,19 +92,18 @@ export const TimelineView: React.FC<TimelineViewProps> = ({ onLogout, user }) =>
           ...(password && { password }),
       };
       
-      const newEntry = await supabaseService.addTimelineEntry(newEntryData, fileData);
+      // Pass extracted medications to be saved
+      await supabaseService.addTimelineEntry(newEntryData, fileData, extractedData.medications);
 
-      if (!isMounted.current) return;
-      setTimelineEntries(prevEntries => [...prevEntries, newEntry].sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime()));
+      onRefreshData(); // Re-fetch everything to update timeline AND meds
       setUploadModalOpen(false);
     } catch (err) {
       console.error("Upload failed:", err);
-      if (!isMounted.current) return;
       setError(err instanceof Error ? err.message : "Upload failed.");
     } finally {
-      if (isMounted.current) setIsLoading(false);
+      setIsLoading(false);
     }
-  }, []);
+  }, [onRefreshData]);
 
   const handleViewReport = useCallback(async (entryToView: TimelineEntry) => {
     try {
@@ -143,12 +112,10 @@ export const TimelineView: React.FC<TimelineViewProps> = ({ onLogout, user }) =>
             alert("Could not load the report file.");
             return;
         }
-
         const { signedUrl, metadata } = result;
         const response = await fetch(signedUrl);
         const blob = await response.blob();
         const objectUrl = URL.createObjectURL(blob);
-
         setReportToView({ url: objectUrl, file: metadata });
         setViewerOpen(true);
     } catch (error) {
@@ -157,12 +124,6 @@ export const TimelineView: React.FC<TimelineViewProps> = ({ onLogout, user }) =>
     }
   }, []);
   
-  const handleCloseViewer = () => {
-    if (reportToView) URL.revokeObjectURL(reportToView.url);
-    setViewerOpen(false);
-    setReportToView(null);
-  };
-
   const handleDeleteReport = (entry: TimelineEntry) => {
     setEntryToDelete(entry);
     setConfirmModalOpen(true);
@@ -172,7 +133,7 @@ export const TimelineView: React.FC<TimelineViewProps> = ({ onLogout, user }) =>
     if (!entryToDelete) return;
     try {
       await supabaseService.deleteTimelineEntry(entryToDelete.id);
-      setTimelineEntries(prevEntries => prevEntries.filter(entry => entry.id !== entryToDelete.id));
+      onRefreshData();
     } catch (err) {
       console.error("Deletion error:", err);
       alert(`Deletion failed.`);
@@ -184,30 +145,15 @@ export const TimelineView: React.FC<TimelineViewProps> = ({ onLogout, user }) =>
 
   const handleIgnoreMismatch = async (entryToUpdate: TimelineEntry) => {
       try {
-        const updatedEntry = await supabaseService.ignoreMismatch(entryToUpdate.id);
-        setTimelineEntries(prevEntries => 
-          prevEntries.map(entry => entry.id === updatedEntry.id ? updatedEntry : entry)
-        );
+        await supabaseService.ignoreMismatch(entryToUpdate.id);
+        onRefreshData();
       } catch (err) { console.error(err); }
-  };
-
-  const handleAddMember = async (details: { name: string; relationship: string; dob: string; }) => {
-    try {
-        const newMember = await supabaseService.addFamilyMember({
-            name: details.name,
-            relationship: details.relationship,
-            dob: details.dob
-        });
-        setFamilyMembers(prev => [...prev, newMember]);
-        setSelectedMemberId(newMember.id);
-    } catch (error) {
-        throw error;
-    }
   };
 
   const handleMemberSelectionChange = (e: React.ChangeEvent<HTMLSelectElement>) => {
     const value = e.target.value;
     setSelectedMemberId(value);
+    setSearchQuery('');
     setFilterReportType('');
     setFilterStartDate('');
     setFilterEndDate('');
@@ -226,48 +172,42 @@ export const TimelineView: React.FC<TimelineViewProps> = ({ onLogout, user }) =>
 
   const displayedEntries = useMemo(() => {
     return memberEntries.filter(entry => {
+      // 1. Text Search Filter (Report Type, Summary, Doctor, Facility)
+      if (searchQuery) {
+        const query = searchQuery.toLowerCase();
+        const matchesType = entry.report_type.toLowerCase().includes(query);
+        const matchesSummary = entry.summary?.toLowerCase().includes(query);
+        const matchesDoctor = entry.doctor_name?.toLowerCase().includes(query);
+        const matchesFacility = entry.facility_name?.toLowerCase().includes(query);
+        
+        if (!matchesType && !matchesSummary && !matchesDoctor && !matchesFacility) {
+            return false;
+        }
+      }
+
+      // 2. Dropdown Filter
       if (filterReportType && entry.report_type !== filterReportType) return false;
+
+      // 3. Date Range Filter
       const entryDate = new Date(entry.date);
       if (filterStartDate && entryDate < new Date(filterStartDate)) return false;
       if (filterEndDate && entryDate > new Date(filterEndDate)) return false;
       return true;
     });
-  }, [memberEntries, filterReportType, filterStartDate, filterEndDate]);
-
-  if (isPageLoading) {
-    return (
-        <div className="flex items-center justify-center min-h-screen bg-slate-50">
-            <SpinnerIcon className="w-10 h-10 text-brand-blue-600 animate-spin" />
-        </div>
-    );
-  }
+  }, [memberEntries, searchQuery, filterReportType, filterStartDate, filterEndDate]);
 
   return (
     <div className="min-h-screen bg-slate-50 text-slate-800 flex flex-col">
       <Header onLogout={onLogout} userName={user.name} />
       <main className="container mx-auto p-4 md:p-8 max-w-5xl flex-grow">
         
-        {/* Family Header Card */}
-        <div className="bg-white rounded-xl shadow-sm p-6 border border-slate-200 mb-6">
-            <div className="flex justify-between items-center">
-                <div className="flex items-center gap-3">
-                    <div className="bg-brand-blue-100 p-2 rounded-lg">
-                        <UsersIcon className="w-6 h-6 text-brand-blue-600" />
-                    </div>
-                    <div>
-                        <h1 className="text-xl font-bold text-slate-800">{familyInfo?.name || "My Family"}</h1>
-                        <p className="text-sm text-slate-500">{familyMembers.length} Members</p>
-                    </div>
-                </div>
-                <button 
-                    onClick={() => setShowInviteModal(true)}
-                    className="flex items-center gap-2 text-sm font-medium text-brand-blue-600 hover:bg-brand-blue-50 px-3 py-2 rounded-md transition"
-                >
-                    <KeyIcon className="w-4 h-4" />
-                    <span>Invite Family</span>
-                </button>
-            </div>
-        </div>
+        {/* Navigation Breadcrumb */}
+        <button 
+            onClick={onBackToDashboard}
+            className="flex items-center gap-2 text-slate-500 hover:text-brand-blue-600 mb-6 transition font-medium text-sm"
+        >
+            <ArrowLeftIcon className="w-4 h-4" /> Back to Dashboard
+        </button>
 
         {/* Timeline Controls */}
         <div className="bg-white rounded-xl shadow-sm p-6 border border-slate-200">
@@ -284,25 +224,13 @@ export const TimelineView: React.FC<TimelineViewProps> = ({ onLogout, user }) =>
                       value={selectedMemberId}
                       onChange={handleMemberSelectionChange}
                       className="w-full sm:w-auto bg-slate-100 border border-slate-300 rounded-md py-2 pl-3 pr-8 text-slate-700 focus:outline-none focus:ring-2 focus:ring-brand-blue-500 transition appearance-none"
-                      disabled={familyMembers.length === 0}
                     >
-                      {familyMembers.length === 0 && <option>No members yet</option>}
                       {familyMembers.map(member => {
                         const age = calculateAge(member.dob);
                         let label = member.relationship;
-                        
-                        // SMART LABEL LOGIC
                         if (member.linked_user_id) {
-                            // If this is the CURRENT logged-in user
-                            if (member.linked_user_id === user.id) {
-                                label = "Me";
-                            } else {
-                                // If this is ANOTHER user in the family (e.g. Wife, Husband)
-                                // Display 'Member' instead of 'Self'/'Admin'
-                                label = "Member";
-                            }
+                            label = member.linked_user_id === user.id ? "Me" : "Member";
                         }
-
                         return (
                             <option key={member.id} value={member.id}>
                               {member.name} ({label}{age !== null ? `, Age ${age}` : ''})
@@ -310,31 +238,18 @@ export const TimelineView: React.FC<TimelineViewProps> = ({ onLogout, user }) =>
                         )
                       })}
                     </select>
-                    {/* Chevron for better custom styling feel */}
-                    <div className="pointer-events-none absolute inset-y-0 right-0 flex items-center px-2 text-slate-500">
+                     <div className="pointer-events-none absolute inset-y-0 right-0 flex items-center px-2 text-slate-500">
                         <svg className="h-4 w-4 fill-current" viewBox="0 0 20 20">
                             <path d="M5.293 7.293a1 1 0 011.414 0L10 10.586l3.293-3.293a1 1 0 111.414 1.414l-4 4a1 1 0 01-1.414 0l-4-4a1 1 0 010-1.414z" />
                         </svg>
                     </div>
                 </div>
 
-                <button
-                    onClick={() => setAddMemberModalOpen(true)}
-                    className="flex-shrink-0 p-2.5 bg-white border border-slate-300 rounded-lg text-slate-600 hover:text-brand-blue-600 hover:border-brand-blue-500 hover:bg-brand-blue-50 transition shadow-sm"
-                    title="Add New Family Member"
-                >
-                    <div className="flex items-center gap-1">
-                         <UserIcon className="w-5 h-5" />
-                         <PlusIcon className="w-3 h-3 -ml-2 -mt-2 bg-white rounded-full" />
-                    </div>
-                </button>
-                
                 <div className="w-px h-8 bg-slate-200 mx-1"></div>
 
                 <button
                     onClick={() => setUploadModalOpen(true)}
-                    disabled={familyMembers.length === 0}
-                    className="flex-shrink-0 bg-brand-blue-600 text-white font-semibold py-2 px-4 rounded-lg shadow-md hover:bg-brand-blue-700 transition flex items-center gap-2 disabled:bg-slate-300 disabled:cursor-not-allowed"
+                    className="flex-shrink-0 bg-brand-blue-600 text-white font-semibold py-2 px-4 rounded-lg shadow-md hover:bg-brand-blue-700 transition flex items-center gap-2"
                 >
                     <PlusIcon className="w-5 h-5" />
                     <span className="hidden sm:inline">Upload</span>
@@ -345,29 +260,53 @@ export const TimelineView: React.FC<TimelineViewProps> = ({ onLogout, user }) =>
           {/* Filter Section */}
           {memberEntries.length > 0 && (
             <div className="mb-8 p-4 bg-slate-50 rounded-lg border border-slate-200">
-              <div className="flex flex-col lg:flex-row items-start lg:items-end gap-4">
-                <div className="flex items-center gap-2 mb-2 lg:mb-0 lg:mr-2">
-                   <FilterIcon className="w-5 h-5 text-slate-500" />
-                   <span className="text-sm font-semibold text-slate-700">Filter:</span>
+              <div className="flex flex-col gap-4">
+                {/* Search Bar Row */}
+                <div className="flex items-center gap-2">
+                    <div className="relative flex-grow">
+                        <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
+                            <SearchIcon className="h-5 w-5 text-slate-400" />
+                        </div>
+                        <input 
+                            type="text"
+                            placeholder="Search reports by type, doctor, or keyword..."
+                            className="block w-full pl-10 pr-3 py-2 border border-slate-300 rounded-md leading-5 bg-white placeholder-slate-400 focus:outline-none focus:placeholder-slate-500 focus:ring-1 focus:ring-brand-blue-500 focus:border-brand-blue-500 sm:text-sm"
+                            value={searchQuery}
+                            onChange={(e) => setSearchQuery(e.target.value)}
+                        />
+                    </div>
+                    {(searchQuery || filterReportType || filterStartDate || filterEndDate) && (
+                      <button 
+                        onClick={() => { setSearchQuery(''); setFilterReportType(''); setFilterStartDate(''); setFilterEndDate(''); }} 
+                        className="text-sm text-brand-blue-600 hover:text-brand-blue-800 font-medium underline px-2"
+                      >
+                        Clear All
+                      </button>
+                    )}
                 </div>
-                <div className="w-full lg:w-auto">
-                  <label className="block text-xs font-medium text-slate-500 mb-1">Report Type</label>
-                  <select value={filterReportType} onChange={(e) => setFilterReportType(e.target.value)} className="w-full bg-white border border-slate-300 rounded-md py-1.5 px-3 text-sm">
-                    <option value="">All Types</option>
-                    {uniqueReportTypes.map(type => <option key={type} value={type}>{type}</option>)}
-                  </select>
+
+                {/* Filters Row */}
+                <div className="flex flex-col lg:flex-row items-start lg:items-end gap-4 pt-2 border-t border-slate-200">
+                    <div className="flex items-center gap-2 mb-2 lg:mb-0 lg:mr-2">
+                    <FilterIcon className="w-4 h-4 text-slate-500" />
+                    <span className="text-xs font-bold text-slate-500 uppercase tracking-wide">Filters</span>
+                    </div>
+                    <div className="w-full lg:w-auto">
+                    <label className="block text-xs font-medium text-slate-500 mb-1">Report Type</label>
+                    <select value={filterReportType} onChange={(e) => setFilterReportType(e.target.value)} className="w-full bg-white border border-slate-300 rounded-md py-1.5 px-3 text-sm focus:ring-1 focus:ring-brand-blue-500">
+                        <option value="">All Types</option>
+                        {uniqueReportTypes.map(type => <option key={type} value={type}>{type}</option>)}
+                    </select>
+                    </div>
+                    <div className="w-full lg:w-auto">
+                    <label className="block text-xs font-medium text-slate-500 mb-1">From Date</label>
+                    <input type="date" value={filterStartDate} onChange={(e) => setFilterStartDate(e.target.value)} className="w-full bg-white border border-slate-300 rounded-md py-1.5 px-3 text-sm focus:ring-1 focus:ring-brand-blue-500" />
+                    </div>
+                    <div className="w-full lg:w-auto">
+                    <label className="block text-xs font-medium text-slate-500 mb-1">To Date</label>
+                    <input type="date" value={filterEndDate} onChange={(e) => setFilterEndDate(e.target.value)} className="w-full bg-white border border-slate-300 rounded-md py-1.5 px-3 text-sm focus:ring-1 focus:ring-brand-blue-500" />
+                    </div>
                 </div>
-                <div className="w-full lg:w-auto">
-                  <label className="block text-xs font-medium text-slate-500 mb-1">From</label>
-                  <input type="date" value={filterStartDate} onChange={(e) => setFilterStartDate(e.target.value)} className="w-full bg-white border border-slate-300 rounded-md py-1.5 px-3 text-sm" />
-                </div>
-                <div className="w-full lg:w-auto">
-                  <label className="block text-xs font-medium text-slate-500 mb-1">To</label>
-                  <input type="date" value={filterEndDate} onChange={(e) => setFilterEndDate(e.target.value)} className="w-full bg-white border border-slate-300 rounded-md py-1.5 px-3 text-sm" />
-                </div>
-                {(filterReportType || filterStartDate || filterEndDate) && (
-                  <button onClick={() => { setFilterReportType(''); setFilterStartDate(''); setFilterEndDate(''); }} className="text-sm text-brand-blue-600 hover:text-brand-blue-800 font-medium underline mt-2 lg:mt-0 lg:mb-2 ml-1">Clear</button>
-                )}
               </div>
             </div>
           )}
@@ -378,15 +317,11 @@ export const TimelineView: React.FC<TimelineViewProps> = ({ onLogout, user }) =>
             onDeleteReport={handleDeleteReport}
             onIgnoreMismatch={handleIgnoreMismatch}
             selectedMemberName={selectedMember?.name}
-            isShared={false} // Everyone is an admin in this model
+            isShared={false}
             isReadOnly={false}
           />
         </div>
       </main>
-
-      <footer className="py-6 text-center text-slate-400 text-sm border-t border-slate-200 mt-8">
-        <p>© {new Date().getFullYear()} medHist. v0.2 (Family Group)</p>
-      </footer>
 
       {isUploadModalOpen && (
         <UploadModal
@@ -400,31 +335,11 @@ export const TimelineView: React.FC<TimelineViewProps> = ({ onLogout, user }) =>
           setError={setError}
         />
       )}
-      
-      {isAddMemberModalOpen && (
-        <AddMemberModal
-          isOpen={isAddMemberModalOpen}
-          onClose={() => setAddMemberModalOpen(false)}
-          onAddMember={handleAddMember}
-        />
-      )}
 
       {isViewerOpen && reportToView && (
-        <ReportViewerModal isOpen={isViewerOpen} onClose={handleCloseViewer} report={reportToView} />
+        <ReportViewerModal isOpen={isViewerOpen} onClose={() => { setViewerOpen(false); setReportToView(null); }} report={reportToView} />
       )}
       
-      {showInviteModal && familyInfo && (
-        <InviteSuccessModal
-          isOpen={showInviteModal}
-          onClose={() => setShowInviteModal(false)}
-          inviteData={{
-              familyName: familyInfo.name,
-              link: window.location.origin,
-              code: familyInfo.joinCode
-          }}
-        />
-      )}
-
       {isConfirmModalOpen && (
         <ConfirmationModal
           isOpen={isConfirmModalOpen}

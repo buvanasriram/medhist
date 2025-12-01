@@ -54,6 +54,20 @@ const responseSchema = {
             type: Type.STRING,
             description: "The full name of the patient as mentioned in the report. If not found, leave this field empty.",
         },
+        medications: {
+            type: Type.ARRAY,
+            description: "A list of medications prescribed or mentioned in the report as current medication.",
+            items: {
+                type: Type.OBJECT,
+                properties: {
+                    name: { type: Type.STRING, description: "Name of the medication (e.g., Amoxicillin)." },
+                    dosage: { type: Type.STRING, description: "Dosage strength (e.g., 500mg). Empty if not found." },
+                    frequency: { type: Type.STRING, description: "How often to take it (e.g., Twice daily). Empty if not found." },
+                    purpose: { type: Type.STRING, description: "Use your general medical knowledge to identify the common condition this medication treats (e.g., 'High Cholesterol' for Atorvastatin), even if the document does not mention the condition explicitly." },
+                    startDate: { type: Type.STRING, description: "If the prescription explicitly says when to start taking the medicine, extract it (YYYY-MM-DD). If it just lists current meds, leave empty." }
+                }
+            }
+        }
     },
     required: ["date", "reportType", "summary"],
 };
@@ -105,12 +119,17 @@ export const extractReportInfo = async (fileBase64: string, mimeType: string, pa
     const client = getAIClient();
 
     const prompt = `You are an expert medical assistant for medHist. Your task is to analyze the provided medical report and extract key information.
-    Please extract the date of the report, the patient's full name, a short title for it, a simple summary, the doctor's name, and the hospital or lab name.
+    Please extract the date of the report, the patient's full name, a short title for it, a simple summary, the doctor's name, the hospital or lab name, and any medications listed.
     Return the information in the specified JSON format.
     The date MUST be in YYYY-MM-DD format. If the date is not found, unclear, or ambiguous, use today's date as a fallback.
     The summary should be clear, concise, and easy for a patient to understand. Avoid overly technical jargon where possible.
     If the document is not a recognizable medical report, indicate an error instead of guessing. 
     If specific fields are missing, infer reasonable defaults or leave them empty string, but ensure the JSON structure matches the schema.
+    
+    For medications:
+    1. Extract name, dosage, and frequency from the document.
+    2. For the 'purpose' field: Use your external medical knowledge to identify the common condition this medication treats (e.g., 'Type 2 Diabetes' for Metformin, 'Hypertension' for Lisinopril), even if the document does not mention the condition explicitly.
+    3. For 'startDate': Look for explicit instructions like "Start on 2023-10-12". If not found, leave null.
     `;
     
     try {
