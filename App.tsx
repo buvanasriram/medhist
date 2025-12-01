@@ -29,13 +29,17 @@ const App: React.FC = () => {
           name: currentSession.user.user_metadata?.full_name || currentSession.user.email,
           email: currentSession.user.email || ''
         });
-        // If we found a session on load, go to dashboard (unless we were explicitly at signup? No, assume dashboard)
-        // But we respect the default state if checking session initially.
+        
+        // If logged in, go to dashboard (unless we are explicitly on signup page, maybe to create another account?)
+        // Generally if logged in, we go to root.
         if (window.location.pathname !== '/signup') {
              setRoute('/');
         }
       } else {
-        setRoute('/login');
+        // Only redirect to login if we are NOT currently trying to sign up
+        if (route !== '/signup') {
+            setRoute('/login');
+        }
       }
       setIsLoading(false);
     };
@@ -63,8 +67,8 @@ const App: React.FC = () => {
         }
       } else {
         setCurrentUser(null);
-        // Only redirect to login if we aren't doing something else specific
-        if (!isRecoveryMode) {
+        // Only redirect to login if we aren't doing something else specific (like recovering password or signing up)
+        if (!isRecoveryMode && route !== '/signup') {
           setRoute('/login');
         }
       }

@@ -59,8 +59,30 @@ let mockSession: Session | null = null;
 
 export const getSession = async (): Promise<Session | null> => {
     if (isMock) return mockSession;
-    const { data } = await supabase!.auth.getSession();
-    return data.session;
+    try {
+        const { data, error } = await supabase!.auth.getSession();
+        
+        if (error) {
+            // Fix for "Invalid Refresh Token":
+            // If the token in local storage is stale (e.g. user deleted from DB),
+            // we must clear it so the user isn't stuck in a loop.
+            console.warn("[medHist] Session invalid, clearing local state:", error.message);
+            
+            // Attempt to sign out to clear local storage. 
+            // Wrap in try/catch because signOut might fail if the token is already garbage.
+            try {
+                await supabase!.auth.signOut();
+            } catch (soError) {
+                console.warn("[medHist] Force signOut failed (expected):", soError);
+            }
+            return null;
+        }
+        return data.session;
+    } catch (e) {
+        console.error("[medHist] Unexpected session error:", e);
+        try { await supabase!.auth.signOut(); } catch {}
+        return null;
+    }
 };
 
 export const onAuthStateChange = (callback: (event: string, session: Session | null) => void) => {
@@ -182,6 +204,9 @@ export const signUp = async (name: string, email: string, password: string, fami
 
     } catch (err: any) {
         console.error("[medHist] Process Aborted:", err);
+        // CRITICAL: If any step fails after Auth Signup (e.g. duplicate family join code, profile creation error),
+        // we MUST sign out the user, otherwise they are stuck in a zombie state (Logged in but no profile).
+        await signOut();
         return err.message;
     }
 
