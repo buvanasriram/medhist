@@ -1,20 +1,28 @@
-# medHist: Your Family's Medical Timeline (v0.3.0)
+# medHist: Your Family's Medical Timeline (v0.4.0)
 
-medHist is a secure, family-focused web application that allows families to upload medical reports (PDFs/images). It uses Google Gemini AI to automatically extract key details (diagnosis, doctor, date) and creates a chronological clinical timeline for every family member.
+medHist is a secure, family-focused web application that allows families to upload medical reports (PDFs/images). It uses Google Gemini AI to automatically extract key details (diagnosis, doctor, date, medications, appointments) and creates a chronological clinical timeline for every family member.
 
-## Project Status: v0.3.0
+## Project Status: v0.4.0
 *   **Architecture**: Family Group Model (Multi-tenant).
-*   **Features**: Smart Dashboard, AI Medication Tracking, Timeline Search.
+*   **New Features**: AI Health Assistant, Doctor Visit Organizer, Secure Sharing.
 *   **Status**: Stable release.
 
 ## Features
 
-*   **Family Health Dashboard**: At-a-glance view of all family members and their status.
-*   **AI-Powered Extraction**: Upload a PDF or Image, and Gemini AI extracts the summary, doctor's name, date, and medication list automatically.
-*   **Medication Tracker**: AI-extracted prescriptions with manual management options (Start/Stop/History).
-*   **Family Management**: Create a family group and invite members via a simplified Join Code.
-*   **Secure Storage**: Files are stored securely using Supabase Storage.
-*   **Global Search**: Instantly find reports by type, doctor, or keyword.
+### 🧠 AI & Automation
+*   **AI Health Assistant (New)**: A conversational chat interface that knows your family's medical history. Ask "What meds is Dad on?" or "Show me Mom's last blood test."
+*   **Smart Report Extraction**: Automatic extraction of Summary, Doctor, Date, Medications, and **Follow-up Appointments**.
+*   **Medication Intelligence**: Auto-detects dosage, frequency, start dates, and infers the medical purpose (e.g., "for Hypertension").
+
+### 🏥 Clinical Management
+*   **Doctor Visit Organizer (New)**: Dedicated "Visits" tab in timeline to track consultations and prescriptions.
+*   **Appointment Reminders (New)**: Dashboard alerts for upcoming follow-up visits detected from reports.
+*   **Secure Sharing (New)**: Generate 24-hour secure links to share specific reports with doctors via text/email.
+
+### 🏠 Family Hub
+*   **Family Health Board**: At-a-glance dashboard showing status, age, and active meds for all members.
+*   **Medication Manager**: Track active vs. stopped medications with history view.
+*   **Global Search**: Instantly find reports by keyword, doctor, or type.
 
 ## Environment Variables
 
@@ -44,12 +52,12 @@ Add these in the project settings under "Environment Variables".
     npm run dev
     ```
 
-## Deployment on Netlify
+## Deployment on Netlify/Vercel
 
-1.  Connect your GitHub repository to Netlify.
+1.  Connect your GitHub repository.
 2.  **Build Command:** `npm run build`
 3.  **Publish Directory:** `dist`
-4.  Go to **Site Settings > Environment Variables** and add the keys listed above.
+4.  Add Environment Variables in site settings.
 5.  Deploy!
 
 ## Tech Stack
