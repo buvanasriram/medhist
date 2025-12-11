@@ -1,0 +1,63 @@
+
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <title>Mock Medical Report</title>
+    <style>
+        body { font-family: sans-serif; max-width: 800px; margin: 40px auto; padding: 40px; border: 1px solid #ccc; }
+        .header { border-bottom: 2px solid #333; padding-bottom: 20px; margin-bottom: 20px; display: flex; justify-content: space-between; }
+        .h-right { text-align: right; }
+        h1 { margin: 0; color: #2c3e50; }
+        .section { margin-bottom: 25px; }
+        .section-title { font-weight: bold; text-transform: uppercase; border-bottom: 1px solid #eee; margin-bottom: 10px; color: #555; }
+        .med-table { width: 100%; border-collapse: collapse; }
+        .med-table th, .med-table td { border: 1px solid #ddd; padding: 8px; text-align: left; }
+        .abnormal { color: red; font-weight: bold; }
+    </style>
+</head>
+<body>
+    <div class="header">
+        <div>
+            <h1>Springfield General Hospital</h1>
+            <p>123 Evergreen Terrace, Springfield</p>
+            <p>Cardiology Department</p>
+        </div>
+        <div class="h-right">
+            <p><strong>Date:</strong> 2024-03-15</p>
+            <p><strong>Report ID:</strong> CARD-9928</p>
+            <p><strong>Doctor:</strong> Dr. Julius Hibbert</p>
+        </div>
+    </div>
+
+    <div class="section">
+        <div class="section-title">Patient Details</div>
+        <p><strong>Name:</strong> Homer Simpson</p>
+        <p><strong>DOB:</strong> 1956-05-12</p>
+    </div>
+
+    <div class="section">
+        <div class="section-title">Clinical Summary</div>
+        <p>Patient presented with complaints of mild chest palpitations. ECG shows normal sinus rhythm. Blood pressure is slightly elevated (140/90). Cholesterol levels indicate hyperlipidemia.</p>
+    </div>
+
+    <div class="section">
+        <div class="section-title">Medications Prescribed</div>
+        <table class="med-table">
+            <thead>
+                <tr><th>Medication</th><th>Dosage</th><th>Frequency</th><th>Instructions</th></tr>
+            </thead>
+            <tbody>
+                <tr><td>Atorvastatin</td><td>20mg</td><td>Daily</td><td>Take at night for cholesterol</td></tr>
+                <tr><td>Lisinopril</td><td>10mg</td><td>Daily</td><td>For blood pressure</td></tr>
+            </tbody>
+        </table>
+    </div>
+
+    <div class="section">
+        <div class="section-title">Plan / Follow Up</div>
+        <p>Continue current lifestyle modifications. Reduce sodium intake.</p>
+        <p><strong>Next Appointment:</strong> Review in 2 weeks (2024-03-29) for BP check.</p>
+    </div>
+</body>
+</html>

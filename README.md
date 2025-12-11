@@ -52,6 +52,29 @@ Add these in the project settings under "Environment Variables".
     npm run dev
     ```
 
+## Testing
+
+We support two types of testing depending on your environment.
+
+### 1. Unit Tests (Works in Cloud/AI Studio)
+Use this if you are in the online editor. It tests the logic functions without needing a browser.
+```bash
+npm run test
+```
+
+### 2. End-to-End Tests (Requires Local Machine)
+Use this if you have downloaded the code. It launches a real browser to test the full app experience.
+```bash
+# 1. Install Browsers (Run once)
+npx playwright install
+
+# 2. Generate Test PDF (Ensure 'npm run dev' is running)
+npm run gen:pdf
+
+# 3. Run Tests
+npm run test:e2e
+```
+
 ## Deployment on Netlify/Vercel
 
 1.  Connect your GitHub repository.
@@ -66,3 +89,4 @@ Add these in the project settings under "Environment Variables".
 *   **AI**: Google Gemini API (`@google/genai`)
 *   **Backend/Auth/Storage**: Supabase
 *   **PDF Handling**: React-PDF, PDF.js
+*   **Testing**: Vitest (Unit), Playwright (E2E)
