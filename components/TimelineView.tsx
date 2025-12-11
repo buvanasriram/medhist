@@ -8,12 +8,15 @@ import { ReportViewerModal } from './ReportViewerModal';
 import { extractReportInfo } from '../services/geminiService';
 import { fileToBase64 } from '../utils/fileUtils';
 import * as supabaseService from '../services/supabaseService';
-import type { FamilyMember, TimelineEntry, User, ReportFile } from '../types';
+import type { FamilyMember, TimelineEntry, User, ReportFile, Medication } from '../types';
 import { PlusIcon } from './icons/PlusIcon';
 import { SpinnerIcon } from './icons/SpinnerIcon';
 import { FilterIcon } from './icons/FilterIcon';
 import { ArrowLeftIcon } from './icons/ArrowLeftIcon';
 import { SearchIcon } from './icons/SearchIcon';
+import { StethoscopeIcon } from './icons/StethoscopeIcon';
+import { ClipboardIcon } from './icons/ClipboardIcon';
+import { HealthAssistant } from './HealthAssistant';
 
 interface TimelineViewProps {
   onLogout: () => void;
@@ -23,6 +26,7 @@ interface TimelineViewProps {
   // Data passed from App to avoid re-fetching
   familyMembers: FamilyMember[];
   timelineEntries: TimelineEntry[];
+  medications?: Medication[];
   onRefreshData: () => void; // Callback to re-fetch if upload happens
 }
 
@@ -39,7 +43,7 @@ const calculateAge = (dobString: string | undefined | null): number | null => {
 };
 
 export const TimelineView: React.FC<TimelineViewProps> = ({ 
-    onLogout, user, initialSelectedMemberId, onBackToDashboard, familyMembers, timelineEntries, onRefreshData 
+    onLogout, user, initialSelectedMemberId, onBackToDashboard, familyMembers, timelineEntries, medications = [], onRefreshData 
 }) => {
   // Logic to determine initial selection
   const defaultMemberId = useMemo(() => {
@@ -53,6 +57,9 @@ export const TimelineView: React.FC<TimelineViewProps> = ({
 
   const [selectedMemberId, setSelectedMemberId] = useState<string>(defaultMemberId);
   
+  // View Toggle: 'all' or 'visits'
+  const [activeTab, setActiveTab] = useState<'all' | 'visits'>('all');
+
   // Filter States
   const [searchQuery, setSearchQuery] = useState<string>('');
   const [filterReportType, setFilterReportType] = useState<string>('');
@@ -83,6 +90,7 @@ export const TimelineView: React.FC<TimelineViewProps> = ({
         doctor_name: extractedData.doctorName,
         facility_name: extractedData.facilityName,
         patient_name: extractedData.patientName,
+        follow_up_date: extractedData.followUpDate // Save the extracted follow up date
       };
 
       const fileData = {
@@ -172,6 +180,18 @@ export const TimelineView: React.FC<TimelineViewProps> = ({
 
   const displayedEntries = useMemo(() => {
     return memberEntries.filter(entry => {
+      // 0. Active Tab Filter (Visits Only)
+      if (activeTab === 'visits') {
+          // STRICTER FILTER:
+          // Must match a visit-related keyword OR have a specific follow-up date.
+          // Merely having a doctor's name is NOT enough, as lab reports also have doctor names.
+          const isVisitType = /visit|consult|prescription|discharge|referral|letter|memo|opd|appointment/i.test(entry.report_type);
+          
+          if (!entry.follow_up_date && !isVisitType) {
+              return false;
+          }
+      }
+
       // 1. Text Search Filter (Report Type, Summary, Doctor, Facility)
       if (searchQuery) {
         const query = searchQuery.toLowerCase();
@@ -194,12 +214,12 @@ export const TimelineView: React.FC<TimelineViewProps> = ({
       if (filterEndDate && entryDate > new Date(filterEndDate)) return false;
       return true;
     });
-  }, [memberEntries, searchQuery, filterReportType, filterStartDate, filterEndDate]);
+  }, [memberEntries, activeTab, searchQuery, filterReportType, filterStartDate, filterEndDate]);
 
   return (
     <div className="min-h-screen bg-slate-50 text-slate-800 flex flex-col">
       <Header onLogout={onLogout} userName={user.name} />
-      <main className="container mx-auto p-4 md:p-8 max-w-5xl flex-grow">
+      <main className="container mx-auto p-4 md:p-8 max-w-5xl flex-grow pb-24">
         
         {/* Navigation Breadcrumb */}
         <button 
@@ -255,6 +275,24 @@ export const TimelineView: React.FC<TimelineViewProps> = ({
                     <span className="hidden sm:inline">Upload</span>
                 </button>
              </div>
+          </div>
+          
+          {/* View Toggle Tabs */}
+          <div className="flex space-x-1 bg-slate-100 p-1 rounded-lg mb-6 w-fit">
+              <button
+                onClick={() => setActiveTab('all')}
+                className={`flex items-center gap-2 px-4 py-2 text-sm font-medium rounded-md transition ${activeTab === 'all' ? 'bg-white text-brand-blue-600 shadow-sm' : 'text-slate-500 hover:text-slate-700'}`}
+              >
+                  <ClipboardIcon className="w-4 h-4" />
+                  All Records
+              </button>
+              <button
+                onClick={() => setActiveTab('visits')}
+                className={`flex items-center gap-2 px-4 py-2 text-sm font-medium rounded-md transition ${activeTab === 'visits' ? 'bg-white text-brand-blue-600 shadow-sm' : 'text-slate-500 hover:text-slate-700'}`}
+              >
+                  <StethoscopeIcon className="w-4 h-4" />
+                  Doctor Visits
+              </button>
           </div>
 
           {/* Filter Section */}
@@ -322,6 +360,15 @@ export const TimelineView: React.FC<TimelineViewProps> = ({
           />
         </div>
       </main>
+      
+      {/* AI Assistant */}
+      <HealthAssistant 
+         familyMembers={familyMembers}
+         timelineEntries={timelineEntries}
+         medications={medications}
+         userName={user.name}
+         onViewReport={handleViewReport}
+      />
 
       {isUploadModalOpen && (
         <UploadModal

@@ -343,7 +343,11 @@ export const addTimelineEntry = async (entryData: any, fileData: any, extractedM
     // 1. Insert Metadata
     const { data: newEntry, error: entryError } = await supabase!
         .from('timeline_entries')
-        .insert({ ...entryData, uploaded_by_user_id: user!.id })
+        .insert({ 
+            ...entryData, 
+            uploaded_by_user_id: user!.id,
+            follow_up_date: entryData.follow_up_date || null // Handle follow up
+        })
         .select()
         .single();
     
@@ -375,7 +379,6 @@ export const addTimelineEntry = async (entryData: any, fileData: any, extractedM
 
     // 4. Insert Extracted Medications (if any)
     if (extractedMeds && extractedMeds.length > 0) {
-        // If the extraction didn't get a specific start date, use the Report Date as the default start date.
         const defaultStartDate = entryData.date || new Date().toISOString().split('T')[0];
 
         const medsToInsert = extractedMeds.map(m => ({
@@ -385,7 +388,7 @@ export const addTimelineEntry = async (entryData: any, fileData: any, extractedM
             dosage: m.dosage,
             frequency: m.frequency,
             purpose: m.purpose,
-            start_date: m.startDate || defaultStartDate, // Use extracted or fallback to report date
+            start_date: m.startDate || defaultStartDate,
             active: true
         }));
         
@@ -429,6 +432,22 @@ export const getFileForEntry = async (timelineEntryId: string): Promise<{ metada
         metadata: { ...fileMetadata }, 
         signedUrl: signedUrlData.signedUrl 
     };
+};
+
+export const createShareLink = async (timelineEntryId: string): Promise<string | null> => {
+    if (isMock) return "https://mock-share-link.com/file.pdf";
+    
+    const { data: fileMetadata } = await supabase!
+        .from('files').select('file_path').eq('timeline_entry_id', timelineEntryId).maybeSingle();
+
+    if (!fileMetadata?.file_path) return null;
+
+    // Create a URL valid for 24 hours (86400 seconds)
+    const { data } = await supabase!.storage
+        .from('medical-reports')
+        .createSignedUrl(fileMetadata.file_path, 86400);
+
+    return data ? data.signedUrl : null;
 };
 
 export const ignoreMismatch = async (entryId: string) => {

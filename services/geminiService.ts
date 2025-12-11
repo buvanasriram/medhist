@@ -1,7 +1,7 @@
 
 import { GoogleGenAI, Type } from "@google/genai";
 import { pdfjs } from 'react-pdf';
-import type { ExtractedReportData } from '../types';
+import type { ExtractedReportData, FamilyMember, TimelineEntry, Medication } from '../types';
 import { CREDENTIALS } from '../credentials';
 
 // 1. Try process.env (Netlify/Deployment)
@@ -53,6 +53,10 @@ const responseSchema = {
         patientName: {
             type: Type.STRING,
             description: "The full name of the patient as mentioned in the report. If not found, leave this field empty.",
+        },
+        followUpDate: {
+            type: Type.STRING,
+            description: "If the document explicitly mentions a follow-up appointment or review (e.g., 'Review in 2 weeks', 'Next visit on Oct 12'), calculate and return the exact date in YYYY-MM-DD format. If no follow-up is mentioned, leave empty.",
         },
         medications: {
             type: Type.ARRAY,
@@ -128,23 +132,21 @@ export const extractReportInfo = async (fileBase64: string, mimeType: string, pa
     
     For medications:
     1. Extract name, dosage, and frequency from the document.
-    2. For the 'purpose' field: Use your external medical knowledge to identify the common condition this medication treats (e.g., 'Type 2 Diabetes' for Metformin, 'Hypertension' for Lisinopril), even if the document does not mention the condition explicitly.
+    2. For the 'purpose' field: Use your general medical knowledge to identify the common condition this medication treats (e.g., 'Type 2 Diabetes' for Metformin, 'Hypertension' for Lisinopril), even if the document does not mention the condition explicitly.
     3. For 'startDate': Look for explicit instructions like "Start on 2023-10-12". If not found, leave null.
+    
+    For Follow Up:
+    Look for phrases indicating a next appointment (e.g., "Review in 2 weeks", "Next visit on 2024-05-01"). Calculate the exact date based on the report date and return it as 'followUpDate'.
     `;
     
     try {
         let contentPart;
 
-        // Handling Password-Protected PDFs:
-        // Gemini cannot natively decrypt PDFs via inlineData. 
-        // If a password is provided for a PDF, we extract the text locally first, 
-        // then send the text to Gemini.
         if (mimeType === 'application/pdf' && password) {
             console.log("[GeminiService] Decrypting PDF locally...");
             const extractedText = await extractTextFromPdf(fileBase64, password);
             contentPart = { text: `Here is the text content extracted from the medical report:\n\n${extractedText}` };
         } else {
-            // Standard path for images or unprotected PDFs
             contentPart = {
                 inlineData: {
                     data: fileBase64,
@@ -173,10 +175,8 @@ export const extractReportInfo = async (fileBase64: string, mimeType: string, pa
             throw new Error("Received an empty or invalid response from the API.");
         }
 
-        // CLEANUP: Remove Markdown code blocks if present (e.g., ```json ... ```)
         jsonText = jsonText.replace(/^```json\s*/i, '').replace(/\s*```$/i, '');
 
-        // The response text is a JSON string, so we need to parse it.
         let parsedData;
         try {
             parsedData = JSON.parse(jsonText.trim());
@@ -186,27 +186,20 @@ export const extractReportInfo = async (fileBase64: string, mimeType: string, pa
         }
 
         // --- ROBUST FALLBACKS ---
-        
-        // 1. Date Validation
-        // Supabase will reject "N/A" or invalid formats.
         const dateRegex = /^\d{4}-\d{2}-\d{2}$/;
         if (!parsedData.date || !dateRegex.test(parsedData.date) || isNaN(Date.parse(parsedData.date))) {
             console.warn(`[GeminiService] Invalid or missing date received: "${parsedData.date}". Defaulting to today's date.`);
             parsedData.date = new Date().toISOString().split('T')[0];
         }
 
-        // 2. Patient Name Fallback
-        // If missing, default to "N/A" to trigger the UI name mismatch warning
         if (!parsedData.patientName || parsedData.patientName.trim() === "") {
             parsedData.patientName = "N/A";
         }
 
-        // 3. Report Type Fallback
         if (!parsedData.reportType || parsedData.reportType.trim() === "") {
             parsedData.reportType = "Uncategorized Document";
         }
 
-        // 4. Summary Fallback
         if (!parsedData.summary || parsedData.summary.trim() === "") {
             parsedData.summary = "No summary could be generated for this document.";
         }
@@ -215,14 +208,74 @@ export const extractReportInfo = async (fileBase64: string, mimeType: string, pa
 
     } catch (error: any) {
         console.error("Error calling Gemini API:", error);
-        
-        // Enhance error message for common issues
         if (error.message && error.message.includes('400')) {
              if (error.message.includes('The document has no pages') || error.message.includes('INVALID_ARGUMENT')) {
                  throw new Error("Gemini could not read this file. If it is password protected, please ensure you entered the correct password.");
              }
         }
-        
-        throw error; // Re-throw to be caught by the UI
+        throw error;
+    }
+};
+
+// --- CHAT FEATURE ---
+
+interface FamilyData {
+    familyMembers: FamilyMember[];
+    timelineEntries: TimelineEntry[];
+    medications: Medication[];
+}
+
+export const chatWithHealthAssistant = async (userMessage: string, history: any[], data: FamilyData): Promise<string> => {
+    const client = getAIClient();
+
+    // Prepare context about the family's health data
+    const contextSummary = `
+    CURRENT FAMILY DATA:
+    
+    MEMBERS:
+    ${data.familyMembers.map(m => `- ${m.name} (${m.relationship}, DOB: ${m.dob || 'Unknown'})`).join('\n')}
+
+    ACTIVE MEDICATIONS:
+    ${data.medications.filter(m => m.active).map(m => `- ${m.name} (${m.dosage}) for ${data.familyMembers.find(f => f.id === m.family_member_id)?.name}`).join('\n')}
+
+    RECENT MEDICAL TIMELINE (Last 30 entries):
+    ${data.timelineEntries.slice(0, 30).map(e => `
+        - REPORT_ID: ${e.id}
+        - Date: ${e.date}
+        - Type: ${e.report_type}
+        - Patient: ${data.familyMembers.find(f => f.id === e.family_member_id)?.name}
+        - Doctor: ${e.doctor_name || 'N/A'}
+        - Summary: ${e.summary}
+    `).join('\n')}
+    `;
+
+    const systemPrompt = `You are a helpful and empathetic medical assistant called "medHist Assistant".
+    
+    YOUR GOALS:
+    1. **BE EXTREMELY CONCISE**. Limit your answers to 1-2 sentences maximum unless asked for a detailed list.
+    2. Answer questions about the family's health history based strictly on the provided data.
+    3. If asked about side effects, use your general medical knowledge but keep it brief and add a disclaimer.
+    4. **CRITICAL:** If you refer to a specific medical report from the timeline, you MUST provide a link to it using this EXACT format at the end of the sentence: [VIEW:Report Title:REPORT_ID]
+       - Replace 'Report Title' with the report type (e.g. Blood Test).
+       - Replace 'REPORT_ID' with the UUID provided in the context.
+    
+    CONTEXT:
+    ${contextSummary}
+    `;
+
+    try {
+        const chat = client.chats.create({
+            model: 'gemini-2.5-flash',
+            config: {
+                systemInstruction: systemPrompt,
+            },
+            history: history
+        });
+
+        const result = await chat.sendMessage({ message: userMessage });
+        return result.text;
+    } catch (error) {
+        console.error("Chat Error:", error);
+        return "I'm having trouble connecting to the AI service right now. Please try again later.";
     }
 };

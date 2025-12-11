@@ -48,6 +48,7 @@ export interface TimelineEntry {
   doctor_name?: string;
   facility_name?: string;
   patient_name?: string;
+  follow_up_date?: string; // ISO 8601 format
   mismatch_ignored?: boolean;
   file?: ReportFile;
 }
@@ -67,5 +68,6 @@ export interface ExtractedReportData {
     doctorName?: string;
     facilityName?: string;
     patientName?: string;
+    followUpDate?: string;
     medications?: ExtractedMedication[];
 }
