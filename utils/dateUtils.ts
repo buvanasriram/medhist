@@ -1,4 +1,3 @@
-
 export const calculateAge = (dobString: string | undefined | null): number | null => {
     if (!dobString) return null;
     const dob = new Date(dobString);

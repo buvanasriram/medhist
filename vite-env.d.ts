@@ -1,4 +1,4 @@
-// FIX: The reference to "vite/client" was removed as it could not be resolved.
+/// <reference types="vite/client" />
 
 interface ImportMetaEnv {
   readonly VITE_SUPABASE_URL: string;

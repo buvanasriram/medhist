@@ -1,4 +1,3 @@
-
 import '@testing-library/jest-dom';
 
 // Polyfill definitions for Node.js globals to resolve TS errors
