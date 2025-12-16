@@ -6,6 +6,7 @@ import { MailIcon } from '../icons/MailIcon';
 import { LockIcon } from '../icons/LockIcon';
 import { KeyIcon } from '../icons/KeyIcon';
 import { UsersIcon } from '../icons/UsersIcon';
+import { ArrowLeftIcon } from '../icons/ArrowLeftIcon';
 
 interface SignupPageProps {
   onSignup: (name: string, email: string, password: string, familyInput: { isJoin: boolean, value: string }) => Promise<string | null>;
@@ -13,12 +14,13 @@ interface SignupPageProps {
 }
 
 export const SignupPage: React.FC<SignupPageProps> = ({ onSignup, onNavigateToLogin }) => {
+  // Mode is null initially to show the "Selection Screen" first
+  const [mode, setMode] = useState<'create' | 'join' | null>(null);
+  
   const [name, setName] = useState('');
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   
-  // Family Mode: 'create' or 'join'
-  const [mode, setMode] = useState<'create' | 'join'>('create');
   const [familyName, setFamilyName] = useState('');
   const [joinCode, setJoinCode] = useState('');
 
@@ -55,21 +57,108 @@ export const SignupPage: React.FC<SignupPageProps> = ({ onSignup, onNavigateToLo
     setIsLoading(false);
   };
 
+  // ---------------------------------------------------------
+  // VIEW 1: SELECTION SCREEN (Step 1)
+  // ---------------------------------------------------------
+  if (mode === null) {
+      return (
+        <AuthLayout
+            title="Start Your Family Journey"
+            subtitle="Choose how you want to set up your account."
+        >
+            <div className="space-y-4 my-2">
+                <button
+                    onClick={() => setMode('create')}
+                    className="w-full flex items-center p-5 border-2 border-slate-200 rounded-xl hover:border-brand-blue-500 hover:bg-brand-blue-50 transition group text-left shadow-sm bg-white"
+                >
+                    <div className="bg-brand-blue-100 p-3 rounded-full group-hover:bg-brand-blue-200 transition mr-4">
+                        <UsersIcon className="w-8 h-8 text-brand-blue-600" />
+                    </div>
+                    <div>
+                        <h3 className="text-lg font-bold text-slate-800 group-hover:text-brand-blue-700">Create a New Family</h3>
+                        <p className="text-sm text-slate-500 mt-1">I am setting up a secure space for my family's records.</p>
+                    </div>
+                </button>
+
+                <button
+                    onClick={() => setMode('join')}
+                    className="w-full flex items-center p-5 border-2 border-slate-200 rounded-xl hover:border-brand-blue-500 hover:bg-brand-blue-50 transition group text-left shadow-sm bg-white"
+                >
+                    <div className="bg-brand-blue-100 p-3 rounded-full group-hover:bg-brand-blue-200 transition mr-4">
+                        <KeyIcon className="w-8 h-8 text-brand-blue-600" />
+                    </div>
+                    <div>
+                        <h3 className="text-lg font-bold text-slate-800 group-hover:text-brand-blue-700">Join Existing Family</h3>
+                        <p className="text-sm text-slate-500 mt-1">I have an invite code from a family member.</p>
+                    </div>
+                </button>
+            </div>
+
+            <p className="mt-8 text-center text-sm text-slate-500">
+                Already have an account?{' '}
+                <button onClick={onNavigateToLogin} className="font-semibold text-brand-blue-600 hover:text-brand-blue-500">
+                Log in
+                </button>
+            </p>
+        </AuthLayout>
+      );
+  }
+
+  // ---------------------------------------------------------
+  // VIEW 2: REGISTRATION FORM (Step 2)
+  // ---------------------------------------------------------
   return (
     <AuthLayout
-      title="Create Your Account"
-      subtitle="Join medHist to securely manage your family's health records."
+      title={mode === 'create' ? "Setup New Family" : "Join Your Family"}
+      subtitle={mode === 'create' ? "Create a secure space for your family's records." : "Enter your details and the code to join."}
     >
+      <div className="mb-6 -mt-2">
+          <button 
+            onClick={() => { setMode(null); setError(null); }}
+            className="flex items-center text-sm font-medium text-slate-400 hover:text-brand-blue-600 transition"
+          >
+              <ArrowLeftIcon className="w-4 h-4 mr-1" /> Back to Selection
+          </button>
+      </div>
+
       <form onSubmit={handleSubmit} className="space-y-6">
+        
+        {/* Dynamic Section based on Choice */}
+        <div className="bg-brand-blue-50 p-5 rounded-lg border border-brand-blue-100">
+            {mode === 'create' ? (
+                <div>
+                    <label htmlFor="familyName" className="block text-sm font-bold text-brand-blue-900 mb-1">Family Group Name</label>
+                    <div className="relative rounded-md shadow-sm">
+                        <div className="pointer-events-none absolute inset-y-0 left-0 flex items-center pl-3">
+                        <UsersIcon className="h-5 w-5 text-brand-blue-500" />
+                        </div>
+                        <input type="text" id="familyName" className="block w-full rounded-md border-brand-blue-300 py-2 pl-10 text-brand-blue-900 placeholder-brand-blue-300 focus:border-brand-blue-500 focus:ring-brand-blue-500 sm:text-sm" placeholder="e.g. The Vance Family" value={familyName} onChange={(e) => setFamilyName(e.target.value)} disabled={isLoading} autoFocus />
+                    </div>
+                    <p className="mt-2 text-xs text-brand-blue-600">You will be the admin of this group.</p>
+                </div>
+            ) : (
+                <div>
+                    <label htmlFor="joinCode" className="block text-sm font-bold text-brand-blue-900 mb-1">Enter Invite Code</label>
+                    <div className="relative rounded-md shadow-sm">
+                        <div className="pointer-events-none absolute inset-y-0 left-0 flex items-center pl-3">
+                        <KeyIcon className="h-5 w-5 text-brand-blue-500" />
+                        </div>
+                        <input type="text" id="joinCode" className="block w-full rounded-md border-brand-blue-300 py-2 pl-10 text-brand-blue-900 placeholder-brand-blue-300 uppercase tracking-widest font-mono font-bold focus:border-brand-blue-500 focus:ring-brand-blue-500 sm:text-sm" placeholder="X792KS" value={joinCode} onChange={(e) => setJoinCode(e.target.value.toUpperCase())} maxLength={6} disabled={isLoading} autoFocus />
+                    </div>
+                    <p className="mt-2 text-xs text-brand-blue-600">Ask a family member for their 6-character code.</p>
+                </div>
+            )}
+        </div>
+
         {/* Standard Fields */}
         <div className="space-y-4">
             <div>
-            <label htmlFor="name" className="block text-sm font-medium text-slate-700">Full Name</label>
+            <label htmlFor="name" className="block text-sm font-medium text-slate-700">Your Full Name</label>
             <div className="mt-1 relative rounded-md shadow-sm">
                 <div className="pointer-events-none absolute inset-y-0 left-0 flex items-center pl-3">
                 <UserIcon className="h-5 w-5 text-slate-400" />
                 </div>
-                <input type="text" id="name" className="block w-full rounded-md border border-slate-300 py-2 pl-10 sm:text-sm" placeholder="Eleanor Vance" value={name} onChange={(e) => setName(e.target.value)} required disabled={isLoading} />
+                <input type="text" id="name" className="block w-full rounded-md border border-slate-300 py-2 pl-10 sm:text-sm focus:ring-brand-blue-500 focus:border-brand-blue-500" placeholder="John Doe" value={name} onChange={(e) => setName(e.target.value)} required disabled={isLoading} />
             </div>
             </div>
 
@@ -79,7 +168,7 @@ export const SignupPage: React.FC<SignupPageProps> = ({ onSignup, onNavigateToLo
                 <div className="pointer-events-none absolute inset-y-0 left-0 flex items-center pl-3">
                 <MailIcon className="h-5 w-5 text-slate-400" />
                 </div>
-                <input type="email" id="email" className="block w-full rounded-md border border-slate-300 py-2 pl-10 sm:text-sm" placeholder="you@example.com" value={email} onChange={(e) => setEmail(e.target.value)} required disabled={isLoading} />
+                <input type="email" id="email" className="block w-full rounded-md border border-slate-300 py-2 pl-10 sm:text-sm focus:ring-brand-blue-500 focus:border-brand-blue-500" placeholder="you@example.com" value={email} onChange={(e) => setEmail(e.target.value)} required disabled={isLoading} />
             </div>
             </div>
 
@@ -89,63 +178,19 @@ export const SignupPage: React.FC<SignupPageProps> = ({ onSignup, onNavigateToLo
                 <div className="pointer-events-none absolute inset-y-0 left-0 flex items-center pl-3">
                 <LockIcon className="h-5 w-5 text-slate-400" />
                 </div>
-                <input type="password" id="password" className="block w-full rounded-md border border-slate-300 py-2 pl-10 sm:text-sm" placeholder="••••••••" value={password} onChange={(e) => setPassword(e.target.value)} required disabled={isLoading} />
+                <input type="password" id="password" className="block w-full rounded-md border border-slate-300 py-2 pl-10 sm:text-sm focus:ring-brand-blue-500 focus:border-brand-blue-500" placeholder="••••••••" value={password} onChange={(e) => setPassword(e.target.value)} required disabled={isLoading} />
             </div>
             </div>
-        </div>
-
-        {/* Family Setup Section */}
-        <div className="bg-slate-50 p-4 rounded-lg border border-slate-200">
-            <div className="flex gap-8 mb-4">
-                <button 
-                    type="button"
-                    onClick={() => setMode('create')}
-                    className={`flex-1 py-2 text-sm font-medium rounded-md border ${mode === 'create' ? 'bg-white border-brand-blue-600 text-brand-blue-700 shadow-md' : 'bg-transparent border-transparent text-slate-500 hover:text-slate-700'}`}
-                >
-                    Create New Family
-                </button>
-                <button 
-                    type="button"
-                    onClick={() => setMode('join')}
-                    className={`flex-1 py-2 text-sm font-medium rounded-md border ${mode === 'join' ? 'bg-white border-brand-blue-300 text-brand-blue-700 shadow-sm' : 'bg-transparent border-transparent text-slate-500 hover:text-slate-700'}`}
-                >
-                    Join Existing
-                </button>
-            </div>
-
-            {mode === 'create' ? (
-                <div>
-                    <label htmlFor="familyName" className="block text-sm font-medium text-slate-700">Family Group Name</label>
-                    <div className="mt-1 relative rounded-md shadow-sm">
-                        <div className="pointer-events-none absolute inset-y-0 left-0 flex items-center pl-3">
-                        <UsersIcon className="h-5 w-5 text-slate-400" />
-                        </div>
-                        <input type="text" id="familyName" className="block w-full rounded-md border border-slate-300 py-2 pl-10 sm:text-sm" placeholder="The Vance Family" value={familyName} onChange={(e) => setFamilyName(e.target.value)} disabled={isLoading} />
-                    </div>
-                    <p className="mt-1 text-xs text-slate-500">You'll get a code to invite others later.</p>
-                </div>
-            ) : (
-                <div>
-                    <label htmlFor="joinCode" className="block text-sm font-medium text-slate-700">Family Invite Code</label>
-                    <div className="mt-1 relative rounded-md shadow-sm">
-                        <div className="pointer-events-none absolute inset-y-0 left-0 flex items-center pl-3">
-                        <KeyIcon className="h-5 w-5 text-slate-400" />
-                        </div>
-                        <input type="text" id="joinCode" className="block w-full rounded-md border border-slate-300 py-2 pl-10 sm:text-sm uppercase tracking-widest" placeholder="X792KS" value={joinCode} onChange={(e) => setJoinCode(e.target.value.toUpperCase())} maxLength={6} disabled={isLoading} />
-                    </div>
-                    <p className="mt-1 text-xs text-slate-500">Ask a family member for their group code.</p>
-                </div>
-            )}
         </div>
         
-        {error && <p className="text-sm text-red-600 text-center">{error}</p>}
+        {error && <div className="p-3 bg-red-50 text-red-700 text-sm rounded-md border border-red-100 text-center">{error}</div>}
 
         <button
             type="submit"
             disabled={isLoading}
-            className="w-full flex justify-center py-2.5 px-4 border border-transparent rounded-lg shadow-sm text-sm font-medium text-white bg-brand-blue-600 hover:bg-brand-blue-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-brand-blue-500 transition disabled:bg-brand-blue-300"
+            className="w-full flex justify-center py-3 px-4 border border-transparent rounded-lg shadow-sm text-sm font-bold text-white bg-brand-blue-600 hover:bg-brand-blue-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-brand-blue-500 transition disabled:bg-brand-blue-300"
           >
-            {isLoading ? 'Creating Account...' : 'Create Account'}
+            {isLoading ? 'Creating Account...' : (mode === 'create' ? 'Create Family & Account' : 'Join Family & Account')}
         </button>
       </form>
        <p className="mt-6 text-center text-sm text-slate-500">

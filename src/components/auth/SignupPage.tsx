@@ -58,7 +58,7 @@ export const SignupPage: React.FC<SignupPageProps> = ({ onSignup, onNavigateToLo
   };
 
   // ---------------------------------------------------------
-  // VIEW 1: SELECTION SCREEN (The "Drastic Revamp")
+  // VIEW 1: SELECTION SCREEN (Step 1)
   // ---------------------------------------------------------
   if (mode === null) {
       return (
@@ -105,7 +105,7 @@ export const SignupPage: React.FC<SignupPageProps> = ({ onSignup, onNavigateToLo
   }
 
   // ---------------------------------------------------------
-  // VIEW 2: REGISTRATION FORM (Context Aware)
+  // VIEW 2: REGISTRATION FORM (Step 2)
   // ---------------------------------------------------------
   return (
     <AuthLayout

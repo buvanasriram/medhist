@@ -3,6 +3,7 @@ import React, { useState, useEffect, useRef } from 'react';
 import { LoginPage } from './components/auth/LoginPage';
 import { SignupPage } from './components/auth/SignupPage';
 import { UpdatePasswordPage } from './components/auth/UpdatePasswordPage';
+import { ForgotPasswordPage } from './components/auth/ForgotPasswordPage';
 import { TimelineView } from './components/TimelineView';
 import { DashboardView } from './components/DashboardView';
 import type { User, FamilyMember, TimelineEntry, Medication } from './types';
@@ -12,11 +13,19 @@ import { SpinnerIcon } from './components/icons/SpinnerIcon';
 const App: React.FC = () => {
   const [session, setSession] = useState<any>(null);
   const [currentUser, setCurrentUser] = useState<User | null>(null);
-  const [route, setRoute] = useState<string>('/login');
+  
+  // Initialize route based on URL to prevent flashing wrong view on refresh
+  const [route, setRoute] = useState<string>(
+    window.location.pathname === '/signup' ? '/signup' : '/login'
+  );
+  
+  // Loading & Error States
   const [isLoading, setIsLoading] = useState<boolean>(true);
+  const [dataLoadError, setDataLoadError] = useState<string | null>(null);
+  
   const [isRecoveryMode, setIsRecoveryMode] = useState<boolean>(false);
   
-  // Dashboard Data State (Lifted up to avoid re-fetching when switching views)
+  // Dashboard Data State
   const [viewMode, setViewMode] = useState<'dashboard' | 'timeline'>('dashboard');
   const [selectedMemberId, setSelectedMemberId] = useState<string | undefined>(undefined);
   
@@ -26,49 +35,73 @@ const App: React.FC = () => {
   const [familyInfo, setFamilyInfo] = useState<{name: string, joinCode: string} | null>(null);
 
   const isSigningUpRef = useRef<boolean>(false);
+  const routeRef = useRef(route);
+  
+  useEffect(() => {
+    routeRef.current = route;
+  }, [route]);
 
   // Load User Data Logic
   const loadUserData = async (userId: string) => {
+      setDataLoadError(null);
       try {
           const data = await supabaseService.getUserData(userId);
+          
           setFamilyMembers(data.familyMembers);
           setTimelineEntries(data.timelineEntries);
           setMedications(data.medications);
           setFamilyInfo(data.familyInfo);
-      } catch (e) {
+      } catch (e: any) {
           console.error("Failed to load user data:", e);
+          setDataLoadError(e.message || "Failed to load your profile.");
       }
   };
 
   useEffect(() => {
-    const checkSession = async () => {
-      const currentSession = await supabaseService.getSession();
-      setSession(currentSession);
-      if (currentSession?.user) {
-        const user = { 
-          id: currentSession.user.id, 
-          name: currentSession.user.user_metadata?.full_name || currentSession.user.email,
-          email: currentSession.user.email || ''
-        };
-        setCurrentUser(user);
-        
-        // Initial Data Load
-        loadUserData(user.id);
+    let mounted = true;
 
-        if (window.location.pathname !== '/signup') {
-             setRoute('/');
+    const checkSession = async () => {
+      try {
+        const currentSession = await supabaseService.getSession();
+        if (!mounted) return;
+
+        setSession(currentSession);
+        
+        if (currentSession?.user) {
+          const user = { 
+            id: currentSession.user.id, 
+            name: currentSession.user.user_metadata?.full_name || currentSession.user.email,
+            email: currentSession.user.email || ''
+          };
+          
+          if(mounted) setCurrentUser(user);
+          
+          // Only attempt data load if not on signup page
+          if(routeRef.current !== '/signup') {
+             await loadUserData(user.id);
+          }
+
+          if (mounted && window.location.pathname !== '/signup') {
+               setRoute('/');
+          }
+        } else {
+            if (mounted && routeRef.current !== '/signup') {
+                setRoute('/login');
+            }
         }
-      } else {
-        if (route !== '/signup') {
-            setRoute('/login');
-        }
+      } catch (err) {
+          console.error("Session check failed:", err);
+      } finally {
+          if (mounted) setIsLoading(false);
       }
-      setIsLoading(false);
     };
+    
     checkSession();
     
-    const { data: { subscription } } = supabaseService.onAuthStateChange((event, session) => {
+    const { data: { subscription } } = supabaseService.onAuthStateChange(async (event, session) => {
+      if (!mounted) return;
       setSession(session);
+      
       if (event === 'PASSWORD_RECOVERY') setIsRecoveryMode(true);
 
        if (session?.user) {
@@ -79,38 +112,74 @@ const App: React.FC = () => {
         };
         setCurrentUser(user);
         
-        // Reload data on login
-        loadUserData(user.id);
+        // CRITICAL FIX: Only auto-load data if we are NOT in the middle of a signup flow.
+        // During signup, the profile might not exist yet when this event fires.
+        // We let handleSignup() take care of loading data after it confirms profile creation.
+        if (event === 'SIGNED_IN' && !isSigningUpRef.current) {
+            await loadUserData(user.id);
+        } else if (event === 'SIGNED_IN' && isSigningUpRef.current) {
+            console.log("Skipping auto-load during signup to prevent race condition.");
+        }
         
-        if (!isSigningUpRef.current && route !== '/signup') {
+        if (!isSigningUpRef.current && routeRef.current !== '/signup') {
              setRoute('/');
         }
       } else {
         setCurrentUser(null);
-        if (!isRecoveryMode && route !== '/signup') {
+        if (!isRecoveryMode && routeRef.current !== '/signup' && routeRef.current !== '/forgot-password') {
           setRoute('/login');
         }
       }
     });
 
-    return () => subscription.unsubscribe();
-  }, [route, isRecoveryMode]);
+    return () => {
+        mounted = false;
+        subscription.unsubscribe();
+    };
+  }, [isRecoveryMode]); 
   
   const handleLogin = async (email: string, password: string):Promise<string|null> => {
+    setIsLoading(true);
     const error = await supabaseService.signIn(email, password);
-    if(error) return error;
-    setRoute('/');
+    if(error) {
+        setIsLoading(false);
+        return error;
+    }
+    // Auth state listener will handle redirection
     return null;
   };
 
   const handleSignup = async (name: string, email: string, password: string, familyInput: { isJoin: boolean, value: string }): Promise<string|null> => {
     isSigningUpRef.current = true;
+    setIsLoading(true);
     try {
         const error = await supabaseService.signUp(name, email, password, familyInput);
-        if(error) return error;
+        if(error) {
+            setIsLoading(false);
+            return error;
+        }
+        
+        // Wait briefly for DB consistency (optional but safer)
+        await new Promise(resolve => setTimeout(resolve, 500));
+        
+        // Manual Data Load: Now we know the profile exists!
+        const session = await supabaseService.getSession();
+        if (session?.user) {
+             const user = { 
+                id: session.user.id, 
+                name: session.user.user_metadata?.full_name || session.user.email,
+                email: session.user.email || ''
+             };
+             setCurrentUser(user);
+             await loadUserData(user.id);
+        }
+
         setRoute('/');
         return null;
+    } catch (e: any) {
+        return e.message;
     } finally {
+        setIsLoading(false);
         isSigningUpRef.current = false;
     }
   };
@@ -122,16 +191,66 @@ const App: React.FC = () => {
     setIsRecoveryMode(false);
     setViewMode('dashboard');
   };
-  
-  if (isLoading) return null;
+
+  // Error Screen (Connection Issue)
+  if (dataLoadError && currentUser) {
+      return (
+        <div className="min-h-screen bg-slate-50 flex flex-col items-center justify-center text-slate-600 p-4 text-center">
+             <div className="bg-white p-8 rounded-xl shadow-lg max-w-md w-full">
+                 <div className="text-red-500 text-5xl mb-4">⚠️</div>
+                 <h2 className="text-xl font-bold text-slate-800 mb-2">Connection Issue</h2>
+                 <p className="text-slate-500 mb-6">{dataLoadError}</p>
+                 <p className="text-sm text-slate-400 mb-6">The database is taking longer than expected to prepare your profile.</p>
+                 
+                 <div className="flex flex-col gap-3">
+                     <button 
+                        onClick={() => { setIsLoading(true); loadUserData(currentUser.id).then(() => setIsLoading(false)); }}
+                        className="w-full bg-brand-blue-600 text-white font-semibold py-2 px-4 rounded-lg hover:bg-brand-blue-700 transition"
+                     >
+                        Retry Connection
+                     </button>
+                     <button 
+                        onClick={handleLogout}
+                        className="w-full bg-slate-100 text-slate-600 font-semibold py-2 px-4 rounded-lg hover:bg-slate-200 transition"
+                     >
+                        Log Out
+                     </button>
+                 </div>
+             </div>
+        </div>
+      );
+  }
+
+  // Loading Screen
+  if (isLoading) {
+      return (
+        <div className="min-h-screen bg-slate-50 flex flex-col items-center justify-center text-slate-600">
+             <SpinnerIcon className="w-10 h-10 text-brand-blue-600 animate-spin mb-4" />
+             <p className="text-slate-400 font-medium">Connecting to medical records...</p>
+        </div>
+      );
+  }
 
   if (isRecoveryMode) {
-    return <UpdatePasswordPage onSuccess={() => { setIsRecoveryMode(false); setRoute('/'); }} />;
+    return (
+        <UpdatePasswordPage onSuccess={() => { setIsRecoveryMode(false); setRoute('/'); }} />
+    );
   }
 
   if (!session) {
-    if (route === '/signup') return <SignupPage onSignup={handleSignup} onNavigateToLogin={() => setRoute('/login')} />;
-    return <LoginPage onLogin={handleLogin} onNavigateToSignup={() => setRoute('/signup')} />;
+    if (route === '/signup') {
+        return <SignupPage onSignup={handleSignup} onNavigateToLogin={() => setRoute('/login')} />;
+    }
+    if (route === '/forgot-password') {
+        return <ForgotPasswordPage onNavigateToLogin={() => setRoute('/login')} />;
+    }
+    return (
+        <LoginPage 
+            onLogin={handleLogin} 
+            onNavigateToSignup={() => setRoute('/signup')} 
+            onNavigateToForgotPassword={() => setRoute('/forgot-password')}
+        />
+    );
   }
   
   if (route === '/signup') {
@@ -146,7 +265,6 @@ const App: React.FC = () => {
 
   if (!currentUser) return null;
 
-  // VIEW ROUTER
   if (viewMode === 'timeline') {
       return (
           <TimelineView 
@@ -154,7 +272,6 @@ const App: React.FC = () => {
             user={currentUser} 
             initialSelectedMemberId={selectedMemberId}
             onBackToDashboard={() => setViewMode('dashboard')}
-            // Pass data props
             familyMembers={familyMembers}
             timelineEntries={timelineEntries}
             onRefreshData={() => loadUserData(currentUser.id)}

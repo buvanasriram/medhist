@@ -7,9 +7,10 @@ import { LockIcon } from '../icons/LockIcon';
 interface LoginPageProps {
   onLogin: (email: string, password: string) => Promise<string | null>;
   onNavigateToSignup: () => void;
+  onNavigateToForgotPassword: () => void;
 }
 
-export const LoginPage: React.FC<LoginPageProps> = ({ onLogin, onNavigateToSignup }) => {
+export const LoginPage: React.FC<LoginPageProps> = ({ onLogin, onNavigateToSignup, onNavigateToForgotPassword }) => {
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [error, setError] = useState<string | null>(null);
@@ -61,6 +62,14 @@ export const LoginPage: React.FC<LoginPageProps> = ({ onLogin, onNavigateToSignu
             <label htmlFor="password"className="block text-sm font-medium text-slate-700">
               Password
             </label>
+            <button 
+              type="button"
+              onClick={onNavigateToForgotPassword}
+              className="text-sm font-medium text-brand-blue-600 hover:text-brand-blue-500"
+              disabled={isLoading}
+            >
+              Forgot password?
+            </button>
           </div>
           <div className="relative rounded-md shadow-sm">
             <div className="pointer-events-none absolute inset-y-0 left-0 flex items-center pl-3">

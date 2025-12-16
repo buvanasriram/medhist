@@ -36,7 +36,9 @@ try {
             "color: #10b981; font-weight: bold;"
         );
     } else {
-        throw new Error("Missing credentials");
+        console.warn("%c[medHist] Missing credentials. Running in MOCK MODE.", "color: #ea580c; font-weight: bold;");
+        isMockMode = true;
+        supabaseClient = null;
     }
 } catch (error) {
     console.warn(
@@ -95,6 +97,9 @@ export const signUp = async (name: string, email: string, password: string, fami
         return null;
     }
 
+    let userId = '';
+    
+    // 1. Attempt Sign Up
     const { data: authData, error: authError } = await supabase!.auth.signUp({
         email,
         password,
@@ -102,34 +107,60 @@ export const signUp = async (name: string, email: string, password: string, fami
     });
 
     if (authError) {
-        console.error('[medHist] Auth Error:', authError);
-        await signOut(); 
-        return authError.message;
+        // Handle "User already registered" error gracefully
+        // Supabase error message may vary slightly, checking for "already registered" is usually safe
+        if (authError.message.toLowerCase().includes("already registered")) {
+            console.log('[medHist] User exists. Attempting to log in with provided password...');
+            
+            // Attempt to sign in with the provided password
+            const { data: loginData, error: loginError } = await supabase!.auth.signInWithPassword({
+                email,
+                password
+            });
+
+            if (loginError) {
+                 // Password was wrong or other login error
+                 console.warn('[medHist] Auto-login failed:', loginError.message);
+                 return "An account with this email already exists. Please log in.";
+            }
+            
+            if (loginData.user) {
+                userId = loginData.user.id;
+                console.log('[medHist] Auto-login successful.');
+            } else {
+                return "Login failed after signup error.";
+            }
+        } else {
+            console.error('[medHist] Auth Error:', authError);
+            return authError.message;
+        }
+    } else {
+        if (!authData.user) return "Signup failed: No user created.";
+        userId = authData.user.id;
     }
-    
-    if (!authData.user) return "Signup failed: No user created.";
 
-    if (!authData.session) {
-        console.warn('[medHist] No session returned. Email verification likely enabled.');
-        return "Please disable 'Confirm email' in Supabase Dashboard -> Authentication -> Providers -> Email. This app requires instant login to create the family group.";
-    }
-
-    console.log('[medHist] Auth Successful. User ID:', authData.user.id);
-
-    const { error: sessionError } = await supabase!.auth.setSession({
-        access_token: authData.session.access_token,
-        refresh_token: authData.session.refresh_token,
-    });
-    if (sessionError) console.warn("[medHist] Failed to force set session:", sessionError);
-
-    const userId = authData.user.id;
-    let familyId = '';
-
+    // 2. Check for Existing Profile (To avoid duplicate families)
     try {
+        const { data: existingProfile } = await supabase!
+            .from('profiles')
+            .select('id')
+            .eq('id', userId)
+            .maybeSingle();
+            
+        if (existingProfile) {
+            console.log('[medHist] User already has a profile. Login successful.');
+            return null; // Return success, app will load existing data
+        }
+
+        // --- NEW USER SETUP ---
+        let familyId = '';
+
         if (familyInput.isJoin) {
-            const joinCode = familyInput.value.toUpperCase();
+            const joinCode = familyInput.value.trim().toUpperCase();
             console.log('[medHist] Joining family with code:', joinCode);
             
+            if (joinCode.length < 6) throw new Error("Join Code must be at least 6 characters.");
+
             const { data: family, error: findError } = await supabase!
                 .from('families')
                 .select('id')
@@ -137,15 +168,12 @@ export const signUp = async (name: string, email: string, password: string, fami
                 .maybeSingle();
             
             if (findError) {
-                console.error('[medHist] Family Lookup DB Error:', findError);
                 throw new Error(`Database error looking up family: ${findError.message}`);
             }
             if (!family) {
-                throw new Error("Invalid Family Join Code. Please check and try again.");
+                throw new Error(`Invalid Family Join Code '${joinCode}'. Please check and try again.`);
             }
-            
             familyId = family.id;
-            console.log('[medHist] Found Family:', familyId);
 
         } else {
             const familyName = familyInput.value;
@@ -159,11 +187,9 @@ export const signUp = async (name: string, email: string, password: string, fami
                 .single();
 
             if (createError) {
-                console.error("[medHist] Family Creation Error:", createError);
-                throw new Error(`Failed to create family group: ${createError.message} (Check RLS Policies)`);
+                throw new Error(`Failed to create family group: ${createError.message}`);
             }
             familyId = newFamily.id;
-            console.log('[medHist] Family Created:', familyId);
         }
 
         console.log('[medHist] Creating Profile for user:', userId);
@@ -176,13 +202,13 @@ export const signUp = async (name: string, email: string, password: string, fami
             });
 
         if (profileError) {
-            console.error("[medHist] Profile Creation Error:", profileError);
             throw new Error(`Failed to create user profile: ${profileError.message}`);
         }
-        console.log('[medHist] Profile Created. DB Trigger should have created Member row.');
 
     } catch (err: any) {
-        console.error("[medHist] Process Aborted:", err);
+        console.error("[medHist] Process Aborted:", err.message);
+        // If we just created the auth user but failed DB setup, we sign them out so they can try again.
+        // However, if we auto-logged in an existing user and failed (e.g. invalid join code), we should also sign out.
         await signOut();
         return err.message;
     }
@@ -190,9 +216,60 @@ export const signUp = async (name: string, email: string, password: string, fami
     return null;
 };
 
+export const joinExistingFamily = async (joinCode: string): Promise<void> => {
+    if (isMock) {
+        console.log("[Mock] Joined family with code:", joinCode);
+        return;
+    }
+
+    const { data: { user } } = await supabase!.auth.getUser();
+    if (!user) throw new Error("Not authenticated");
+
+    // 1. Validate Code & Get New Family ID
+    const { data: newFamily, error: findError } = await supabase!
+        .from('families')
+        .select('id')
+        .eq('join_code', joinCode.trim().toUpperCase())
+        .maybeSingle();
+
+    if (findError || !newFamily) throw new Error("Invalid Join Code.");
+
+    // 2. Get Current Family ID to identify which members to move
+    const { data: currentProfile } = await supabase!
+        .from('profiles')
+        .select('family_id')
+        .eq('id', user.id)
+        .single();
+    
+    if (!currentProfile) throw new Error("Profile not found.");
+    
+    // Prevent joining same family
+    if (currentProfile.family_id === newFamily.id) {
+        throw new Error("You are already a member of this family.");
+    }
+
+    // 3. Update Profile to new Family
+    const { error: profileUpdateError } = await supabase!
+        .from('profiles')
+        .update({ family_id: newFamily.id })
+        .eq('id', user.id);
+
+    if (profileUpdateError) throw new Error(profileUpdateError.message);
+
+    // 4. Move Members created in the old family to the new family
+    const { error: memberUpdateError } = await supabase!
+        .from('family_members')
+        .update({ family_id: newFamily.id })
+        .eq('family_id', currentProfile.family_id);
+
+    if (memberUpdateError) {
+        console.error("Partial migration error:", memberUpdateError);
+    }
+};
+
 export const signIn = async (email: string, password: string): Promise<string|null> => {
     if (isMock) {
-        mockSession = { user: { id: MOCK_USER_ID, email } } as any;
+        mockSession = { user: { id: MOCK_USER_ID, email, user_metadata: { full_name: 'Demo User' } } } as any;
         return null;
     }
     const { error } = await supabase!.auth.signInWithPassword({ email, password });
@@ -237,68 +314,84 @@ export const getUserData = async (userId: string): Promise<{
         };
     }
 
-    // 1. Get Profile to find Family ID
-    const { data: profile, error: profileError } = await supabase!
-        .from('profiles')
-        .select('family_id, full_name')
-        .eq('id', userId)
-        .maybeSingle();
-
-    if (profileError) {
-        console.error('[medHist] Profile fetch error:', profileError);
-        throw new Error("Could not load your profile. Please try logging out and back in.");
+    // 1. Get Profile with Retry (Self-Healing)
+    let profile = null;
+    let attempts = 0;
+    while (attempts < 5) {
+        const { data, error } = await supabase!
+            .from('profiles')
+            .select('family_id, full_name')
+            .eq('id', userId)
+            .maybeSingle();
+            
+        if (data) {
+            profile = data;
+            break;
+        }
+        
+        console.warn(`[medHist] Profile fetch attempt ${attempts + 1} failed/empty. Retrying...`);
+        attempts++;
+        await new Promise(r => setTimeout(r, 800)); // Wait 800ms
     }
 
     if (!profile) {
-        console.warn('[medHist] Profile not found (returned null). RLS might be blocking access or creation failed.');
-        return { familyMembers: [], timelineEntries: [], medications: [], familyInfo: { name: 'Loading...', joinCode: '' } };
+        console.error("[medHist] Profile missing after retries.");
+        throw new Error("Could not load your profile. Please check your connection.");
     }
 
     const familyId = profile.family_id;
+    console.log('[medHist] Found Family ID:', familyId);
 
     // 2. Fetch Family Details
-    const { data: familyInfoData, error: familyError } = await supabase!
+    const { data: familyInfoData } = await supabase!
         .from('families')
         .select('name, join_code')
         .eq('id', familyId)
         .maybeSingle();
-    
-    if (familyError) console.error('[medHist] Family fetch error:', familyError);
 
-    // 3. Fetch Members (Two-Step Fetch Strategy)
-    const { data: membersData, error: membersError } = await supabase!
-        .from('family_members')
-        .select('*')
-        .eq('family_id', familyId);
-
-    if (membersError) console.error('[medHist] Members fetch error:', membersError);
+    // 3. Fetch Members with Smart Wait
+    let familyMembers: FamilyMember[] = [];
+    let memberAttempts = 0;
     
-    const familyMembers = membersData || [];
+    while(memberAttempts < 5) {
+         const { data, error } = await supabase!
+            .from('family_members')
+            .select('*')
+            .eq('family_id', familyId);
+            
+         if(error) console.error("Member fetch error:", error);
+         
+         if(data && data.length > 0) {
+             familyMembers = data;
+             break;
+         }
+         
+         console.log(`[medHist] No members found (Attempt ${memberAttempts+1}). Waiting for DB...`);
+         memberAttempts++;
+         await new Promise(r => setTimeout(r, 1000));
+    }
+
     const memberIds = familyMembers.map(m => m.id);
 
-    // 4. Fetch Entries & Medications using Member IDs
+    // 4. Fetch Entries & Medications
     let timelineEntries: TimelineEntry[] = [];
     let medications: Medication[] = [];
 
     if (memberIds.length > 0) {
-        // Fetch Timeline Entries
-        const { data: entriesData, error: entriesError } = await supabase!
+        const { data: entriesData } = await supabase!
             .from('timeline_entries')
             .select('*')
             .in('family_member_id', memberIds)
             .order('date', { ascending: false });
 
-        if (entriesError) console.error('[medHist] Entries fetch error:', entriesError);
-        else timelineEntries = entriesData || [];
+        if (entriesData) timelineEntries = entriesData;
 
-        // Fetch ALL Medications
-        const { data: medsData, error: medsError } = await supabase!
+        const { data: medsData } = await supabase!
             .from('medications')
             .select('*')
             .in('family_member_id', memberIds);
             
-        if (medsError) console.error('[medHist] Medications fetch error:', medsError);
-        else medications = medsData || [];
+        if (medsData) medications = medsData;
     }
 
     return {
@@ -346,7 +439,7 @@ export const addTimelineEntry = async (entryData: any, fileData: any, extractedM
         .insert({ 
             ...entryData, 
             uploaded_by_user_id: user!.id,
-            follow_up_date: entryData.follow_up_date || null // Handle follow up
+            follow_up_date: entryData.follow_up_date || null 
         })
         .select()
         .single();
@@ -442,7 +535,6 @@ export const createShareLink = async (timelineEntryId: string): Promise<string |
 
     if (!fileMetadata?.file_path) return null;
 
-    // Create a URL valid for 24 hours (86400 seconds)
     const { data } = await supabase!.storage
         .from('medical-reports')
         .createSignedUrl(fileMetadata.file_path, 86400);
@@ -451,16 +543,14 @@ export const createShareLink = async (timelineEntryId: string): Promise<string |
 };
 
 export const ignoreMismatch = async (entryId: string) => {
+     if (isMock) return { id: entryId, mismatch_ignored: true };
      const { data } = await supabase!.from('timeline_entries').update({ mismatch_ignored: true }).eq('id', entryId).select().single();
      return data;
 };
 
-// --- MEDICATION FUNCTIONS ---
-
 export const addMedication = async (medData: { family_member_id: string, name: string, dosage?: string, frequency?: string, purpose?: string, start_date?: string }): Promise<Medication> => {
     if (isMock) return { id: 'mock-med', active: true, ...medData };
     
-    // Default to today if manual add didn't specify date
     const finalData = {
         ...medData,
         start_date: medData.start_date || new Date().toISOString().split('T')[0]
