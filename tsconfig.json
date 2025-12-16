@@ -20,19 +20,19 @@
     "rootDir": "."
   },
   "include": [
-    "./index.tsx",
-    "./App.tsx",
-    "./types.ts",
-    "./credentials.ts",
-    "./vite-env.d.ts",
-    "./setupTests.ts",
-    "./components/**/*",
-    "./services/**/*",
-    "./utils/**/*"
+    "index.tsx",
+    "App.tsx",
+    "types.ts",
+    "credentials.ts",
+    "vite-env.d.ts",
+    "setupTests.ts",
+    "components/**/*",
+    "services/**/*",
+    "utils/**/*"
   ],
   "exclude": [
     "src",
-    "./src",
+    "**/src/*",
     "node_modules",
     "dist",
     "e2e", 
