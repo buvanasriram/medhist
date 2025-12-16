@@ -273,7 +273,7 @@ export const chatWithHealthAssistant = async (userMessage: string, history: any[
         });
 
         const result = await chat.sendMessage({ message: userMessage });
-        return result.text;
+        return result.text || "I'm sorry, I couldn't generate a response.";
     } catch (error) {
         console.error("Chat Error:", error);
         return "I'm having trouble connecting to the AI service right now. Please try again later.";
