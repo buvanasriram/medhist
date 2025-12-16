@@ -292,7 +292,7 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
             )}
 
             <footer className="py-6 text-center text-slate-400 text-sm border-t border-slate-200 mt-auto bg-white">
-                <p>© {new Date().getFullYear()} medHist. v0.4.4</p>
+                <p>© {new Date().getFullYear()} medHist. v0.4.5</p>
             </footer>
         </div>
     );
