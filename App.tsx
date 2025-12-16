@@ -60,6 +60,14 @@ const App: React.FC = () => {
   useEffect(() => {
     let mounted = true;
 
+    // 1. Explicit Hash Check for Recovery (Critical for Vercel/Prod)
+    // Supabase sends the user back with #access_token=...&type=recovery
+    // We detect this immediately to ensure we show the UpdatePasswordPage
+    if (window.location.hash && window.location.hash.includes('type=recovery')) {
+        console.log("[App] Recovery mode detected via URL hash");
+        setIsRecoveryMode(true);
+    }
+
     const checkSession = async () => {
       try {
         const currentSession = await supabaseService.getSession();
@@ -100,9 +108,12 @@ const App: React.FC = () => {
     
     const { data: { subscription } } = supabaseService.onAuthStateChange(async (event, session) => {
       if (!mounted) return;
+      console.log("[App] Auth State Change:", event);
       setSession(session);
       
-      if (event === 'PASSWORD_RECOVERY') setIsRecoveryMode(true);
+      if (event === 'PASSWORD_RECOVERY') {
+          setIsRecoveryMode(true);
+      }
 
        if (session?.user) {
         const user = { 
@@ -126,6 +137,7 @@ const App: React.FC = () => {
         }
       } else {
         setCurrentUser(null);
+        // Do not redirect to login if we are in recovery mode or special routes
         if (!isRecoveryMode && routeRef.current !== '/signup' && routeRef.current !== '/forgot-password') {
           setRoute('/login');
         }

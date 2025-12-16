@@ -26,12 +26,15 @@ export const ForgotPasswordPage: React.FC<ForgotPasswordPageProps> = ({ onNaviga
 
     const error = await supabaseService.sendPasswordResetEmail(email);
     
+    setIsLoading(false);
+
     if (error) {
       setMessage({ type: 'error', text: error });
     } else {
-      setMessage({ type: 'success', text: "Check your email for the password reset link." });
+      // Success! Notify and navigate back to login immediately
+      window.alert("Password reset link sent! Please check your email.");
+      onNavigateToLogin();
     }
-    setIsLoading(false);
   };
 
   return (
@@ -57,7 +60,7 @@ export const ForgotPasswordPage: React.FC<ForgotPasswordPageProps> = ({ onNaviga
               value={email}
               onChange={(e) => setEmail(e.target.value)}
               required
-              disabled={isLoading || message?.type === 'success'}
+              disabled={isLoading}
             />
           </div>
         </div>
@@ -77,7 +80,7 @@ export const ForgotPasswordPage: React.FC<ForgotPasswordPageProps> = ({ onNaviga
         <div>
           <button
             type="submit"
-            disabled={isLoading || message?.type === 'success'}
+            disabled={isLoading}
             className="w-full flex justify-center py-2.5 px-4 border border-transparent rounded-lg shadow-sm text-sm font-medium text-white bg-brand-blue-600 hover:bg-brand-blue-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-brand-blue-500 transition disabled:bg-brand-blue-300"
           >
             {isLoading ? 'Sending...' : 'Send Reset Link'}

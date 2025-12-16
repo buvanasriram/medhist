@@ -1,6 +1,6 @@
 
 import { createClient } from '@supabase/supabase-js';
-import type { Session, SupabaseClient } from '@supabase/supabase-js';
+import type { SupabaseClient } from '@supabase/supabase-js';
 import type { FamilyMember, TimelineEntry, ReportFile, Medication, ExtractedMedication } from '../types';
 import { base64ToBlob } from '../utils/fileUtils';
 import { CREDENTIALS } from '../credentials';
@@ -52,6 +52,9 @@ try {
 export const isMock = isMockMode;
 export const supabase = supabaseClient;
 
+// Define Session type as any since it might not be exported in the installed version
+export type Session = any;
+
 // --- MOCK DATA ---
 const MOCK_USER_ID = 'mock-user-123';
 const MOCK_FAMILY_ID = 'mock-family-999';
@@ -62,28 +65,34 @@ let mockSession: Session | null = null;
 export const getSession = async (): Promise<Session | null> => {
     if (isMock) return mockSession;
     try {
-        const { data, error } = await supabase!.auth.getSession();
-        
-        if (error) {
-            console.warn("[medHist] Session invalid, clearing local state:", error.message);
-            try {
-                await supabase!.auth.signOut();
-            } catch (soError) {
-                console.warn("[medHist] Force signOut failed (expected):", soError);
-            }
-            return null;
+        const auth = (supabase!.auth as any);
+        // Handle both v1 (session()) and v2 (getSession()) if needed, or rely on any cast
+        if (auth.getSession) {
+             const { data, error } = await auth.getSession();
+             if (error) {
+                 console.warn("[medHist] Session invalid, clearing local state:", error.message);
+                 try {
+                     if (auth.signOut) await auth.signOut();
+                 } catch (soError) {
+                     console.warn("[medHist] Force signOut failed (expected):", soError);
+                 }
+                 return null;
+             }
+             return data.session;
+        } else if (auth.session) {
+             return auth.session();
         }
-        return data.session;
+        return null;
     } catch (e) {
         console.error("[medHist] Unexpected session error:", e);
-        try { await supabase!.auth.signOut(); } catch {}
+        try { await (supabase!.auth as any).signOut(); } catch {}
         return null;
     }
 };
 
 export const onAuthStateChange = (callback: (event: string, session: Session | null) => void) => {
     if (isMock) return { data: { subscription: { unsubscribe: () => {} } } };
-    return supabase!.auth.onAuthStateChange(callback);
+    return (supabase!.auth as any).onAuthStateChange(callback);
 };
 
 export const signUp = async (name: string, email: string, password: string, familyInput: { isJoin: boolean, value: string }): Promise<string|null> => {
@@ -98,9 +107,11 @@ export const signUp = async (name: string, email: string, password: string, fami
     }
 
     let userId = '';
+    const auth = (supabase!.auth as any);
     
     // 1. Attempt Sign Up
-    const { data: authData, error: authError } = await supabase!.auth.signUp({
+    // Use v2 style but cast to any
+    const { data: authData, error: authError } = await auth.signUp({
         email,
         password,
         options: { data: { full_name: name } }
@@ -111,10 +122,17 @@ export const signUp = async (name: string, email: string, password: string, fami
         if (authError.message.toLowerCase().includes("already registered")) {
             console.log('[medHist] User exists. Attempting to log in with provided password...');
             
-            const { data: loginData, error: loginError } = await supabase!.auth.signInWithPassword({
-                email,
-                password
-            });
+            // Try v2 signInWithPassword, fallback to v1 signIn
+            let loginData, loginError;
+            if (auth.signInWithPassword) {
+                 const res = await auth.signInWithPassword({ email, password });
+                 loginData = res.data;
+                 loginError = res.error;
+            } else {
+                 const res = await auth.signIn({ email, password });
+                 loginData = res; // v1 returns { user, session, error } at top level
+                 loginError = res.error;
+            }
 
             if (loginError) {
                  console.warn('[medHist] Auto-login failed:', loginError.message);
@@ -132,8 +150,8 @@ export const signUp = async (name: string, email: string, password: string, fami
             return authError.message;
         }
     } else {
-        if (!authData.user) return "Signup failed: No user created.";
-        userId = authData.user.id;
+        if (!authData?.user && !authData?.data?.user) return "Signup failed: No user created.";
+        userId = authData.user ? authData.user.id : authData.data.user.id;
     }
 
     // 2. Check for Existing Profile (To avoid duplicate families)
@@ -217,7 +235,10 @@ export const joinExistingFamily = async (joinCode: string): Promise<void> => {
         return;
     }
 
-    const { data: { user } } = await supabase!.auth.getUser();
+    const auth = (supabase!.auth as any);
+    const userResult = auth.getUser ? await auth.getUser() : { data: { user: auth.user() } };
+    const user = userResult.data?.user || userResult.user;
+
     if (!user) throw new Error("Not authenticated");
 
     // 1. Validate Code & Get New Family ID
@@ -267,37 +288,67 @@ export const signIn = async (email: string, password: string): Promise<string|nu
         mockSession = { user: { id: MOCK_USER_ID, email, user_metadata: { full_name: 'Demo User' } } } as any;
         return null;
     }
-    const { error } = await supabase!.auth.signInWithPassword({ email, password });
+    const auth = (supabase!.auth as any);
+    let error;
+    if (auth.signInWithPassword) {
+         const res = await auth.signInWithPassword({ email, password });
+         error = res.error;
+    } else {
+         const res = await auth.signIn({ email, password });
+         error = res.error;
+    }
     return error ? error.message : null;
 };
 
 export const signOut = async (): Promise<void> => {
     if (isMock) mockSession = null;
-    else await supabase!.auth.signOut();
+    else await (supabase!.auth as any).signOut();
 };
 
 export const sendPasswordResetEmail = async (email: string): Promise<string | null> => {
     if (isMock) return null;
     
-    // Ensure the redirect URL is clean and valid.
-    // If testing on localhost, this will be http://localhost:PORT
-    // If on Vercel, this will be https://your-app.vercel.app
     let redirectTo = window.location.origin;
+    if (window.location.hostname.includes('vercel.app')) {
+        redirectTo = 'https://medhist.vercel.app';
+    }
+
     if (redirectTo.endsWith('/')) {
         redirectTo = redirectTo.slice(0, -1);
     }
 
     console.log(`[medHist] Sending password reset for ${email} with redirect: ${redirectTo}`);
 
-    const { error } = await supabase!.auth.resetPasswordForEmail(email, {
-        redirectTo: redirectTo, 
-    });
+    const auth = (supabase!.auth as any);
+    let error;
+    
+    if (auth.resetPasswordForEmail) {
+        const res = await auth.resetPasswordForEmail(email, { redirectTo });
+        error = res.error;
+    } else if (auth.api && auth.api.resetPasswordForEmail) {
+        const res = await auth.api.resetPasswordForEmail(email, { redirectTo });
+        error = res.error;
+    } else {
+        return "Password reset not supported in this version.";
+    }
+
     return error ? error.message : null;
 };
 
 export const updatePassword = async (newPassword: string): Promise<string | null> => {
     if (isMock) return null;
-    const { error } = await supabase!.auth.updateUser({ password: newPassword });
+    
+    const auth = (supabase!.auth as any);
+    let error;
+
+    if (auth.updateUser) {
+        const res = await auth.updateUser({ password: newPassword });
+        error = res.error;
+    } else if (auth.update) {
+        const res = await auth.update({ password: newPassword });
+        error = res.error;
+    }
+
     return error ? error.message : null;
 };
 
@@ -414,7 +465,10 @@ export const getUserData = async (userId: string): Promise<{
 export const addFamilyMember = async (details: { name: string, relationship: string, dob?: string }): Promise<FamilyMember> => {
     if (isMock) return { id: 'mock', family_id: MOCK_FAMILY_ID, ...details };
 
-    const { data: { user } } = await supabase!.auth.getUser();
+    const auth = (supabase!.auth as any);
+    const userResult = auth.getUser ? await auth.getUser() : { data: { user: auth.user() } };
+    const user = userResult.data?.user || userResult.user;
+
     const { data: profile } = await supabase!.from('profiles').select('family_id').eq('id', user!.id).maybeSingle();
 
     if (!profile) throw new Error("Profile not found. Cannot add member.");
@@ -437,7 +491,9 @@ export const addFamilyMember = async (details: { name: string, relationship: str
 export const addTimelineEntry = async (entryData: any, fileData: any, extractedMeds: ExtractedMedication[] = []): Promise<TimelineEntry> => {
     if (isMock) return { id: 'mock-entry', ...entryData };
 
-    const { data: { user } } = await supabase!.auth.getUser();
+    const auth = (supabase!.auth as any);
+    const userResult = auth.getUser ? await auth.getUser() : { data: { user: auth.user() } };
+    const user = userResult.data?.user || userResult.user;
     
     // 1. Insert Metadata
     const { data: newEntry, error: entryError } = await supabase!
