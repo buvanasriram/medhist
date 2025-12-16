@@ -15,22 +15,26 @@
     "strict": true,
     "noUnusedLocals": false,
     "noUnusedParameters": false,
-    "noFallthroughCasesInSwitch": true
+    "noFallthroughCasesInSwitch": true,
+    "baseUrl": ".",
+    "rootDir": "."
   },
   "include": [
-    "index.tsx",
-    "App.tsx",
-    "types.ts",
-    "credentials.ts",
-    "vite-env.d.ts",
-    "components/**/*",
-    "services/**/*",
-    "utils/**/*"
+    "./index.tsx",
+    "./App.tsx",
+    "./types.ts",
+    "./credentials.ts",
+    "./vite-env.d.ts",
+    "./setupTests.ts",
+    "./components/**/*",
+    "./services/**/*",
+    "./utils/**/*"
   ],
   "exclude": [
-    "src", 
-    "node_modules", 
-    "dist", 
+    "src",
+    "./src",
+    "node_modules",
+    "dist",
     "e2e", 
     "scripts",
     "**/*.spec.ts",
