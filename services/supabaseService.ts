@@ -108,18 +108,15 @@ export const signUp = async (name: string, email: string, password: string, fami
 
     if (authError) {
         // Handle "User already registered" error gracefully
-        // Supabase error message may vary slightly, checking for "already registered" is usually safe
         if (authError.message.toLowerCase().includes("already registered")) {
             console.log('[medHist] User exists. Attempting to log in with provided password...');
             
-            // Attempt to sign in with the provided password
             const { data: loginData, error: loginError } = await supabase!.auth.signInWithPassword({
                 email,
                 password
             });
 
             if (loginError) {
-                 // Password was wrong or other login error
                  console.warn('[medHist] Auto-login failed:', loginError.message);
                  return "An account with this email already exists. Please log in.";
             }
@@ -207,8 +204,6 @@ export const signUp = async (name: string, email: string, password: string, fami
 
     } catch (err: any) {
         console.error("[medHist] Process Aborted:", err.message);
-        // If we just created the auth user but failed DB setup, we sign them out so they can try again.
-        // However, if we auto-logged in an existing user and failed (e.g. invalid join code), we should also sign out.
         await signOut();
         return err.message;
     }
@@ -283,8 +278,19 @@ export const signOut = async (): Promise<void> => {
 
 export const sendPasswordResetEmail = async (email: string): Promise<string | null> => {
     if (isMock) return null;
+    
+    // Ensure the redirect URL is clean and valid.
+    // If testing on localhost, this will be http://localhost:PORT
+    // If on Vercel, this will be https://your-app.vercel.app
+    let redirectTo = window.location.origin;
+    if (redirectTo.endsWith('/')) {
+        redirectTo = redirectTo.slice(0, -1);
+    }
+
+    console.log(`[medHist] Sending password reset for ${email} with redirect: ${redirectTo}`);
+
     const { error } = await supabase!.auth.resetPasswordForEmail(email, {
-        redirectTo: window.location.origin, 
+        redirectTo: redirectTo, 
     });
     return error ? error.message : null;
 };

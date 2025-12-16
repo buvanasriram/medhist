@@ -1,5 +1,5 @@
 
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { AuthLayout } from './AuthLayout';
 import { MailIcon } from '../icons/MailIcon';
 import * as supabaseService from '../../services/supabaseService';
@@ -12,6 +12,12 @@ export const ForgotPasswordPage: React.FC<ForgotPasswordPageProps> = ({ onNaviga
   const [email, setEmail] = useState('');
   const [isLoading, setIsLoading] = useState(false);
   const [message, setMessage] = useState<{ type: 'success' | 'error', text: string } | null>(null);
+  const [redirectUrl, setRedirectUrl] = useState('');
+
+  useEffect(() => {
+    // Show the user where the link will take them (localhost vs production)
+    setRedirectUrl(window.location.origin);
+  }, []);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -54,6 +60,12 @@ export const ForgotPasswordPage: React.FC<ForgotPasswordPageProps> = ({ onNaviga
               disabled={isLoading || message?.type === 'success'}
             />
           </div>
+        </div>
+
+        {/* Helper text for the user to understand redirect behavior */}
+        <div className="text-xs text-slate-500 bg-slate-50 p-2 rounded border border-slate-100">
+           The secure link sent to your email will redirect you to: <br/>
+           <span className="font-mono text-brand-blue-600 font-medium break-all">{redirectUrl}</span>
         </div>
 
         {message && (
