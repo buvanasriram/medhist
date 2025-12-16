@@ -1,3 +1,4 @@
+
 import React from 'react';
 import ReactDOM from 'react-dom/client';
 import App from './App';
@@ -6,7 +7,11 @@ import { pdfjs } from 'react-pdf';
 // Configure the pdf.js worker globally.
 // We use the `pdfjs.version` property to dynamically ensure the worker URL 
 // matches the installed API version exactly, preventing version mismatch errors.
-pdfjs.GlobalWorkerOptions.workerSrc = `https://unpkg.com/pdfjs-dist@${pdfjs.version}/build/pdf.worker.min.mjs`;
+try {
+  pdfjs.GlobalWorkerOptions.workerSrc = `https://unpkg.com/pdfjs-dist@${pdfjs.version}/build/pdf.worker.min.mjs`;
+} catch (error) {
+  console.warn("Failed to configure PDF worker:", error);
+}
 
 const rootElement = document.getElementById('root');
 if (!rootElement) {

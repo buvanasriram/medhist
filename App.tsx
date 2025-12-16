@@ -37,23 +37,58 @@ const App: React.FC = () => {
   const isSigningUpRef = useRef<boolean>(false);
   const routeRef = useRef(route);
   
+  // Lock to prevent overlapping data loads
+  const isLoadingDataRef = useRef<boolean>(false);
+  
   useEffect(() => {
     routeRef.current = route;
   }, [route]);
 
+  // Safety Timeout: Force stop loading after 8 seconds if something hangs
+  useEffect(() => {
+    if (isLoading) {
+      const timer = setTimeout(() => {
+        if (isLoading) {
+           console.warn("[App] Safety Timeout triggered: Forcing isLoading to false.");
+           setIsLoading(false);
+           if (!currentUser && !session && route !== '/signup') {
+               // If we timed out and have no user, probably safe to show login
+               setRoute('/login');
+           }
+        }
+      }, 8000); // 8 seconds max load time
+      return () => clearTimeout(timer);
+    }
+  }, [isLoading, currentUser, session, route]);
+
   // Load User Data Logic
   const loadUserData = async (userId: string) => {
+      if (isLoadingDataRef.current) {
+          console.warn("[App] Data load skipped because one is already in progress.");
+          return;
+      }
+      
+      isLoadingDataRef.current = true;
+      console.log("[App] loadUserData STARTED for:", userId);
       setDataLoadError(null);
+      
       try {
           const data = await supabaseService.getUserData(userId);
+          console.log("[App] Data received from service:", { 
+              members: data.familyMembers.length, 
+              entries: data.timelineEntries.length 
+          });
           
           setFamilyMembers(data.familyMembers);
           setTimelineEntries(data.timelineEntries);
           setMedications(data.medications);
           setFamilyInfo(data.familyInfo);
       } catch (e: any) {
-          console.error("Failed to load user data:", e);
+          console.error("[App] Failed to load user data:", e);
           setDataLoadError(e.message || "Failed to load your profile.");
+      } finally {
+          console.log("[App] loadUserData FINISHED");
+          isLoadingDataRef.current = false;
       }
   };
 
@@ -61,14 +96,13 @@ const App: React.FC = () => {
     let mounted = true;
 
     // 1. Explicit Hash Check for Recovery (Critical for Vercel/Prod)
-    // Supabase sends the user back with #access_token=...&type=recovery
-    // We detect this immediately to ensure we show the UpdatePasswordPage
     if (window.location.hash && window.location.hash.includes('type=recovery')) {
         console.log("[App] Recovery mode detected via URL hash");
         setIsRecoveryMode(true);
     }
 
     const checkSession = async () => {
+      console.log("[App] Checking Session...");
       try {
         const currentSession = await supabaseService.getSession();
         if (!mounted) return;
@@ -76,6 +110,7 @@ const App: React.FC = () => {
         setSession(currentSession);
         
         if (currentSession?.user) {
+          console.log("[App] Session Valid:", currentSession.user.email);
           const user = { 
             id: currentSession.user.id, 
             name: currentSession.user.user_metadata?.full_name || currentSession.user.email,
@@ -86,6 +121,7 @@ const App: React.FC = () => {
           
           // Only attempt data load if not on signup page
           if(routeRef.current !== '/signup') {
+             // We await this, but the safety timeout above protects us if it hangs
              await loadUserData(user.id);
           }
 
@@ -93,6 +129,7 @@ const App: React.FC = () => {
                setRoute('/');
           }
         } else {
+            console.log("[App] No session found");
             if (mounted && routeRef.current !== '/signup') {
                 setRoute('/login');
             }
@@ -100,7 +137,10 @@ const App: React.FC = () => {
       } catch (err) {
           console.error("Session check failed:", err);
       } finally {
-          if (mounted) setIsLoading(false);
+          if (mounted) {
+              console.log("[App] checkSession completed, setting isLoading=false");
+              setIsLoading(false);
+          }
       }
     };
     
@@ -123,10 +163,9 @@ const App: React.FC = () => {
         };
         setCurrentUser(user);
         
-        // CRITICAL FIX: Only auto-load data if we are NOT in the middle of a signup flow.
-        // During signup, the profile might not exist yet when this event fires.
-        // We let handleSignup() take care of loading data after it confirms profile creation.
+        // CRITICAL: Only auto-load data if we are NOT in the middle of a signup flow.
         if (event === 'SIGNED_IN' && !isSigningUpRef.current) {
+            console.log("[App] Auto-loading data on SIGNED_IN event");
             await loadUserData(user.id);
         } else if (event === 'SIGNED_IN' && isSigningUpRef.current) {
             console.log("Skipping auto-load during signup to prevent race condition.");
@@ -137,7 +176,6 @@ const App: React.FC = () => {
         }
       } else {
         setCurrentUser(null);
-        // Do not redirect to login if we are in recovery mode or special routes
         if (!isRecoveryMode && routeRef.current !== '/signup' && routeRef.current !== '/forgot-password') {
           setRoute('/login');
         }
@@ -157,7 +195,6 @@ const App: React.FC = () => {
         setIsLoading(false);
         return error;
     }
-    // Auth state listener will handle redirection
     return null;
   };
 
@@ -171,10 +208,8 @@ const App: React.FC = () => {
             return error;
         }
         
-        // Wait briefly for DB consistency (optional but safer)
         await new Promise(resolve => setTimeout(resolve, 500));
         
-        // Manual Data Load: Now we know the profile exists!
         const session = await supabaseService.getSession();
         if (session?.user) {
              const user = { 

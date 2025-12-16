@@ -352,6 +352,75 @@ export const updatePassword = async (newPassword: string): Promise<string | null
     return error ? error.message : null;
 };
 
+export const updateUserEmail = async (newEmail: string): Promise<string | null> => {
+    if (isMock) return null;
+    
+    const auth = (supabase!.auth as any);
+    let error;
+    
+    console.log("[medHist] Updating email to:", newEmail);
+
+    if (auth.updateUser) {
+        const res = await auth.updateUser({ email: newEmail });
+        error = res.error;
+    } else if (auth.update) {
+        const res = await auth.update({ email: newEmail });
+        error = res.error;
+    }
+
+    return error ? error.message : null;
+};
+
+export const updateFamilyMember = async (
+    memberId: string, 
+    updates: { name: string, relationship: string, dob?: string }
+): Promise<void> => {
+    if (isMock) return;
+
+    // 1. Update the family_members table
+    const { error } = await supabase!
+        .from('family_members')
+        .update({
+            name: updates.name,
+            relationship: updates.relationship,
+            dob: updates.dob || null
+        })
+        .eq('id', memberId);
+
+    if (error) throw new Error(error.message);
+
+    // 2. Check if this member is the current logged-in user (Self)
+    // If so, we should also update the User Metadata so the Header name updates
+    const { data: member } = await supabase!
+        .from('family_members')
+        .select('linked_user_id')
+        .eq('id', memberId)
+        .single();
+
+    if (member?.linked_user_id) {
+        const auth = (supabase!.auth as any);
+        const userResult = auth.getUser ? await auth.getUser() : { data: { user: auth.user() } };
+        const currentUser = userResult.data?.user || userResult.user;
+
+        if (currentUser && currentUser.id === member.linked_user_id) {
+            console.log("[medHist] Updating Auth Metadata for Self user...");
+            
+            // Update auth metadata
+            if (auth.updateUser) {
+                await auth.updateUser({ data: { full_name: updates.name } });
+            } else if (auth.update) {
+                 await auth.update({ data: { full_name: updates.name } });
+            }
+            
+            // Also update the 'profiles' table for consistency
+             await supabase!
+                .from('profiles')
+                .update({ full_name: updates.name })
+                .eq('id', currentUser.id);
+        }
+    }
+};
+
 // --- DATA FUNCTIONS ---
 
 export const getUserData = async (userId: string): Promise<{ 
@@ -375,6 +444,7 @@ export const getUserData = async (userId: string): Promise<{
     let profile = null;
     let attempts = 0;
     while (attempts < 5) {
+        console.log(`[medHist] DB: Fetching profile (attempt ${attempts + 1})...`);
         const { data, error } = await supabase!
             .from('profiles')
             .select('family_id, full_name')
@@ -383,10 +453,14 @@ export const getUserData = async (userId: string): Promise<{
             
         if (data) {
             profile = data;
+            console.log('[medHist] DB: Profile found.');
             break;
         }
+        if (error) {
+            console.error(`[medHist] Profile fetch error:`, error.message);
+        }
         
-        console.warn(`[medHist] Profile fetch attempt ${attempts + 1} failed/empty. Retrying...`);
+        console.warn(`[medHist] Profile not found or null. Retrying...`);
         attempts++;
         await new Promise(r => setTimeout(r, 800)); // Wait 800ms
     }
@@ -400,56 +474,82 @@ export const getUserData = async (userId: string): Promise<{
     console.log('[medHist] Found Family ID:', familyId);
 
     // 2. Fetch Family Details
-    const { data: familyInfoData } = await supabase!
+    console.log('[medHist] DB: Fetching families table...');
+    const { data: familyInfoData, error: famError } = await supabase!
         .from('families')
         .select('name, join_code')
         .eq('id', familyId)
         .maybeSingle();
 
+    if (famError) console.error('[medHist] Family Info Error:', famError);
+    if (familyInfoData) console.log('[medHist] Family Info loaded:', familyInfoData.name);
+    else console.log('[medHist] No Family Info found (might be null).');
+
     // 3. Fetch Members with Smart Wait
+    console.log('[medHist] DB: Fetching family_members...');
     let familyMembers: FamilyMember[] = [];
     let memberAttempts = 0;
     
-    while(memberAttempts < 5) {
+    // Reduced retry count and duration to prevent long hangs
+    while(memberAttempts < 3) {
+         console.log(`[medHist] Member query attempt ${memberAttempts + 1}...`);
          const { data, error } = await supabase!
             .from('family_members')
             .select('*')
             .eq('family_id', familyId);
             
-         if(error) console.error("Member fetch error:", error);
+         if(error) {
+             console.error("[medHist] Member fetch error:", error);
+         }
          
          if(data && data.length > 0) {
+             console.log(`[medHist] Found ${data.length} members.`);
              familyMembers = data;
              break;
          }
          
-         console.log(`[medHist] No members found (Attempt ${memberAttempts+1}). Waiting for DB...`);
+         console.log(`[medHist] No members found (Attempt ${memberAttempts+1}). Waiting 300ms...`);
          memberAttempts++;
-         await new Promise(r => setTimeout(r, 1000));
+         await new Promise(r => setTimeout(r, 300)); // Very short wait
     }
 
     const memberIds = familyMembers.map(m => m.id);
+    console.log(`[medHist] Member IDs extracted:`, memberIds);
 
     // 4. Fetch Entries & Medications
     let timelineEntries: TimelineEntry[] = [];
     let medications: Medication[] = [];
 
     if (memberIds.length > 0) {
-        const { data: entriesData } = await supabase!
+        console.log('[medHist] DB: Fetching Timeline & Medications...');
+        
+        const { data: entriesData, error: entriesError } = await supabase!
             .from('timeline_entries')
             .select('*')
             .in('family_member_id', memberIds)
             .order('date', { ascending: false });
 
-        if (entriesData) timelineEntries = entriesData;
+        if (entriesError) console.error('[medHist] Timeline fetch error:', entriesError);
+        if (entriesData) {
+            console.log(`[medHist] Loaded ${entriesData.length} timeline entries.`);
+            timelineEntries = entriesData;
+        }
 
-        const { data: medsData } = await supabase!
+        const { data: medsData, error: medsError } = await supabase!
             .from('medications')
             .select('*')
             .in('family_member_id', memberIds);
-            
-        if (medsData) medications = medsData;
+
+        if (medsError) console.error('[medHist] Meds fetch error:', medsError);
+        if (medsData) {
+            console.log(`[medHist] Loaded ${medsData.length} medications.`);
+            medications = medsData;
+        }
+    } else {
+        console.log('[medHist] No members to fetch data for.');
     }
+
+    console.log('[medHist] Data Fetch Process Completed.');
 
     return {
         familyMembers,

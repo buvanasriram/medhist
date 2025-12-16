@@ -1,13 +1,18 @@
+
 <!DOCTYPE html>
 <html lang="en">
   <head>
     <meta charset="UTF-8" />
-    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" />
+    <meta name="theme-color" content="#0f7ef1" />
+    <meta name="apple-mobile-web-app-capable" content="yes" />
+    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
     <title>medHist: Your Family's Medical Timeline</title>
+    <link rel="icon" type="image/svg+xml" href="/medhist-logo.svg" />
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
-    <!-- Updated CSS paths: Removed '/esm/' to point to standard dist files -->
+    <!-- Updated CSS paths -->
     <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/react-pdf@10.2.0/dist/Page/AnnotationLayer.css">
     <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/react-pdf@10.2.0/dist/Page/TextLayer.css">
     <script src="https://cdn.tailwindcss.com"></script>
@@ -17,8 +22,7 @@
         window.process = { env: {} };
       }
 
-      // This Tailwind config is great for development. For production, you'd typically
-      // use Tailwind as a PostCSS plugin as part of your build process.
+      // Tailwind config
       tailwind.config = {
         theme: {
           extend: {
@@ -64,12 +68,15 @@
     "path": "https://esm.sh/path@^0.12.7",
     "fs": "https://esm.sh/fs@^0.0.1-security",
     "vitest/": "https://esm.sh/vitest@^4.0.15/",
-    "@testing-library/jest-dom": "https://esm.sh/@testing-library/jest-dom@^6.9.1"
+    "@testing-library/jest-dom": "https://esm.sh/@testing-library/jest-dom@^6.9.1",
+    "jspdf": "https://esm.sh/jspdf@2.5.1",
+    "jspdf-autotable": "https://esm.sh/jspdf-autotable@3.8.2",
+    "vite-plugin-pwa": "https://esm.sh/vite-plugin-pwa@^1.2.0"
   }
 }
 </script>
 </head>
-  <body class="bg-slate-50 antialiased">
+  <body class="bg-slate-50 antialiased overscroll-none">
     <div id="root"></div>
     <script type="module" src="./index.tsx"></script>
   </body>

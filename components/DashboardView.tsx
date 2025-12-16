@@ -1,21 +1,26 @@
 
-import React, { useState, useMemo } from 'react';
+import React, { useState, useMemo, Suspense } from 'react';
 import { Header } from './Header';
 import { MemberCard } from './MemberCard';
 import { MedicationManager } from './MedicationManager';
 import { AddMemberModal } from './AddMemberModal';
+import { EditMemberModal } from './EditMemberModal';
 import { InviteSuccessModal } from './InviteSuccessModal';
-import { ReportViewerModal } from './ReportViewerModal';
 import { PlusIcon } from './icons/PlusIcon';
 import { KeyIcon } from './icons/KeyIcon';
 import { UsersIcon } from './icons/UsersIcon';
 import { UserIcon } from './icons/UserIcon';
 import { BellIcon } from './icons/BellIcon';
-import { CalendarIcon } from './icons/CalendarIcon';
 import { ArrowRightIcon } from './icons/ArrowRightIcon';
+import { SpinnerIcon } from './icons/SpinnerIcon';
 import { HealthAssistant } from './HealthAssistant';
 import type { User, FamilyMember, TimelineEntry, Medication, ReportFile } from '../types';
 import * as supabaseService from '../services/supabaseService';
+
+// Lazy load the heavy PDF viewer component
+const ReportViewerModal = React.lazy(() => 
+  import('./ReportViewerModal').then(module => ({ default: module.ReportViewerModal }))
+);
 
 interface DashboardViewProps {
     user: User;
@@ -60,10 +65,14 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
     const [showInviteModal, setShowInviteModal] = useState(false);
     const [showAddMemberModal, setShowAddMemberModal] = useState(false);
     const [managingMedsMemberId, setManagingMedsMemberId] = useState<string | null>(null);
+    const [editingMemberId, setEditingMemberId] = useState<string | null>(null);
     
     // Viewer State
     const [isViewerOpen, setViewerOpen] = useState(false);
     const [reportToView, setReportToView] = useState<{ url: string, file: ReportFile } | null>(null);
+    
+    // PDF Gen State
+    const [generatingPdfMemberId, setGeneratingPdfMemberId] = useState<string | null>(null);
 
     const getLastCheckup = (memberId: string) => {
         const memberEntries = timelineEntries
@@ -139,6 +148,27 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
         } catch (error) {
             console.error('Error viewing report', error);
             alert('Error loading file.');
+        }
+    };
+
+    const handleDownloadBrief = async (memberId: string) => {
+        const member = familyMembers.find(m => m.id === memberId);
+        if (!member) return;
+
+        setGeneratingPdfMemberId(memberId);
+        try {
+            // Dynamic Import to completely isolate the PDF generator dependency
+            const { generateDoctorBrief } = await import('../utils/pdfGenerator');
+            
+            const memberMeds = medications.filter(m => m.family_member_id === memberId);
+            const memberEntries = timelineEntries.filter(e => e.family_member_id === memberId);
+            
+            await generateDoctorBrief(member, memberMeds, memberEntries);
+        } catch (e) {
+            console.error("Failed to load PDF generator:", e);
+            alert("Failed to initialize PDF generator. Please try again.");
+        } finally {
+            setGeneratingPdfMemberId(null);
         }
     };
 
@@ -236,8 +266,11 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
                                 lastCheckupDate={getLastCheckup(member.id)}
                                 medications={getActiveMemberMeds(member.id)}
                                 isMe={member.linked_user_id === user.id}
+                                isGeneratingPdf={generatingPdfMemberId === member.id}
                                 onSelect={() => onSelectMember(member.id)}
                                 onManageMeds={() => setManagingMedsMemberId(member.id)}
+                                onDownloadBrief={() => handleDownloadBrief(member.id)}
+                                onEdit={() => setEditingMemberId(member.id)}
                             />
                         ))}
                     </div>
@@ -257,6 +290,16 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
                     isOpen={showAddMemberModal} 
                     onClose={() => setShowAddMemberModal(false)} 
                     onAddMember={handleAddMember} 
+                />
+            )}
+            
+            {editingMemberId && (
+                <EditMemberModal
+                    isOpen={!!editingMemberId}
+                    onClose={() => setEditingMemberId(null)}
+                    member={familyMembers.find(m => m.id === editingMemberId)!}
+                    currentUser={user}
+                    onUpdate={onRefreshData}
                 />
             )}
 
@@ -284,15 +327,24 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
             )}
 
             {isViewerOpen && reportToView && (
+              <Suspense fallback={
+                <div className="fixed inset-0 z-50 flex items-center justify-center bg-black bg-opacity-60">
+                  <div className="bg-white p-4 rounded-lg flex items-center gap-3">
+                     <SpinnerIcon className="w-6 h-6 animate-spin text-brand-blue-600" />
+                     <span className="text-slate-700 font-medium">Loading Viewer...</span>
+                  </div>
+                </div>
+              }>
                 <ReportViewerModal 
                     isOpen={isViewerOpen} 
                     onClose={() => { setViewerOpen(false); setReportToView(null); }} 
                     report={reportToView} 
                 />
+              </Suspense>
             )}
 
             <footer className="py-6 text-center text-slate-400 text-sm border-t border-slate-200 mt-auto bg-white">
-                <p>© {new Date().getFullYear()} medHist. v0.4.0</p>
+                <p>© {new Date().getFullYear()} medHist. v0.4.5</p>
             </footer>
         </div>
     );

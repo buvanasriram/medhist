@@ -1,29 +1,37 @@
 
-# medHist: Your Family's Medical Timeline (v0.4.5)
+# medHist: Your Family's Medical Timeline (v0.5.0)
 
 medHist is a secure, family-focused web application that allows families to upload medical reports (PDFs/images). It uses Google Gemini AI to automatically extract key details (diagnosis, doctor, date, medications, appointments) and creates a chronological clinical timeline for every family member.
 
-## Project Status: v0.4.5
+## Project Status: v0.5.0
 *   **Architecture**: Family Group Model (Multi-tenant).
-*   **New Features**: AI Health Assistant, Doctor Visit Organizer, Secure Sharing, Enhanced Onboarding.
+*   **New Features**: **Progressive Web App (PWA)**, Profile & Email Editing, AI Health Assistant.
 *   **Status**: Stable release.
 
 ## Features
 
+### 📱 Mobile Experience (New in v0.5.0)
+*   **Installable App**: Works as a native app on iOS and Android via PWA technology.
+*   **Offline Ready**: Caches core assets so the app loads instantly, even with spotty connection.
+*   **Home Screen Icon**: Dedicated app icon for quick access.
+
+### 👤 Profile Management (New in v0.5.0)
+*   **Edit Details**: Update names, relationships, and birth dates for any family member.
+*   **Email Update**: Securely update your login email address (with confirmation flow).
+
 ### 🧠 AI & Automation
-*   **AI Health Assistant (New)**: A conversational chat interface that knows your family's medical history. Ask "What meds is Dad on?" or "Show me Mom's last blood test."
-*   **Smart Report Extraction**: Automatic extraction of Summary, Doctor, Date, Medications, and **Follow-up Appointments**.
-*   **Medication Intelligence**: Auto-detects dosage, frequency, start dates, and infers the medical purpose (e.g., "for Hypertension").
+*   **AI Health Assistant**: A conversational chat interface that knows your family's medical history.
+*   **Smart Report Extraction**: Automatic extraction of Summary, Doctor, Date, Medications, and Follow-up Appointments.
+*   **Medication Intelligence**: Auto-detects dosage, frequency, and infers medical purpose.
 
 ### 🏥 Clinical Management
-*   **Doctor Visit Organizer (New)**: Dedicated "Visits" tab in timeline to track consultations and prescriptions.
-*   **Appointment Reminders (New)**: Dashboard alerts for upcoming follow-up visits detected from reports.
-*   **Secure Sharing (New)**: Generate 24-hour secure links to share specific reports with doctors via text/email.
+*   **Doctor Visit Organizer**: Dedicated "Visits" tab in timeline to track consultations.
+*   **Appointment Reminders**: Dashboard alert section showing upcoming visits.
+*   **Secure Sharing**: Generate 24-hour secure links to share specific reports.
 
 ### 🏠 Family Hub
-*   **Family Health Board**: At-a-glance dashboard showing status, age, and active meds for all members.
+*   **Family Health Board**: At-a-glance dashboard showing status, age, and active meds.
 *   **Medication Manager**: Track active vs. stopped medications with history view.
-*   **Global Search**: Instantly find reports by keyword, doctor, or type.
 
 ## Environment Variables
 
@@ -87,7 +95,7 @@ npm run test:e2e
 ## Tech Stack
 
 *   **Frontend**: React, TypeScript, Vite, Tailwind CSS
+*   **Mobile/PWA**: Vite PWA Plugin, Service Workers
 *   **AI**: Google Gemini API (`@google/genai`)
 *   **Backend/Auth/Storage**: Supabase
 *   **PDF Handling**: React-PDF, PDF.js
-*   **Testing**: Vitest (Unit), Playwright (E2E)
