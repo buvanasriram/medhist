@@ -6,6 +6,7 @@ import { MedicationManager } from './MedicationManager';
 import { AddMemberModal } from './AddMemberModal';
 import { InviteSuccessModal } from './InviteSuccessModal';
 import { ReportViewerModal } from './ReportViewerModal';
+import { JoinFamilyModal } from './JoinFamilyModal';
 import { PlusIcon } from './icons/PlusIcon';
 import { KeyIcon } from './icons/KeyIcon';
 import { UsersIcon } from './icons/UsersIcon';
@@ -33,6 +34,7 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
 }) => {
     const [showInviteModal, setShowInviteModal] = useState(false);
     const [showAddMemberModal, setShowAddMemberModal] = useState(false);
+    const [showJoinFamilyModal, setShowJoinFamilyModal] = useState(false);
     const [managingMedsMemberId, setManagingMedsMemberId] = useState<string | null>(null);
     
     // Viewer State
@@ -95,6 +97,13 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
             console.error("Error stopping medication:", err);
             throw err;
         }
+    };
+
+    const handleJoinFamily = async (code: string) => {
+        await supabaseService.joinExistingFamily(code);
+        setShowJoinFamilyModal(false);
+        // Refresh full page to ensure all contexts (profiles/members) update cleanly
+        window.location.reload(); 
     };
 
     const handleViewReport = async (entry: TimelineEntry) => {
@@ -165,12 +174,21 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
                     </div>
                 )}
 
-                <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center mb-8 gap-4">
+                <div className="flex flex-col md:flex-row justify-between items-start md:items-center mb-8 gap-4">
                     <div>
                         <h1 className="text-2xl font-bold text-slate-900">Family Health Board</h1>
-                        <p className="text-slate-500 flex items-center gap-2 mt-1">
-                            <UsersIcon className="w-4 h-4" /> {familyInfo?.name || "My Family"}
-                        </p>
+                        <div className="flex items-center gap-2 mt-1">
+                            <p className="text-slate-500 flex items-center gap-2">
+                                <UsersIcon className="w-4 h-4" /> {familyInfo?.name || "My Family"}
+                            </p>
+                            <span className="text-slate-300">|</span>
+                            <button 
+                                onClick={() => setShowJoinFamilyModal(true)}
+                                className="text-xs text-brand-blue-600 hover:text-brand-blue-800 font-medium underline"
+                            >
+                                Switch Family
+                            </button>
+                        </div>
                     </div>
                     <div className="flex gap-3">
                         <button 
@@ -188,7 +206,7 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
                     </div>
                 </div>
 
-                {familyMembers.length === 0 ? (
+                {!familyMembers || familyMembers.length === 0 ? (
                     <div className="text-center py-20 bg-white rounded-xl shadow-sm border border-slate-200">
                         <UserIcon className="w-16 h-16 text-slate-300 mx-auto mb-4" />
                         <h3 className="text-lg font-semibold text-slate-700">No Family Members Yet</h3>
@@ -219,7 +237,7 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
             </main>
             
             <HealthAssistant 
-                familyMembers={familyMembers}
+                familyMembers={familyMembers || []}
                 timelineEntries={timelineEntries}
                 medications={medications}
                 userName={user.name}
@@ -246,6 +264,14 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
                 />
             )}
 
+            {showJoinFamilyModal && (
+                <JoinFamilyModal
+                    isOpen={showJoinFamilyModal}
+                    onClose={() => setShowJoinFamilyModal(false)}
+                    onJoin={handleJoinFamily}
+                />
+            )}
+
             {managingMedsMemberId && (
                 <MedicationManager 
                     isOpen={!!managingMedsMemberId}
@@ -266,7 +292,7 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
             )}
 
             <footer className="py-6 text-center text-slate-400 text-sm border-t border-slate-200 mt-auto bg-white">
-                <p>© {new Date().getFullYear()} medHist. v0.4.0</p>
+                <p>© {new Date().getFullYear()} medHist. v0.4.4</p>
             </footer>
         </div>
     );

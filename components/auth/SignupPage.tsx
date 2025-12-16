@@ -96,18 +96,18 @@ export const SignupPage: React.FC<SignupPageProps> = ({ onSignup, onNavigateToLo
 
         {/* Family Setup Section */}
         <div className="bg-slate-50 p-4 rounded-lg border border-slate-200">
-            <div className="flex gap-4 mb-4">
+            <div className="flex gap-8 mb-4">
                 <button 
                     type="button"
                     onClick={() => setMode('create')}
-                    className={`flex-1 py-2 text-sm font-medium rounded-md border ${mode === 'create' ? 'bg-white border-brand-blue-500 text-brand-blue-700 shadow-sm' : 'bg-transparent border-transparent text-slate-500 hover:text-slate-700'}`}
+                    className={`flex-1 py-2 text-sm font-medium rounded-md border ${mode === 'create' ? 'bg-white border-brand-blue-600 text-brand-blue-700 shadow-md' : 'bg-transparent border-transparent text-slate-500 hover:text-slate-700'}`}
                 >
                     Create New Family
                 </button>
                 <button 
                     type="button"
                     onClick={() => setMode('join')}
-                    className={`flex-1 py-2 text-sm font-medium rounded-md border ${mode === 'join' ? 'bg-white border-brand-blue-500 text-brand-blue-700 shadow-sm' : 'bg-transparent border-transparent text-slate-500 hover:text-slate-700'}`}
+                    className={`flex-1 py-2 text-sm font-medium rounded-md border ${mode === 'join' ? 'bg-white border-brand-blue-300 text-brand-blue-700 shadow-sm' : 'bg-transparent border-transparent text-slate-500 hover:text-slate-700'}`}
                 >
                     Join Existing
                 </button>

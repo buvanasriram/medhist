@@ -12,7 +12,11 @@ import { SpinnerIcon } from './components/icons/SpinnerIcon';
 const App: React.FC = () => {
   const [session, setSession] = useState<any>(null);
   const [currentUser, setCurrentUser] = useState<User | null>(null);
-  const [route, setRoute] = useState<string>('/login');
+  
+  // Initialize route based on URL to prevent flashing wrong view on refresh
+  const [route, setRoute] = useState<string>(
+    window.location.pathname === '/signup' ? '/signup' : '/login'
+  );
   
   // Loading & Error States
   const [isLoading, setIsLoading] = useState<boolean>(true);
@@ -30,6 +34,11 @@ const App: React.FC = () => {
   const [familyInfo, setFamilyInfo] = useState<{name: string, joinCode: string} | null>(null);
 
   const isSigningUpRef = useRef<boolean>(false);
+  const routeRef = useRef(route);
+  
+  useEffect(() => {
+    routeRef.current = route;
+  }, [route]);
 
   // Load User Data Logic
   const loadUserData = async (userId: string) => {
@@ -37,11 +46,6 @@ const App: React.FC = () => {
       try {
           const data = await supabaseService.getUserData(userId);
           
-          // Safety check: If we have a user but no family members, something went wrong with the profile creation
-          if (data.familyMembers.length === 0) {
-             console.warn("User loaded but no family members found. Retrying might fix this.");
-          }
-
           setFamilyMembers(data.familyMembers);
           setTimelineEntries(data.timelineEntries);
           setMedications(data.medications);
@@ -53,34 +57,50 @@ const App: React.FC = () => {
   };
 
   useEffect(() => {
-    const checkSession = async () => {
-      const currentSession = await supabaseService.getSession();
-      setSession(currentSession);
-      if (currentSession?.user) {
-        const user = { 
-          id: currentSession.user.id, 
-          name: currentSession.user.user_metadata?.full_name || currentSession.user.email,
-          email: currentSession.user.email || ''
-        };
-        setCurrentUser(user);
-        
-        // Initial Data Load
-        await loadUserData(user.id);
+    let mounted = true;
 
-        if (window.location.pathname !== '/signup') {
-             setRoute('/');
+    const checkSession = async () => {
+      try {
+        const currentSession = await supabaseService.getSession();
+        if (!mounted) return;
+
+        setSession(currentSession);
+        
+        if (currentSession?.user) {
+          const user = { 
+            id: currentSession.user.id, 
+            name: currentSession.user.user_metadata?.full_name || currentSession.user.email,
+            email: currentSession.user.email || ''
+          };
+          
+          if(mounted) setCurrentUser(user);
+          
+          // Only attempt data load if not on signup page
+          if(routeRef.current !== '/signup') {
+             await loadUserData(user.id);
+          }
+
+          if (mounted && window.location.pathname !== '/signup') {
+               setRoute('/');
+          }
+        } else {
+            if (mounted && routeRef.current !== '/signup') {
+                setRoute('/login');
+            }
         }
-      } else {
-        if (route !== '/signup') {
-            setRoute('/login');
-        }
+      } catch (err) {
+          console.error("Session check failed:", err);
+      } finally {
+          if (mounted) setIsLoading(false);
       }
-      setIsLoading(false);
     };
+    
     checkSession();
     
     const { data: { subscription } } = supabaseService.onAuthStateChange(async (event, session) => {
+      if (!mounted) return;
       setSession(session);
+      
       if (event === 'PASSWORD_RECOVERY') setIsRecoveryMode(true);
 
        if (session?.user) {
@@ -91,26 +111,31 @@ const App: React.FC = () => {
         };
         setCurrentUser(user);
         
-        // Reload data on login
-        if (event === 'SIGNED_IN') {
-            setIsLoading(true);
+        // CRITICAL FIX: Only auto-load data if we are NOT in the middle of a signup flow.
+        // During signup, the profile might not exist yet when this event fires.
+        // We let handleSignup() take care of loading data after it confirms profile creation.
+        if (event === 'SIGNED_IN' && !isSigningUpRef.current) {
             await loadUserData(user.id);
-            setIsLoading(false);
+        } else if (event === 'SIGNED_IN' && isSigningUpRef.current) {
+            console.log("Skipping auto-load during signup to prevent race condition.");
         }
         
-        if (!isSigningUpRef.current && route !== '/signup') {
+        if (!isSigningUpRef.current && routeRef.current !== '/signup') {
              setRoute('/');
         }
       } else {
         setCurrentUser(null);
-        if (!isRecoveryMode && route !== '/signup') {
+        if (!isRecoveryMode && routeRef.current !== '/signup') {
           setRoute('/login');
         }
       }
     });
 
-    return () => subscription.unsubscribe();
-  }, [route, isRecoveryMode]);
+    return () => {
+        mounted = false;
+        subscription.unsubscribe();
+    };
+  }, [isRecoveryMode]); 
   
   const handleLogin = async (email: string, password: string):Promise<string|null> => {
     setIsLoading(true);
@@ -119,7 +144,7 @@ const App: React.FC = () => {
         setIsLoading(false);
         return error;
     }
-    // Auth state change will handle the rest
+    // Auth state listener will handle redirection
     return null;
   };
 
@@ -133,19 +158,28 @@ const App: React.FC = () => {
             return error;
         }
         
-        // SUCCESS! 
-        // Force a small delay to allow DB triggers to finish creating the 'profiles' row.
-        // This prevents the "Profile not found" race condition.
-        await new Promise(resolve => setTimeout(resolve, 1500));
+        // Wait briefly for DB consistency (optional but safer)
+        await new Promise(resolve => setTimeout(resolve, 500));
+        
+        // Manual Data Load: Now we know the profile exists!
+        const session = await supabaseService.getSession();
+        if (session?.user) {
+             const user = { 
+                id: session.user.id, 
+                name: session.user.user_metadata?.full_name || session.user.email,
+                email: session.user.email || ''
+             };
+             setCurrentUser(user);
+             await loadUserData(user.id);
+        }
 
         setRoute('/');
         return null;
     } catch (e: any) {
-        setIsLoading(false);
         return e.message;
     } finally {
+        setIsLoading(false);
         isSigningUpRef.current = false;
-        // Do not set isLoading(false) here, allow the auth state change listener to handle the transition
     }
   };
 
@@ -225,7 +259,6 @@ const App: React.FC = () => {
 
   if (!currentUser) return null;
 
-  // VIEW ROUTER
   if (viewMode === 'timeline') {
       return (
           <TimelineView 
@@ -233,7 +266,6 @@ const App: React.FC = () => {
             user={currentUser} 
             initialSelectedMemberId={selectedMemberId}
             onBackToDashboard={() => setViewMode('dashboard')}
-            // Pass data props
             familyMembers={familyMembers}
             timelineEntries={timelineEntries}
             onRefreshData={() => loadUserData(currentUser.id)}
