@@ -1,12 +1,14 @@
 
 import React, { useState, useEffect, useMemo, useRef } from 'react';
-import { Document, Page } from 'react-pdf';
+import { Document, Page, pdfjs } from 'react-pdf';
 
 import { CloseIcon } from './icons/CloseIcon';
 import { SpinnerIcon } from './icons/SpinnerIcon';
 import { WarningIcon } from './icons/WarningIcon';
 import { ArrowLeftIcon } from './icons/ArrowLeftIcon';
 import { ArrowRightIcon } from './icons/ArrowRightIcon';
+import { PlusIcon } from './icons/PlusIcon';
+import { MinusIcon } from './icons/MinusIcon';
 import type { ReportFile } from '../types';
 
 interface ReportViewerModalProps {
@@ -25,12 +27,14 @@ export const ReportViewerModal: React.FC<ReportViewerModalProps> = ({ isOpen, on
   const [error, setError] = useState<string | null>(null);
   const [loadTimeout, setLoadTimeout] = useState<boolean>(false);
   const [pageWidth, setPageWidth] = useState<number>(800);
+  const [scale, setScale] = useState<number>(1.0);
   
   const containerRef = useRef<HTMLDivElement>(null);
 
   // Optimize PDF options to prevent re-renders
+  // Use the same version for cMaps as the worker to ensure compatibility
   const options = useMemo(() => ({
-    cMapUrl: 'https://unpkg.com/pdfjs-dist@4.8.69/cmaps/',
+    cMapUrl: `https://cdnjs.cloudflare.com/ajax/libs/pdf.js/${pdfjs.version}/cmaps/`,
     cMapPacked: true,
   }), []);
 
@@ -46,7 +50,7 @@ export const ReportViewerModal: React.FC<ReportViewerModalProps> = ({ isOpen, on
       if (containerRef.current) {
         // Subtract padding (32px approx) from container width
         const width = containerRef.current.clientWidth - 40;
-        // Limit max width to avoid getting too massive on large screens
+        // Limit max width to avoid getting too massive on large screens, but allow zoom to expand it later
         setPageWidth(Math.min(width, 800));
       }
     };
@@ -66,6 +70,7 @@ export const ReportViewerModal: React.FC<ReportViewerModalProps> = ({ isOpen, on
     setIsLoading(true);
     setError(null);
     setLoadTimeout(false);
+    setScale(1.0); // Reset zoom
 
     // Safety timeout: if PDF doesn't load in 8 seconds, show fallback
     const timer = setTimeout(() => {
@@ -77,7 +82,7 @@ export const ReportViewerModal: React.FC<ReportViewerModalProps> = ({ isOpen, on
     }, 8000);
 
     return () => clearTimeout(timer);
-  }, [report.url]); // Removed 'error' and 'numPages' from deps to avoid clearing timeout prematurely or logically incorrect
+  }, [report.url, numPages, error]); 
 
   function onDocumentLoadSuccess({ numPages }: { numPages: number }): void {
     setNumPages(numPages);
@@ -93,6 +98,9 @@ export const ReportViewerModal: React.FC<ReportViewerModalProps> = ({ isOpen, on
   
   const goToPrevPage = () => setPageNumber(prev => Math.max(prev - 1, 1));
   const goToNextPage = () => setPageNumber(prev => Math.min(prev + 1, numPages || 1));
+  
+  const handleZoomIn = () => setScale(prev => Math.min(prev + 0.25, 3.0));
+  const handleZoomOut = () => setScale(prev => Math.max(prev - 0.25, 0.5));
 
   if (!isOpen) return null;
 
@@ -164,8 +172,9 @@ export const ReportViewerModal: React.FC<ReportViewerModalProps> = ({ isOpen, on
             // We keep the Document component mounted to attempt loading,
             // but if it times out or errors, the UI above covers it.
             !error && !loadTimeout && (
-                <div className="shadow-lg">
+                <div className="shadow-lg transition-transform duration-200 origin-top">
                     <Document
+                        key={fileObj.url} // CRITICAL: Force remount on new file to clear previous PDF state
                         file={fileObj}
                         onLoadSuccess={onDocumentLoadSuccess}
                         onLoadError={onDocumentLoadError}
@@ -175,7 +184,7 @@ export const ReportViewerModal: React.FC<ReportViewerModalProps> = ({ isOpen, on
                     >
                         <Page 
                             pageNumber={pageNumber} 
-                            width={pageWidth}
+                            width={pageWidth * scale}
                             renderTextLayer={true}
                             renderAnnotationLayer={true}
                             className="bg-white"
@@ -187,25 +196,55 @@ export const ReportViewerModal: React.FC<ReportViewerModalProps> = ({ isOpen, on
             <img 
                 src={report.url} 
                 alt={report.file.name} 
-                className={`max-w-full max-h-full object-contain shadow-lg ${isLoading ? 'hidden' : 'block'}`}
+                style={{ width: scale === 1 ? 'auto' : pageWidth * scale, maxWidth: scale === 1 ? '100%' : 'none' }}
+                className={`max-h-full object-contain shadow-lg ${isLoading ? 'hidden' : 'block'}`}
                 onLoad={() => setIsLoading(false)}
                 onError={() => { setIsLoading(false); setError("Failed to load image."); }}
             />
           )}
         </main>
 
-        {isPdf && numPages && !isLoading && !error && !loadTimeout && (
-            <footer className="flex items-center justify-center p-3 border-t border-slate-200 flex-shrink-0 bg-white">
-                <div className="flex items-center gap-4">
-                    <button onClick={goToPrevPage} disabled={pageNumber <= 1} className="p-2 rounded-md hover:bg-slate-100 disabled:opacity-50 disabled:cursor-not-allowed transition">
-                        <ArrowLeftIcon className="w-5 h-5" />
-                    </button>
-                    <span className="text-sm font-medium text-slate-600">
-                        Page {pageNumber} of {numPages}
-                    </span>
-                    <button onClick={goToNextPage} disabled={pageNumber >= numPages} className="p-2 rounded-md hover:bg-slate-100 disabled:opacity-50 disabled:cursor-not-allowed transition">
-                        <ArrowRightIcon className="w-5 h-5" />
-                    </button>
+        {/* Footer with Controls */}
+        {(!isLoading && !error && !loadTimeout) && (
+            <footer className="p-3 border-t border-slate-200 flex-shrink-0 bg-white">
+                <div className="flex flex-col sm:flex-row items-center justify-center gap-4 sm:gap-8">
+                    {/* Page Navigation (PDF Only) */}
+                    {isPdf && numPages && (
+                        <div className="flex items-center gap-4 order-2 sm:order-1">
+                            <button onClick={goToPrevPage} disabled={pageNumber <= 1} className="p-2 rounded-md hover:bg-slate-100 disabled:opacity-50 disabled:cursor-not-allowed transition">
+                                <ArrowLeftIcon className="w-5 h-5" />
+                            </button>
+                            <span className="text-sm font-medium text-slate-600 whitespace-nowrap">
+                                Page {pageNumber} of {numPages}
+                            </span>
+                            <button onClick={goToNextPage} disabled={pageNumber >= numPages} className="p-2 rounded-md hover:bg-slate-100 disabled:opacity-50 disabled:cursor-not-allowed transition">
+                                <ArrowRightIcon className="w-5 h-5" />
+                            </button>
+                        </div>
+                    )}
+                    
+                    {/* Zoom Controls */}
+                    <div className="flex items-center gap-3 order-1 sm:order-2 bg-slate-50 rounded-lg p-1">
+                        <button 
+                            onClick={handleZoomOut} 
+                            disabled={scale <= 0.5}
+                            className="p-1.5 rounded-md hover:bg-slate-200 text-slate-600 disabled:opacity-30 transition"
+                            title="Zoom Out"
+                        >
+                            <MinusIcon className="w-4 h-4" />
+                        </button>
+                        <span className="text-xs font-semibold text-slate-600 w-10 text-center">
+                            {Math.round(scale * 100)}%
+                        </span>
+                        <button 
+                            onClick={handleZoomIn} 
+                            disabled={scale >= 3.0}
+                            className="p-1.5 rounded-md hover:bg-slate-200 text-slate-600 disabled:opacity-30 transition"
+                            title="Zoom In"
+                        >
+                            <PlusIcon className="w-4 h-4" />
+                        </button>
+                    </div>
                 </div>
             </footer>
         )}
