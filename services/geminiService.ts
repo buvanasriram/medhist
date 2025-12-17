@@ -1,12 +1,9 @@
-
 import { GoogleGenAI, Type } from "@google/genai";
 import { pdfjs } from 'react-pdf';
 import type { ExtractedReportData, FamilyMember, TimelineEntry, Medication } from '../types';
-import { CREDENTIALS } from '../credentials';
 
-// 1. Try process.env (Netlify/Deployment)
-// 2. Try CREDENTIALS (Local/Preview via credentials.ts)
-const apiKey = process.env.API_KEY || CREDENTIALS.GEMINI_API_KEY;
+// The API key must be obtained exclusively from the environment variable process.env.API_KEY.
+const apiKey = process.env.API_KEY;
 
 // Lazy initialization to prevent top-level crashes
 let ai: GoogleGenAI | null = null;
@@ -15,7 +12,7 @@ const getAIClient = () => {
     if (ai) return ai;
     
     if (!apiKey) {
-        throw new Error("Gemini API Key is missing. Please check credentials.ts or your environment variables.");
+        throw new Error("Gemini API Key is missing. Please check your environment variables.");
     }
     
     try {

@@ -189,10 +189,10 @@ const App: React.FC = () => {
   }, [isRecoveryMode]); 
   
   const handleLogin = async (email: string, password: string):Promise<string|null> => {
-    setIsLoading(true);
+    // We do NOT set global isLoading here. 
+    // This allows the LoginPage component to stay mounted and display errors if login fails.
     const error = await supabaseService.signIn(email, password);
     if(error) {
-        setIsLoading(false);
         return error;
     }
     return null;
@@ -200,11 +200,10 @@ const App: React.FC = () => {
 
   const handleSignup = async (name: string, email: string, password: string, familyInput: { isJoin: boolean, value: string }): Promise<string|null> => {
     isSigningUpRef.current = true;
-    setIsLoading(true);
+    // We do NOT set global isLoading here.
     try {
         const error = await supabaseService.signUp(name, email, password, familyInput);
         if(error) {
-            setIsLoading(false);
             return error;
         }
         
@@ -226,7 +225,6 @@ const App: React.FC = () => {
     } catch (e: any) {
         return e.message;
     } finally {
-        setIsLoading(false);
         isSigningUpRef.current = false;
     }
   };

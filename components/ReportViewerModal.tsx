@@ -69,12 +69,15 @@ export const ReportViewerModal: React.FC<ReportViewerModalProps> = ({ isOpen, on
 
     // Safety timeout: if PDF doesn't load in 8 seconds, show fallback
     const timer = setTimeout(() => {
-        setLoadTimeout(true);
-        setIsLoading(false);
+        // Only trigger timeout if we haven't loaded pages and haven't hit an error yet
+        if (!numPages && !error) {
+            setLoadTimeout(true);
+            setIsLoading(false);
+        }
     }, 8000);
 
     return () => clearTimeout(timer);
-  }, [report.url]);
+  }, [report.url]); // Removed 'error' and 'numPages' from deps to avoid clearing timeout prematurely or logically incorrect
 
   function onDocumentLoadSuccess({ numPages }: { numPages: number }): void {
     setNumPages(numPages);
@@ -112,7 +115,7 @@ export const ReportViewerModal: React.FC<ReportViewerModalProps> = ({ isOpen, on
           className="flex-grow overflow-auto bg-slate-100 flex items-start justify-center relative p-4"
         >
           {/* Loading Spinner */}
-          {isLoading && !loadTimeout && (
+          {isLoading && !loadTimeout && !error && (
             <div className="absolute inset-0 flex flex-col items-center justify-center z-10 bg-slate-100 bg-opacity-80">
               <SpinnerIcon className="w-8 h-8 text-brand-blue-600 animate-spin mx-auto" />
               <p className="mt-2 text-slate-500">Loading document...</p>
@@ -124,10 +127,17 @@ export const ReportViewerModal: React.FC<ReportViewerModalProps> = ({ isOpen, on
             <div className="text-center p-4 z-20 mt-10">
                <WarningIcon className="w-12 h-12 text-red-500 mx-auto" />
                <p className="mt-2 font-semibold text-red-700">Could not display file</p>
-               <p className="text-sm text-slate-500 mt-1">{error}</p>
+               <p className="text-sm text-slate-500 mt-1 mb-4">{error}</p>
                {error.includes('Password') && (
-                 <p className="text-xs text-slate-400 mt-2">The password provided might be incorrect.</p>
+                 <p className="text-xs text-slate-400 mt-2 mb-4">The password provided might be incorrect.</p>
                )}
+               <a 
+                    href={report.url} 
+                    download={report.file.name}
+                    className="inline-flex items-center px-4 py-2 bg-slate-200 text-slate-700 rounded-md hover:bg-slate-300 transition"
+                >
+                    Download File Instead
+                </a>
             </div>
           )}
 
@@ -152,8 +162,8 @@ export const ReportViewerModal: React.FC<ReportViewerModalProps> = ({ isOpen, on
           {/* Content */}
           {isPdf ? (
             // We keep the Document component mounted to attempt loading,
-            // but if it times out, the UI above covers it.
-            !error && (
+            // but if it times out or errors, the UI above covers it.
+            !error && !loadTimeout && (
                 <div className="shadow-lg">
                     <Document
                         file={fileObj}
@@ -184,7 +194,7 @@ export const ReportViewerModal: React.FC<ReportViewerModalProps> = ({ isOpen, on
           )}
         </main>
 
-        {isPdf && numPages && !isLoading && !error && (
+        {isPdf && numPages && !isLoading && !error && !loadTimeout && (
             <footer className="flex items-center justify-center p-3 border-t border-slate-200 flex-shrink-0 bg-white">
                 <div className="flex items-center gap-4">
                     <button onClick={goToPrevPage} disabled={pageNumber <= 1} className="p-2 rounded-md hover:bg-slate-100 disabled:opacity-50 disabled:cursor-not-allowed transition">
