@@ -25,11 +25,11 @@ export const Header: React.FC<HeaderProps> = ({ onLogout, userName, onOpenGuide 
             </span>
           </div>
           
-          <div className="flex items-center gap-2 md:gap-4">
+          <div className="flex items-center gap-1 md:gap-4">
              {/* Guide Link - Visible on mobile as icon, desktop as text */}
              <button 
                 onClick={onOpenGuide}
-                className="p-2 text-slate-400 hover:text-brand-blue-600 transition flex items-center gap-1"
+                className="p-3 text-slate-400 hover:text-brand-blue-600 transition flex items-center gap-1 active:bg-slate-50 rounded-lg"
                 title="How it works"
              >
                 <HelpCircleIcon className="w-5 h-5" />
@@ -39,11 +39,12 @@ export const Header: React.FC<HeaderProps> = ({ onLogout, userName, onOpenGuide 
              {/* Install Button appears here if available */}
              <InstallAppButton />
 
-             <div className="h-6 w-px bg-slate-200"></div>
+             <div className="h-6 w-px bg-slate-200 mx-1"></div>
              
              <button
                 onClick={onLogout}
-                className="flex items-center gap-2 text-slate-600 hover:text-brand-blue-600 font-semibold text-sm transition p-1"
+                className="flex items-center gap-2 text-slate-600 hover:text-brand-blue-600 font-semibold text-sm transition p-3 active:bg-slate-50 rounded-lg"
+                aria-label="Log Out"
               >
                 <UserIcon className="w-5 h-5" />
                 <span className="hidden sm:inline">Log Out</span>

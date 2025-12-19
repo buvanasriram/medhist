@@ -285,14 +285,21 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
 
                             <button 
                                 onClick={onOpenGuide}
-                                className="mt-4 inline-flex items-center justify-center gap-2 text-brand-blue-600 font-bold px-5 py-2 hover:bg-brand-blue-50 rounded-lg transition text-sm"
+                                className="inline-flex items-center justify-center gap-2 text-brand-blue-600 font-bold px-5 py-2 hover:bg-brand-blue-50 rounded-lg transition text-sm"
                             >
                                 <HelpCircleIcon className="w-5 h-5" /> View How-to Guide
+                            </button>
+
+                            <button 
+                                onClick={onLogout}
+                                className="mt-4 inline-flex items-center justify-center gap-2 text-slate-400 hover:text-red-500 font-medium px-5 py-2 transition text-xs border border-dashed border-slate-200 rounded-lg"
+                            >
+                                <UserIcon className="w-4 h-4" /> Log Out of {user.email}
                             </button>
                         </div>
                         
                         <div className="mt-12 text-xs text-slate-400">
-                           Logged in as <span className="font-semibold">{user.email}</span>
+                           Identity: <span className="font-semibold">{user.email}</span>
                         </div>
                     </div>
                 ) : (
