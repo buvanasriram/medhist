@@ -6,6 +6,7 @@ import { UpdatePasswordPage } from './components/auth/UpdatePasswordPage';
 import { ForgotPasswordPage } from './components/auth/ForgotPasswordPage';
 import { TimelineView } from './components/TimelineView';
 import { DashboardView } from './components/DashboardView';
+import { GuideView } from './components/GuideView';
 import type { User, FamilyMember, TimelineEntry, Medication } from './types';
 import * as supabaseService from './services/supabaseService';
 import { SpinnerIcon } from './components/icons/SpinnerIcon';
@@ -26,7 +27,7 @@ const App: React.FC = () => {
   const [isRecoveryMode, setIsRecoveryMode] = useState<boolean>(false);
   
   // Dashboard Data State
-  const [viewMode, setViewMode] = useState<'dashboard' | 'timeline'>('dashboard');
+  const [viewMode, setViewMode] = useState<'dashboard' | 'timeline' | 'guide'>('dashboard');
   const [selectedMemberId, setSelectedMemberId] = useState<string | undefined>(undefined);
   
   const [familyMembers, setFamilyMembers] = useState<FamilyMember[]>([]);
@@ -310,6 +311,16 @@ const App: React.FC = () => {
 
   if (!currentUser) return null;
 
+  if (viewMode === 'guide') {
+      return (
+          <GuideView 
+            user={currentUser} 
+            onBack={() => setViewMode('dashboard')} 
+            onLogout={handleLogout}
+          />
+      );
+  }
+
   if (viewMode === 'timeline') {
       return (
           <TimelineView 
@@ -320,6 +331,7 @@ const App: React.FC = () => {
             familyMembers={familyMembers}
             timelineEntries={timelineEntries}
             onRefreshData={() => loadUserData(currentUser.id)}
+            onOpenGuide={() => setViewMode('guide')}
           />
       );
   }
@@ -334,6 +346,7 @@ const App: React.FC = () => {
         familyInfo={familyInfo}
         onSelectMember={(id) => { setSelectedMemberId(id); setViewMode('timeline'); }}
         onRefreshData={() => loadUserData(currentUser.id)}
+        onOpenGuide={() => setViewMode('guide')}
     />
   );
 };

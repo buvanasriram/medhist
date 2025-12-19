@@ -7,14 +7,15 @@ import { InstallAppButton } from './InstallAppButton';
 interface HeaderProps {
   onLogout: () => void;
   userName: string;
+  onOpenGuide?: () => void;
 }
 
-export const Header: React.FC<HeaderProps> = ({ onLogout, userName }) => {
+export const Header: React.FC<HeaderProps> = ({ onLogout, userName, onOpenGuide }) => {
   return (
     <header className="bg-white shadow-sm sticky top-0 z-10 border-b border-slate-200 safe-area-top">
       <div className="container mx-auto px-4 md:px-8 max-w-5xl">
         <div className="flex items-center justify-between h-16">
-          <div className="flex items-center space-x-3">
+          <div className="flex items-center space-x-3 cursor-pointer" onClick={onOpenGuide}>
             <div className="bg-brand-blue-600 p-2 rounded-lg">
               <StethoscopeIcon className="w-6 h-6 text-white" />
             </div>
@@ -24,6 +25,14 @@ export const Header: React.FC<HeaderProps> = ({ onLogout, userName }) => {
           </div>
           
           <div className="flex items-center gap-3 md:gap-4">
+             {/* Guide Link */}
+             <button 
+                onClick={onOpenGuide}
+                className="hidden md:block text-xs font-bold text-slate-400 hover:text-brand-blue-600 transition uppercase tracking-wider"
+             >
+                How it works
+             </button>
+
              {/* Install Button appears here if available */}
              <InstallAppButton />
 

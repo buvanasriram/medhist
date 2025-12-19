@@ -33,6 +33,7 @@ interface TimelineViewProps {
   timelineEntries: TimelineEntry[];
   medications?: Medication[];
   onRefreshData: () => void; // Callback to re-fetch if upload happens
+  onOpenGuide?: () => void;
 }
 
 const calculateAge = (dobString: string | undefined | null): number | null => {
@@ -48,7 +49,7 @@ const calculateAge = (dobString: string | undefined | null): number | null => {
 };
 
 export const TimelineView: React.FC<TimelineViewProps> = ({ 
-    onLogout, user, initialSelectedMemberId, onBackToDashboard, familyMembers, timelineEntries, medications = [], onRefreshData 
+    onLogout, user, initialSelectedMemberId, onBackToDashboard, familyMembers, timelineEntries, medications = [], onRefreshData, onOpenGuide 
 }) => {
   // Logic to determine initial selection
   const defaultMemberId = useMemo(() => {
@@ -238,7 +239,7 @@ export const TimelineView: React.FC<TimelineViewProps> = ({
 
   return (
     <div className="min-h-screen bg-slate-50 text-slate-800 flex flex-col">
-      <Header onLogout={onLogout} userName={user.name} />
+      <Header onLogout={onLogout} userName={user.name} onOpenGuide={onOpenGuide} />
       <main className="container mx-auto p-4 md:p-8 max-w-5xl flex-grow pb-24">
         
         {/* Navigation Breadcrumb */}

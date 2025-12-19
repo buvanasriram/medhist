@@ -31,6 +31,7 @@ interface DashboardViewProps {
     familyInfo: { name: string, joinCode: string } | null;
     onSelectMember: (memberId: string) => void;
     onRefreshData: () => void;
+    onOpenGuide?: () => void;
 }
 
 const calculateAge = (dobString: string | undefined | null): number | null => {
@@ -60,7 +61,7 @@ const getDaysUntil = (dateString: string): string => {
 };
 
 export const DashboardView: React.FC<DashboardViewProps> = ({ 
-    user, onLogout, familyMembers, timelineEntries, medications, familyInfo, onSelectMember, onRefreshData
+    user, onLogout, familyMembers, timelineEntries, medications, familyInfo, onSelectMember, onRefreshData, onOpenGuide
 }) => {
     const [showInviteModal, setShowInviteModal] = useState(false);
     const [showAddMemberModal, setShowAddMemberModal] = useState(false);
@@ -174,7 +175,7 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
 
     return (
         <div className="min-h-screen bg-slate-50 text-slate-800 flex flex-col">
-            <Header onLogout={onLogout} userName={user.name} />
+            <Header onLogout={onLogout} userName={user.name} onOpenGuide={onOpenGuide} />
             
             <main className="container mx-auto p-4 md:p-8 max-w-6xl flex-grow pb-24">
                 
@@ -344,7 +345,7 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
             )}
 
             <footer className="py-6 text-center text-slate-400 text-sm border-t border-slate-200 mt-auto bg-white">
-                <p>© {new Date().getFullYear()} medHist. v0.4.5</p>
+                <p>© {new Date().getFullYear()} medHist. v0.5.1</p>
             </footer>
         </div>
     );
