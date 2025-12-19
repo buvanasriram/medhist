@@ -13,6 +13,7 @@ import { UserIcon } from './icons/UserIcon';
 import { BellIcon } from './icons/BellIcon';
 import { ArrowRightIcon } from './icons/ArrowRightIcon';
 import { SpinnerIcon } from './icons/SpinnerIcon';
+import { HelpCircleIcon } from './icons/HelpCircleIcon';
 import { HealthAssistant } from './HealthAssistant';
 import type { User, FamilyMember, TimelineEntry, Medication, ReportFile } from '../types';
 import * as supabaseService from '../services/supabaseService';
@@ -67,6 +68,7 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
     const [showAddMemberModal, setShowAddMemberModal] = useState(false);
     const [managingMedsMemberId, setManagingMedsMemberId] = useState<string | null>(null);
     const [editingMemberId, setEditingMemberId] = useState<string | null>(null);
+    const [isSyncing, setIsSyncing] = useState(false);
     
     // Viewer State
     const [isViewerOpen, setViewerOpen] = useState(false);
@@ -74,6 +76,15 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
     
     // PDF Gen State
     const [generatingPdfMemberId, setGeneratingPdfMemberId] = useState<string | null>(null);
+
+    const handleSync = async () => {
+        setIsSyncing(true);
+        try {
+            await onRefreshData();
+        } finally {
+            setTimeout(() => setIsSyncing(false), 800);
+        }
+    };
 
     const getLastCheckup = (memberId: string) => {
         const memberEntries = timelineEntries
@@ -180,7 +191,7 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
             <main className="container mx-auto p-4 md:p-8 max-w-6xl flex-grow pb-24">
                 
                 {upcomingAppointments.length > 0 && (
-                    <div className="mb-8 bg-white rounded-xl shadow-sm border border-brand-blue-100 overflow-hidden">
+                    <div className="mb-8 bg-white rounded-xl shadow-sm border border-brand-blue-100 overflow-hidden text-left">
                         <div className="bg-brand-blue-50 px-6 py-3 border-b border-brand-blue-100 flex items-center gap-2">
                             <BellIcon className="w-5 h-5 text-brand-blue-600" />
                             <h2 className="font-bold text-brand-blue-800">Upcoming Appointments</h2>
@@ -222,23 +233,23 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
                     </div>
                 )}
 
-                <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center mb-8 gap-4">
+                <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center mb-8 gap-4 text-left">
                     <div>
                         <h1 className="text-2xl font-bold text-slate-900">Family Health Board</h1>
                         <p className="text-slate-500 flex items-center gap-2 mt-1">
                             <UsersIcon className="w-4 h-4" /> {familyInfo?.name || "My Family"}
                         </p>
                     </div>
-                    <div className="flex gap-3">
+                    <div className="flex gap-3 w-full sm:w-auto">
                         <button 
                             onClick={() => setShowInviteModal(true)}
-                            className="flex items-center gap-2 text-sm font-medium text-brand-blue-600 bg-white border border-brand-blue-200 hover:bg-brand-blue-50 px-4 py-2 rounded-lg transition shadow-sm"
+                            className="flex-1 sm:flex-none flex items-center justify-center gap-2 text-sm font-medium text-brand-blue-600 bg-white border border-brand-blue-200 hover:bg-brand-blue-50 px-4 py-2 rounded-lg transition shadow-sm"
                         >
                             <KeyIcon className="w-4 h-4" /> Invite
                         </button>
                         <button 
                             onClick={() => setShowAddMemberModal(true)}
-                            className="flex items-center gap-2 text-sm font-medium text-white bg-brand-blue-600 hover:bg-brand-blue-700 px-4 py-2 rounded-lg transition shadow-md"
+                            className="flex-1 sm:flex-none flex items-center justify-center gap-2 text-sm font-medium text-white bg-brand-blue-600 hover:bg-brand-blue-700 px-4 py-2 rounded-lg transition shadow-md"
                         >
                             <PlusIcon className="w-4 h-4" /> Add Member
                         </button>
@@ -246,19 +257,46 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
                 </div>
 
                 {familyMembers.length === 0 ? (
-                    <div className="text-center py-20 bg-white rounded-xl shadow-sm border border-slate-200">
-                        <UserIcon className="w-16 h-16 text-slate-300 mx-auto mb-4" />
-                        <h3 className="text-lg font-semibold text-slate-700">No Family Members Yet</h3>
-                        <p className="text-slate-500 mb-6">Add yourself or a family member to get started.</p>
-                        <button 
-                            onClick={() => setShowAddMemberModal(true)}
-                            className="inline-flex items-center gap-2 bg-brand-blue-600 text-white font-medium px-5 py-2.5 rounded-lg hover:bg-brand-blue-700 transition"
-                        >
-                            <PlusIcon className="w-5 h-5" /> Add First Member
-                        </button>
+                    <div className="text-center py-12 md:py-20 bg-white rounded-xl shadow-sm border border-slate-200 p-6 flex flex-col items-center">
+                        <div className="bg-slate-50 p-6 rounded-full mb-6">
+                           <UserIcon className="w-16 h-16 text-slate-300" />
+                        </div>
+                        <h3 className="text-xl font-bold text-slate-800">Your Dashboard is Empty</h3>
+                        <p className="text-slate-500 mb-8 max-w-sm mx-auto leading-relaxed">
+                            We couldn't find any family members. If you were expecting to see data, try syncing or check the User Guide.
+                        </p>
+                        
+                        <div className="flex flex-col gap-3 w-full max-w-xs">
+                            <button 
+                                onClick={() => setShowAddMemberModal(true)}
+                                className="w-full inline-flex items-center justify-center gap-2 bg-brand-blue-600 text-white font-bold px-5 py-3 rounded-xl hover:bg-brand-blue-700 shadow-lg transition"
+                            >
+                                <PlusIcon className="w-5 h-5" /> Create Profile Folder
+                            </button>
+                            
+                            <button 
+                                onClick={handleSync}
+                                disabled={isSyncing}
+                                className="w-full inline-flex items-center justify-center gap-2 bg-white text-slate-700 border border-slate-300 font-bold px-5 py-3 rounded-xl hover:bg-slate-50 transition shadow-sm"
+                            >
+                                {isSyncing ? <SpinnerIcon className="w-5 h-5 animate-spin" /> : <UsersIcon className="w-5 h-5" />}
+                                Sync Records
+                            </button>
+
+                            <button 
+                                onClick={onOpenGuide}
+                                className="mt-4 inline-flex items-center justify-center gap-2 text-brand-blue-600 font-bold px-5 py-2 hover:bg-brand-blue-50 rounded-lg transition text-sm"
+                            >
+                                <HelpCircleIcon className="w-5 h-5" /> View How-to Guide
+                            </button>
+                        </div>
+                        
+                        <div className="mt-12 text-xs text-slate-400">
+                           Logged in as <span className="font-semibold">{user.email}</span>
+                        </div>
                     </div>
                 ) : (
-                    <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-6">
+                    <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-6 text-left">
                         {familyMembers.map(member => (
                             <MemberCard 
                                 key={member.id}
