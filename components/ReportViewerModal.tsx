@@ -32,7 +32,6 @@ export const ReportViewerModal: React.FC<ReportViewerModalProps> = ({ isOpen, on
   const containerRef = useRef<HTMLDivElement>(null);
 
   // Optimize PDF options to prevent re-renders
-  // Use the same version for cMaps as the worker to ensure compatibility
   const options = useMemo(() => ({
     cMapUrl: `https://cdnjs.cloudflare.com/ajax/libs/pdf.js/${pdfjs.version}/cmaps/`,
     cMapPacked: true,
@@ -48,10 +47,10 @@ export const ReportViewerModal: React.FC<ReportViewerModalProps> = ({ isOpen, on
   useEffect(() => {
     const updateWidth = () => {
       if (containerRef.current) {
-        // Subtract padding (32px approx) from container width
-        const width = containerRef.current.clientWidth - 40;
+        // Subtract padding from container width if necessary
+        const width = containerRef.current.clientWidth;
         // Limit max width to avoid getting too massive on large screens, but allow zoom to expand it later
-        setPageWidth(Math.min(width, 800));
+        setPageWidth(Math.min(width - 40, 800));
       }
     };
 
@@ -74,7 +73,6 @@ export const ReportViewerModal: React.FC<ReportViewerModalProps> = ({ isOpen, on
 
     // Safety timeout: if PDF doesn't load in 8 seconds, show fallback
     const timer = setTimeout(() => {
-        // Only trigger timeout if we haven't loaded pages and haven't hit an error yet
         if (!numPages && !error) {
             setLoadTimeout(true);
             setIsLoading(false);
@@ -107,8 +105,10 @@ export const ReportViewerModal: React.FC<ReportViewerModalProps> = ({ isOpen, on
   const isPdf = report.file.type === 'application/pdf';
 
   return (
-    <div className="fixed inset-0 bg-black bg-opacity-75 z-50 flex items-center justify-center p-4">
-      <div className="bg-white rounded-lg shadow-2xl w-full max-w-4xl h-[90vh] flex flex-col">
+    // Updated container: sm:p-4 adds padding ONLY on tablets/desktops. Mobile is full width.
+    <div className="fixed inset-0 bg-black bg-opacity-75 z-50 flex items-center justify-center sm:p-4">
+      {/* Updated Inner: h-full on mobile, sm:h-[90vh] on desktop. Rounded corners only on desktop. */}
+      <div className="bg-white shadow-2xl w-full max-w-4xl h-full sm:h-[90vh] sm:rounded-lg flex flex-col">
         <header className="flex items-center justify-between p-4 border-b border-slate-200 flex-shrink-0">
             <h2 className="text-lg font-bold text-slate-800 truncate" title={report.file.name}>
                 {report.file.name}
@@ -169,12 +169,10 @@ export const ReportViewerModal: React.FC<ReportViewerModalProps> = ({ isOpen, on
           
           {/* Content */}
           {isPdf ? (
-            // We keep the Document component mounted to attempt loading,
-            // but if it times out or errors, the UI above covers it.
             !error && !loadTimeout && (
                 <div className="shadow-lg transition-transform duration-200 origin-top">
                     <Document
-                        key={fileObj.url} // CRITICAL: Force remount on new file to clear previous PDF state
+                        key={fileObj.url} 
                         file={fileObj}
                         onLoadSuccess={onDocumentLoadSuccess}
                         onLoadError={onDocumentLoadError}
@@ -206,7 +204,7 @@ export const ReportViewerModal: React.FC<ReportViewerModalProps> = ({ isOpen, on
 
         {/* Footer with Controls */}
         {(!isLoading && !error && !loadTimeout) && (
-            <footer className="p-3 border-t border-slate-200 flex-shrink-0 bg-white">
+            <footer className="p-3 border-t border-slate-200 flex-shrink-0 bg-white safe-area-bottom">
                 <div className="flex flex-col sm:flex-row items-center justify-center gap-4 sm:gap-8">
                     {/* Page Navigation (PDF Only) */}
                     {isPdf && numPages && (
