@@ -79,7 +79,7 @@ export const HealthAssistant: React.FC<HealthAssistantProps> = ({ familyMembers,
     const parts = text.split(/(\[VIEW:.*?:.*?\])/g);
     
     return parts.map((part, index) => {
-        const match = part.match(/\[VIEW:(.*?):(.*?)(?:\|.*?)?\]/); // Handles potential variations
+        const match = part.match(/\[VIEW:(.*?):(.*?)(?:\|.*?)?\]/); 
         if (match) {
             const title = match[1];
             const id = match[2];
@@ -87,7 +87,7 @@ export const HealthAssistant: React.FC<HealthAssistantProps> = ({ familyMembers,
                 <button
                     key={index}
                     onClick={() => handleLinkClick(id)}
-                    className="inline-flex items-center gap-1 mx-1 px-2 py-0.5 bg-white text-brand-blue-600 border border-brand-blue-200 rounded text-xs font-semibold hover:bg-brand-blue-50 transition shadow-sm"
+                    className="inline-flex items-center gap-1 mx-1 px-2 py-0.5 bg-white text-brand-blue-600 border border-brand-blue-200 rounded text-xs font-semibold hover:bg-brand-blue-50 transition shadow-sm pointer-events-auto"
                 >
                     View {title} <ArrowRightIcon className="w-3 h-3" />
                 </button>
@@ -101,7 +101,7 @@ export const HealthAssistant: React.FC<HealthAssistantProps> = ({ familyMembers,
     <>
       <button
         onClick={() => setIsOpen(!isOpen)}
-        className={`fixed bottom-6 right-6 p-4 rounded-full shadow-xl transition-all duration-300 z-40 ${
+        className={`fixed bottom-6 right-6 p-4 rounded-full shadow-xl transition-all duration-300 z-[100] pointer-events-auto ${
           isOpen ? 'bg-slate-200 text-slate-600 rotate-90' : 'bg-brand-blue-600 text-white hover:bg-brand-blue-700'
         }`}
       >
@@ -109,7 +109,7 @@ export const HealthAssistant: React.FC<HealthAssistantProps> = ({ familyMembers,
       </button>
 
       {isOpen && (
-        <div className="fixed bottom-24 right-4 md:right-6 w-[90vw] md:w-80 h-[50vh] md:h-[450px] bg-white rounded-2xl shadow-2xl flex flex-col border border-slate-200 z-40 overflow-hidden animate-fadeIn">
+        <div className="fixed bottom-24 right-4 md:right-6 w-[90vw] md:w-80 h-[50vh] md:h-[450px] bg-white rounded-2xl shadow-2xl flex flex-col border border-slate-200 z-[90] overflow-hidden animate-fadeIn pointer-events-auto">
           <div className="bg-brand-blue-600 p-3 text-white flex items-center gap-3">
             <div className="bg-white/20 p-1.5 rounded-lg">
                 <StethoscopeIcon className="w-4 h-4" />

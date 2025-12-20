@@ -21,8 +21,9 @@ const getEnvVar = (key: string) => {
   return undefined;
 };
 
-const supabaseUrl = getEnvVar('VITE_SUPABASE_URL') || CREDENTIALS.SUPABASE_URL;
-const supabaseAnonKey = getEnvVar('VITE_SUPABASE_ANON_KEY') || CREDENTIALS.SUPABASE_ANON_KEY;
+// Prioritize hardcoded credentials for stability in this environment
+const supabaseUrl = CREDENTIALS.SUPABASE_URL || getEnvVar('VITE_SUPABASE_URL');
+const supabaseAnonKey = CREDENTIALS.SUPABASE_ANON_KEY || getEnvVar('VITE_SUPABASE_ANON_KEY');
 
 let supabaseClient: SupabaseClient | null = null;
 let isMockMode = true;
@@ -31,10 +32,12 @@ try {
     if (supabaseUrl && supabaseAnonKey && supabaseUrl !== 'your_supabase_url_here') {
         supabaseClient = createClient(supabaseUrl, supabaseAnonKey);
         isMockMode = false;
+        console.log("[medHist] Supabase Client Initialized");
     } else {
         isMockMode = true;
     }
 } catch (error) {
+    console.error("[medHist] Supabase Init Error:", error);
     isMockMode = true;
 }
 
@@ -94,7 +97,7 @@ export const signUp = async (name: string, email: string, password: string, fami
         }
 
         await supabase!.from('profiles').insert({ id: userId, family_id: familyId, full_name: name });
-        await supabase!.from('family_members').insert({ family_id: familyId, name: name, relationship: 'Self', linked_user_id: userId });
+        // Profile trigger will create the 'Self' member automatically
         return null;
     } catch (err: any) {
         await signOut();
@@ -116,14 +119,7 @@ export const signOut = async (): Promise<void> => {
         mockSession = null;
     } else {
         try {
-            // Force local clearing of cookies even if server call times out
-            await Promise.race([
-                supabase!.auth.signOut(),
-                new Promise((_, reject) => setTimeout(() => reject(new Error('Timeout')), 2000))
-            ]).catch(() => {
-                // Ignore timeout, we've already cleared currentUser in the UI
-                console.warn("SignOut server call timed out.");
-            });
+            await supabase!.auth.signOut();
         } catch (e) {
             console.error("SignOut error", e);
         }
@@ -155,43 +151,69 @@ export const getUserData = async (userId: string) => {
         return { familyMembers: [], timelineEntries: [], medications: [], familyInfo: { name: 'Demo Family', joinCode: 'MOCK12' } };
     }
 
+    // Step 1: Get Profile (Resilient single fetch)
     const { data: profile, error: profileErr } = await supabase!
         .from('profiles')
-        .select('family_id, families(name, join_code)')
+        .select('family_id')
         .eq('id', userId)
         .single();
     
-    if (profileErr || !profile) throw new Error("Could not find family profile.");
+    if (profileErr || !profile) {
+        console.error("Profile fetch error:", profileErr);
+        throw new Error("Could not find your family profile.");
+    }
 
     const familyId = profile.family_id;
-    const familyInfo = { 
-        name: (profile.families as any).name, 
-        joinCode: (profile.families as any).join_code 
-    };
 
-    const { data: familyMembers } = await supabase!
+    // Step 2: Get Family Info (Split from join for reliability)
+    const { data: family, error: familyErr } = await supabase!
+        .from('families')
+        .select('name, join_code')
+        .eq('id', familyId)
+        .single();
+    
+    const familyInfo = family ? { name: family.name, joinCode: family.join_code } : null;
+
+    // Step 3: Get Family Members
+    const { data: familyMembers, error: membersErr } = await supabase!
         .from('family_members')
         .select('*')
         .eq('family_id', familyId);
     
+    if (membersErr) console.error("Members fetch error:", membersErr);
+
     const memberIds = familyMembers?.map(m => m.id) || [];
     
-    const { data: timelineEntries } = await supabase!
-        .from('timeline_entries')
-        .select('*')
-        .in('family_member_id', memberIds)
-        .order('date', { ascending: false });
+    // Step 4: Get Timeline Entries
+    let timelineEntries: TimelineEntry[] = [];
+    if (memberIds.length > 0) {
+        const { data: entries, error: entriesErr } = await supabase!
+            .from('timeline_entries')
+            .select('*')
+            .in('family_member_id', memberIds)
+            .order('date', { ascending: false });
+        
+        if (entriesErr) console.error("Entries fetch error:", entriesErr);
+        timelineEntries = entries || [];
+    }
 
-    const { data: medications } = await supabase!
-        .from('medications')
-        .select('*')
-        .in('family_member_id', memberIds)
-        .order('created_at', { ascending: false });
+    // Step 5: Get Medications
+    let medications: Medication[] = [];
+    if (memberIds.length > 0) {
+        const { data: meds, error: medsErr } = await supabase!
+            .from('medications')
+            .select('*')
+            .in('family_member_id', memberIds)
+            .order('created_at', { ascending: false });
+        
+        if (medsErr) console.error("Meds fetch error:", medsErr);
+        medications = meds || [];
+    }
 
     return {
         familyMembers: familyMembers || [],
-        timelineEntries: timelineEntries || [],
-        medications: medications || [],
+        timelineEntries,
+        medications,
         familyInfo
     };
 };
