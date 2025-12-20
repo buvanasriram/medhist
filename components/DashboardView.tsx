@@ -70,14 +70,12 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
     const [editingMemberId, setEditingMemberId] = useState<string | null>(null);
     const [isSyncing, setIsSyncing] = useState(false);
     
-    // Viewer State
     const [isViewerOpen, setViewerOpen] = useState(false);
     const [reportToView, setReportToView] = useState<{ url: string, file: ReportFile } | null>(null);
-    
-    // PDF Gen State
     const [generatingPdfMemberId, setGeneratingPdfMemberId] = useState<string | null>(null);
 
     const handleSync = async () => {
+        if (isSyncing) return;
         setIsSyncing(true);
         try {
             await onRefreshData();
@@ -95,7 +93,6 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
         return memberEntries.length > 0 ? memberEntries[0].date : undefined;
     };
 
-    // Calculate Upcoming Appointments
     const upcomingAppointments = useMemo(() => {
         const today = new Date();
         today.setHours(0, 0, 0, 0);
@@ -171,26 +168,22 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
 
         setGeneratingPdfMemberId(memberId);
         try {
-            // Dynamic Import to completely isolate the PDF generator dependency
             const { generateDoctorBrief } = await import('../utils/pdfGenerator');
-            
             const memberMeds = medications.filter(m => m.family_member_id === memberId);
             const memberEntries = timelineEntries.filter(e => e.family_member_id === memberId);
-            
             await generateDoctorBrief(member, memberMeds, memberEntries);
         } catch (e) {
             console.error("Failed to load PDF generator:", e);
-            alert("Failed to initialize PDF generator. Please try again.");
         } finally {
             setGeneratingPdfMemberId(null);
         }
     };
 
     return (
-        <div className="min-h-screen bg-slate-50 text-slate-800 flex flex-col">
+        <div className="min-h-screen bg-slate-50 text-slate-800 flex flex-col relative">
             <Header onLogout={onLogout} userName={user.name} onOpenGuide={onOpenGuide} />
             
-            <main className="container mx-auto p-4 md:p-8 max-w-6xl flex-grow pb-24">
+            <main className="container mx-auto p-4 md:p-8 max-w-6xl flex-grow pb-24 z-10">
                 
                 {upcomingAppointments.length > 0 && (
                     <div className="mb-8 bg-white rounded-xl shadow-sm border border-brand-blue-100 overflow-hidden text-left">
@@ -206,27 +199,24 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
                                             <span className="text-xs font-bold uppercase">{new Date(appt.follow_up_date!).toLocaleString('default', { month: 'short' })}</span>
                                             <span className="text-2xl font-bold leading-none">{new Date(appt.follow_up_date!).getDate()}</span>
                                         </div>
-                                        <div>
+                                        <div className="min-w-0">
                                             <div className="flex items-center gap-2 mb-1">
-                                                <span className="inline-flex items-center px-2 py-0.5 rounded text-xs font-medium bg-green-100 text-green-800">
+                                                <span className="inline-flex items-center px-2 py-0.5 rounded text-xs font-medium bg-green-100 text-green-800 whitespace-nowrap">
                                                     {getDaysUntil(appt.follow_up_date!)}
                                                 </span>
-                                                <h3 className="font-bold text-slate-800">{appt.memberName}</h3>
+                                                <h3 className="font-bold text-slate-800 truncate">{appt.memberName}</h3>
                                             </div>
-                                            <p className="text-sm text-slate-600 font-medium">
+                                            <p className="text-sm text-slate-600 font-medium truncate">
                                                 {appt.doctor_name ? `Dr. ${appt.doctor_name}` : appt.report_type}
-                                            </p>
-                                            <p className="text-xs text-slate-500 truncate max-w-md">
-                                                {appt.facility_name ? `${appt.facility_name} • ` : ''}{appt.summary}
                                             </p>
                                         </div>
                                     </div>
                                     {appt.memberId && (
                                         <button 
                                             onClick={() => onSelectMember(appt.memberId!)}
-                                            className="opacity-0 group-hover:opacity-100 text-brand-blue-600 hover:text-brand-blue-800 font-medium text-sm flex items-center gap-1 transition-opacity"
+                                            className="p-3 text-brand-blue-600 active:bg-brand-blue-50 rounded-full transition"
                                         >
-                                            View Details <ArrowRightIcon className="w-4 h-4" />
+                                            <ArrowRightIcon className="w-6 h-6" />
                                         </button>
                                     )}
                                 </div>
@@ -236,79 +226,70 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
                 )}
 
                 <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center mb-8 gap-4 text-left">
-                    <div>
+                    <div className="z-10">
                         <h1 className="text-2xl font-bold text-slate-900">Family Health Board</h1>
                         <p className="text-slate-500 flex items-center gap-2 mt-1">
                             <UsersIcon className="w-4 h-4" /> {familyInfo?.name || "My Family"}
                         </p>
                     </div>
-                    <div className="flex gap-3 w-full sm:w-auto">
+                    <div className="flex gap-3 w-full sm:w-auto z-20">
                         <button 
                             onClick={() => setShowInviteModal(true)}
-                            className="flex-1 sm:flex-none flex items-center justify-center gap-2 text-sm font-bold text-brand-blue-600 bg-white border border-brand-blue-200 hover:bg-brand-blue-50 px-5 py-3 rounded-xl transition shadow-sm active:scale-95 pointer-events-auto"
+                            className="flex-1 sm:flex-none flex items-center justify-center gap-2 text-sm font-bold text-brand-blue-600 bg-white border border-brand-blue-200 hover:bg-brand-blue-50 px-5 py-3.5 rounded-xl transition shadow-sm active:scale-95 pointer-events-auto"
                         >
                             <KeyIcon className="w-4 h-4" /> Invite
                         </button>
                         <button 
                             onClick={() => setShowAddMemberModal(true)}
-                            className="flex-1 sm:flex-none flex items-center justify-center gap-2 text-sm font-bold text-white bg-brand-blue-600 hover:bg-brand-blue-700 px-5 py-3 rounded-xl transition shadow-md active:scale-95 pointer-events-auto"
+                            className="flex-1 sm:flex-none flex items-center justify-center gap-2 text-sm font-bold text-white bg-brand-blue-600 hover:bg-brand-blue-700 px-5 py-3.5 rounded-xl transition shadow-md active:scale-95 pointer-events-auto"
                         >
-                            <PlusIcon className="w-4 h-4" /> Add Member
+                            <PlusIcon className="w-4 h-4" /> Add
                         </button>
                     </div>
                 </div>
 
                 {familyMembers.length === 0 ? (
-                    <div className="text-center py-12 md:py-20 bg-white rounded-2xl shadow-sm border border-slate-200 p-8 flex flex-col items-center">
+                    <div className="text-center py-12 md:py-20 bg-white rounded-2xl shadow-lg border border-slate-100 p-8 flex flex-col items-center z-30 relative">
                         <div className="bg-slate-50 p-6 rounded-full mb-6">
                            <UserIcon className="w-16 h-16 text-slate-300" />
                         </div>
                         <h3 className="text-xl font-bold text-slate-800">Your Dashboard is Empty</h3>
                         <p className="text-slate-500 mb-8 max-w-sm mx-auto leading-relaxed">
-                            We couldn't find any family records. If you were expecting data, try a manual sync or check the guide.
+                            Log in again or try a manual sync if you're expecting family data here.
                         </p>
                         
-                        <div className="flex flex-col gap-3 w-full max-w-xs">
-                            <button 
-                                onClick={() => setShowAddMemberModal(true)}
-                                className="w-full inline-flex items-center justify-center gap-3 bg-brand-blue-600 text-white font-bold px-6 py-4 rounded-2xl hover:bg-brand-blue-700 shadow-lg transition active:scale-95 pointer-events-auto"
-                            >
-                                <PlusIcon className="w-6 h-6" /> Create First Profile
-                            </button>
-                            
+                        <div className="flex flex-col gap-4 w-full max-w-xs relative z-40">
                             <button 
                                 onClick={handleSync}
                                 disabled={isSyncing}
-                                className="w-full inline-flex items-center justify-center gap-3 bg-white text-slate-700 border-2 border-slate-200 font-bold px-6 py-4 rounded-2xl hover:bg-slate-50 transition active:scale-95 pointer-events-auto"
+                                className="w-full inline-flex items-center justify-center gap-3 bg-brand-blue-600 text-white font-bold px-6 py-4.5 rounded-2xl hover:bg-brand-blue-700 transition active:scale-95 pointer-events-auto shadow-lg touch-manipulation"
                             >
-                                {isSyncing ? <SpinnerIcon className="w-6 h-6 animate-spin text-brand-blue-600" /> : <UsersIcon className="w-6 h-6" />}
+                                {isSyncing ? <SpinnerIcon className="w-6 h-6 animate-spin" /> : <UsersIcon className="w-6 h-6" />}
                                 Sync Data Now
                             </button>
 
                             <button 
-                                onClick={onOpenGuide}
-                                className="inline-flex items-center justify-center gap-2 text-brand-blue-600 font-bold px-5 py-3 hover:bg-brand-blue-50 rounded-xl transition text-sm pointer-events-auto"
-                            >
-                                <HelpCircleIcon className="w-5 h-5" /> View Tutorial
-                            </button>
-
-                            <div className="h-px bg-slate-100 my-4 w-full"></div>
-
-                            <button 
                                 onClick={onLogout}
-                                className="w-full inline-flex items-center justify-center gap-3 text-red-500 bg-red-50 border border-red-100 font-bold px-6 py-4 rounded-2xl hover:bg-red-100 transition active:scale-95 pointer-events-auto"
+                                className="w-full inline-flex items-center justify-center gap-3 text-red-500 bg-red-50 border border-red-100 font-bold px-6 py-4.5 rounded-2xl hover:bg-red-100 transition active:scale-95 pointer-events-auto touch-manipulation"
                                 aria-label="Log Out"
                             >
                                 <UserIcon className="w-6 h-6" /> Log Out
                             </button>
+
+                            <button 
+                                onClick={onOpenGuide}
+                                className="inline-flex items-center justify-center gap-2 text-slate-400 font-bold px-5 py-3 hover:text-brand-blue-600 transition text-xs pointer-events-auto"
+                            >
+                                <HelpCircleIcon className="w-4 h-4" /> Need help? View Guide
+                            </button>
                         </div>
                         
-                        <div className="mt-8 text-[10px] text-slate-400 font-bold uppercase tracking-widest">
-                           Logged in as: {user.email}
+                        <div className="mt-10 text-[10px] text-slate-400 font-bold uppercase tracking-widest opacity-60">
+                           {user.email}
                         </div>
                     </div>
                 ) : (
-                    <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-6 text-left">
+                    <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-6 text-left relative z-10">
                         {familyMembers.map(member => (
                             <MemberCard 
                                 key={member.id}
@@ -379,10 +360,10 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
 
             {isViewerOpen && reportToView && (
               <Suspense fallback={
-                <div className="fixed inset-0 z-50 flex items-center justify-center bg-black bg-opacity-60">
+                <div className="fixed inset-0 z-[200] flex items-center justify-center bg-black bg-opacity-60">
                   <div className="bg-white p-6 rounded-2xl flex items-center gap-4 shadow-2xl">
                      <SpinnerIcon className="w-8 h-8 animate-spin text-brand-blue-600" />
-                     <span className="text-slate-700 font-bold">Initializing Viewer...</span>
+                     <span className="text-slate-700 font-bold">Opening...</span>
                   </div>
                 </div>
               }>
@@ -394,7 +375,7 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
               </Suspense>
             )}
 
-            <footer className="py-8 text-center text-slate-400 text-xs font-bold border-t border-slate-200 mt-auto bg-white uppercase tracking-widest">
+            <footer className="py-8 text-center text-slate-400 text-[10px] font-bold border-t border-slate-100 mt-auto bg-white uppercase tracking-widest relative z-0">
                 <p>© {new Date().getFullYear()} medHist. v0.5.1</p>
             </footer>
         </div>

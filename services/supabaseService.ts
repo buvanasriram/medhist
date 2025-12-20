@@ -1,3 +1,4 @@
+
 import { createClient } from '@supabase/supabase-js';
 import type { SupabaseClient } from '@supabase/supabase-js';
 import type { FamilyMember, TimelineEntry, ReportFile, Medication, ExtractedMedication } from '../types';
@@ -30,22 +31,11 @@ try {
     if (supabaseUrl && supabaseAnonKey && supabaseUrl !== 'your_supabase_url_here') {
         supabaseClient = createClient(supabaseUrl, supabaseAnonKey);
         isMockMode = false;
-        console.log(
-            `%c[medHist] Connecting to Supabase: ${supabaseUrl}`, 
-            "color: #10b981; font-weight: bold;"
-        );
     } else {
-        console.warn("%c[medHist] Missing credentials. Running in MOCK MODE.", "color: #ea580c; font-weight: bold;");
         isMockMode = true;
-        supabaseClient = null;
     }
 } catch (error) {
-    console.warn(
-        "%c[medHist] Supabase connection failed. Running in MOCK MODE.", 
-        "color: #ea580c; font-weight: bold;"
-    );
     isMockMode = true;
-    supabaseClient = null;
 }
 
 export const isMock = isMockMode;
@@ -65,7 +55,6 @@ export const getSession = async (): Promise<Session | null> => {
         if (error) return null;
         return data.session;
     } catch (e) {
-        console.error("[medHist] Session check error:", e);
         return null;
     }
 };
@@ -123,10 +112,18 @@ export const signIn = async (email: string, password: string): Promise<string|nu
 };
 
 export const signOut = async (): Promise<void> => {
-    if (isMock) mockSession = null;
-    else {
+    if (isMock) {
+        mockSession = null;
+    } else {
         try {
-            await supabase!.auth.signOut();
+            // Force local clearing of cookies even if server call times out
+            await Promise.race([
+                supabase!.auth.signOut(),
+                new Promise((_, reject) => setTimeout(() => reject(new Error('Timeout')), 2000))
+            ]).catch(() => {
+                // Ignore timeout, we've already cleared currentUser in the UI
+                console.warn("SignOut server call timed out.");
+            });
         } catch (e) {
             console.error("SignOut error", e);
         }
@@ -242,13 +239,11 @@ export const addTimelineEntry = async (
 ): Promise<void> => {
     if (isMock) return;
 
-    // 1. Upload File
     const blob = base64ToBlob(fileData.data, fileData.type);
     const filePath = `reports/${Date.now()}_${fileData.name}`;
     const { error: uploadError } = await supabase!.storage.from('reports').upload(filePath, blob);
     if (uploadError) throw uploadError;
 
-    // 2. Insert Timeline Entry
     const { data: entry, error: entryError } = await supabase!.from('timeline_entries').insert({
         ...newEntryData,
         file_path: filePath,
@@ -259,7 +254,6 @@ export const addTimelineEntry = async (
 
     if (entryError) throw entryError;
 
-    // 3. Handle Medications
     if (medications && medications.length > 0) {
         const medsToInsert = medications.map(m => ({
             family_member_id: newEntryData.family_member_id,
