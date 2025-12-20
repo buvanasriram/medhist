@@ -18,7 +18,6 @@ import { HealthAssistant } from './HealthAssistant';
 import type { User, FamilyMember, TimelineEntry, Medication, ReportFile } from '../types';
 import * as supabaseService from '../services/supabaseService';
 
-// Lazy load the heavy PDF viewer component
 const ReportViewerModal = React.lazy(() => 
   import('./ReportViewerModal').then(module => ({ default: module.ReportViewerModal }))
 );
@@ -147,18 +146,15 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
         try {
             const result = await supabaseService.getFileForEntry(entry.id);
             if (!result) {
-                alert("Could not load the report file.");
+                alert("Could not load report link.");
                 return;
             }
-            const { signedUrl, metadata } = result;
-            const response = await fetch(signedUrl);
-            const blob = await response.blob();
-            const objectUrl = URL.createObjectURL(blob);
-            setReportToView({ url: objectUrl, file: metadata });
+            // Use signed URL directly for better performance/memory on mobile
+            setReportToView({ url: result.signedUrl, file: result.metadata });
             setViewerOpen(true);
         } catch (error) {
             console.error('Error viewing report', error);
-            alert('Error loading file.');
+            alert('Error connecting to storage.');
         }
     };
 

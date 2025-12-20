@@ -9,6 +9,7 @@ import { ArrowLeftIcon } from './icons/ArrowLeftIcon';
 import { ArrowRightIcon } from './icons/ArrowRightIcon';
 import { PlusIcon } from './icons/PlusIcon';
 import { MinusIcon } from './icons/MinusIcon';
+import { DownloadIcon } from './icons/DownloadIcon';
 import type { ReportFile } from '../types';
 
 interface ReportViewerModalProps {
@@ -31,7 +32,6 @@ export const ReportViewerModal: React.FC<ReportViewerModalProps> = ({ isOpen, on
   
   const containerRef = useRef<HTMLDivElement>(null);
 
-  // Optimize PDF options to prevent unnecessary re-initialization
   const options = useMemo(() => ({
     cMapUrl: `https://unpkg.com/pdfjs-dist@${pdfjs.version}/cmaps/`,
     cMapPacked: true,
@@ -43,7 +43,6 @@ export const ReportViewerModal: React.FC<ReportViewerModalProps> = ({ isOpen, on
     password: report.file.password
   }), [report.url, report.file.password]);
 
-  // Handle container resizing for responsive PDFs
   useEffect(() => {
     const updateWidth = () => {
       if (containerRef.current) {
@@ -63,7 +62,6 @@ export const ReportViewerModal: React.FC<ReportViewerModalProps> = ({ isOpen, on
     }
   }, [isOpen]);
 
-  // Reset state on new report or modal open
   useEffect(() => {
     if (isOpen) {
         setNumPages(null);
@@ -73,13 +71,12 @@ export const ReportViewerModal: React.FC<ReportViewerModalProps> = ({ isOpen, on
         setLoadTimeout(false);
         setScale(1.0);
 
-        // Safety timeout: 30s is more reasonable for mobile processing of complex PDFs
+        // Mobile fallback timer: if nothing loads in 6s, show the manual link
         const timer = setTimeout(() => {
-            setIsLoading(prev => {
-                if (prev) setLoadTimeout(true);
-                return false;
-            });
-        }, 30000);
+            if (isLoading) {
+                setLoadTimeout(true);
+            }
+        }, 6000);
 
         return () => clearTimeout(timer);
     }
@@ -97,7 +94,7 @@ export const ReportViewerModal: React.FC<ReportViewerModalProps> = ({ isOpen, on
     if (err.name === 'PasswordException') {
         setError("This file is password protected. Please re-upload with the correct password.");
     } else {
-        setError(`Failed to load document. It may be corrupted or in an unsupported format.`);
+        setError(`Could not render PDF. Your browser might be blocking the worker.`);
     }
     setIsLoading(false);
   }
@@ -113,7 +110,7 @@ export const ReportViewerModal: React.FC<ReportViewerModalProps> = ({ isOpen, on
   const isPdf = report.file.type === 'application/pdf';
 
   return (
-    <div className="fixed inset-0 bg-black bg-opacity-90 z-[100] flex items-center justify-center sm:p-4 animate-fadeIn pointer-events-auto">
+    <div className="fixed inset-0 bg-black bg-opacity-90 z-[100] flex items-center justify-center sm:p-4 animate-fadeIn">
       <div className="bg-white shadow-2xl w-full max-w-5xl h-full sm:h-[95vh] sm:rounded-2xl flex flex-col overflow-hidden relative">
         
         <header className="flex items-center justify-between p-4 border-b border-slate-100 flex-shrink-0 bg-white z-20">
@@ -129,7 +126,7 @@ export const ReportViewerModal: React.FC<ReportViewerModalProps> = ({ isOpen, on
             </div>
             <button 
                 onClick={onClose} 
-                className="p-3 -mr-2 text-slate-400 hover:text-slate-600 active:bg-slate-100 rounded-full transition pointer-events-auto"
+                className="p-3 -mr-2 text-slate-400 hover:text-slate-600 active:bg-slate-100 rounded-full transition"
                 aria-label="Close"
             >
                 <CloseIcon className="w-7 h-7" />
@@ -138,13 +135,27 @@ export const ReportViewerModal: React.FC<ReportViewerModalProps> = ({ isOpen, on
         
         <main 
           ref={containerRef}
-          className="flex-grow overflow-auto bg-slate-200 flex items-start justify-center relative p-2 sm:p-6 scrollbar-hide"
+          className="flex-grow overflow-auto bg-slate-200 flex items-start justify-center relative p-2 sm:p-6"
         >
           {/* Loading Overlay */}
-          {isLoading && !loadTimeout && !error && (
-            <div className="absolute inset-0 flex flex-col items-center justify-center z-10 bg-slate-200">
+          {isLoading && !error && (
+            <div className="absolute inset-0 flex flex-col items-center justify-center z-10 bg-slate-200 p-6 text-center">
               <SpinnerIcon className="w-12 h-12 text-brand-blue-600 animate-spin mb-4" />
-              <p className="text-xs font-bold text-slate-500 tracking-widest uppercase">Rendering Documents...</p>
+              <p className="text-xs font-bold text-slate-500 tracking-widest uppercase mb-6">Rendering Document...</p>
+              
+              {loadTimeout && (
+                  <div className="bg-white p-6 rounded-2xl shadow-xl max-w-xs animate-fadeIn">
+                      <p className="text-sm text-slate-600 mb-4">Taking longer than usual on mobile...</p>
+                      <a 
+                        href={report.url} 
+                        target="_blank" 
+                        rel="noopener noreferrer"
+                        className="w-full inline-flex items-center justify-center gap-2 px-4 py-3 bg-brand-blue-600 text-white font-bold rounded-xl shadow-md active:scale-95"
+                      >
+                         <DownloadIcon className="w-4 h-4" /> Open in Browser
+                      </a>
+                  </div>
+              )}
             </div>
           )}
 
@@ -159,10 +170,11 @@ export const ReportViewerModal: React.FC<ReportViewerModalProps> = ({ isOpen, on
                <div className="flex flex-col gap-3">
                    <a 
                         href={report.url} 
-                        download={report.file.name}
-                        className="w-full inline-flex items-center justify-center px-4 py-3 bg-brand-blue-600 text-white font-bold rounded-xl hover:bg-brand-blue-700 shadow-md transition"
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="w-full inline-flex items-center justify-center gap-2 px-4 py-3 bg-brand-blue-600 text-white font-bold rounded-xl hover:bg-brand-blue-700 shadow-md transition active:scale-95"
                     >
-                        Download Original File
+                        <DownloadIcon className="w-4 h-4" /> Open Native File
                     </a>
                     <button onClick={onClose} className="text-sm text-slate-400 font-bold hover:text-slate-600 p-2">
                         Close Preview
@@ -170,31 +182,11 @@ export const ReportViewerModal: React.FC<ReportViewerModalProps> = ({ isOpen, on
                </div>
             </div>
           )}
-
-          {/* Timeout Fallback */}
-          {loadTimeout && !numPages && !error && (
-             <div className="text-center p-8 z-20 max-w-sm mt-10 bg-white rounded-2xl shadow-xl">
-                <div className="bg-orange-50 p-4 rounded-full w-16 h-16 flex items-center justify-center mx-auto mb-4">
-                    <WarningIcon className="w-8 h-8 text-orange-500" />
-                </div>
-                <h3 className="text-lg font-bold text-slate-800">Connection Too Slow</h3>
-                <p className="text-sm text-slate-500 mt-2 mb-6 leading-relaxed">
-                    The file is too large or your connection is slow. Please download it directly.
-                </p>
-                <a 
-                    href={report.url} 
-                    download={report.file.name}
-                    className="w-full inline-flex items-center justify-center px-4 py-3 bg-brand-blue-600 text-white font-bold rounded-xl hover:bg-brand-blue-700 shadow-md transition"
-                >
-                    Download PDF
-                </a>
-             </div>
-          )}
           
           {/* Main Content Area */}
           <div className={`transition-opacity duration-500 ${isLoading ? 'opacity-0' : 'opacity-100'}`}>
             {isPdf ? (
-                !error && !loadTimeout && (
+                !error && (
                     <div className="shadow-2xl bg-white origin-top-center">
                         <Document
                             key={fileObj.url} 
@@ -229,8 +221,7 @@ export const ReportViewerModal: React.FC<ReportViewerModalProps> = ({ isOpen, on
           </div>
         </main>
 
-        {/* Improved Controls Footer */}
-        {(!isLoading && !error && !loadTimeout) && (
+        {(!isLoading && !error) && (
             <footer className="p-4 border-t border-slate-100 flex-shrink-0 bg-white safe-area-bottom z-20">
                 <div className="flex flex-col sm:flex-row items-center justify-between gap-4">
                     
@@ -281,7 +272,8 @@ export const ReportViewerModal: React.FC<ReportViewerModalProps> = ({ isOpen, on
                         
                         <a 
                             href={report.url} 
-                            download={report.file.name}
+                            target="_blank"
+                            rel="noopener noreferrer"
                             className="p-3 bg-brand-blue-50 text-brand-blue-600 rounded-2xl hover:bg-brand-blue-100 transition sm:hidden"
                         >
                            <ArrowRightIcon className="w-6 h-6 rotate-90" />

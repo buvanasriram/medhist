@@ -37,7 +37,6 @@ const App: React.FC = () => {
     routeRef.current = route;
   }, [route]);
 
-  // Safety Timeout: Mobile connections can be slow, but we shouldn't hang forever.
   useEffect(() => {
     if (isLoading) {
       const timer = setTimeout(() => {
@@ -46,19 +45,27 @@ const App: React.FC = () => {
            setIsLoading(false);
            isLoadingDataRef.current = false;
         }
-      }, 15000); // Increased to 15s for slower mobile networks
+      }, 15000);
       return () => clearTimeout(timer);
     }
   }, [isLoading]);
 
-  const loadUserData = async (userId: string) => {
-      if (isLoadingDataRef.current) return;
+  const loadUserData = async (userId: string, isRetry = false) => {
+      if (isLoadingDataRef.current && !isRetry) return;
       
       isLoadingDataRef.current = true;
       setDataLoadError(null);
       
       try {
           const data = await supabaseService.getUserData(userId);
+          
+          // If we have no members, the DB trigger might be lagging (common on first login)
+          if ((!data.familyMembers || data.familyMembers.length === 0) && !isRetry) {
+              console.log("[App] No data found. Retrying in 1.5s...");
+              setTimeout(() => loadUserData(userId, true), 1500);
+              return;
+          }
+
           setFamilyMembers(data.familyMembers || []);
           setTimelineEntries(data.timelineEntries || []);
           setMedications(data.medications || []);
@@ -153,9 +160,6 @@ const App: React.FC = () => {
   
   const handleLogin = async (email: string, password: string):Promise<string|null> => {
     const error = await supabaseService.signIn(email, password);
-    if (!error) {
-        // Successful login will trigger auth state change which calls loadUserData
-    }
     return error;
   };
 
@@ -186,14 +190,11 @@ const App: React.FC = () => {
   };
 
   const handleLogout = async () => {
-    // Clear local state first for immediate UI response
     setCurrentUser(null);
     setSession(null);
     setRoute('/login');
     setIsRecoveryMode(false);
     setViewMode('dashboard');
-    
-    // Then call service
     await supabaseService.signOut();
   };
 
