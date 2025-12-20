@@ -4,13 +4,9 @@ import ReactDOM from 'react-dom/client';
 import App from './App';
 import { pdfjs } from 'react-pdf';
 
-// Configure the pdf.js worker globally.
-// We use the `pdfjs.version` property to dynamically ensure the worker URL 
-// matches the installed API version exactly, preventing version mismatch errors.
+// Configure the pdf.js worker globally using the official unpkg CDN which matches the library version precisely.
 try {
-  // Use cdnjs for high reliability and caching.
-  const version = pdfjs.version;
-  pdfjs.GlobalWorkerOptions.workerSrc = `https://cdnjs.cloudflare.com/ajax/libs/pdf.js/${version}/pdf.worker.min.mjs`;
+  pdfjs.GlobalWorkerOptions.workerSrc = `https://unpkg.com/pdfjs-dist@${pdfjs.version}/build/pdf.worker.min.mjs`;
 } catch (error) {
   console.warn("Failed to configure PDF worker:", error);
 }

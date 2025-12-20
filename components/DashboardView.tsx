@@ -81,8 +81,10 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
         setIsSyncing(true);
         try {
             await onRefreshData();
+        } catch (e) {
+            console.error("Sync failed:", e);
         } finally {
-            setTimeout(() => setIsSyncing(false), 800);
+            setTimeout(() => setIsSyncing(false), 1200);
         }
     };
 
@@ -243,13 +245,13 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
                     <div className="flex gap-3 w-full sm:w-auto">
                         <button 
                             onClick={() => setShowInviteModal(true)}
-                            className="flex-1 sm:flex-none flex items-center justify-center gap-2 text-sm font-medium text-brand-blue-600 bg-white border border-brand-blue-200 hover:bg-brand-blue-50 px-4 py-2 rounded-lg transition shadow-sm"
+                            className="flex-1 sm:flex-none flex items-center justify-center gap-2 text-sm font-bold text-brand-blue-600 bg-white border border-brand-blue-200 hover:bg-brand-blue-50 px-5 py-3 rounded-xl transition shadow-sm active:scale-95 pointer-events-auto"
                         >
                             <KeyIcon className="w-4 h-4" /> Invite
                         </button>
                         <button 
                             onClick={() => setShowAddMemberModal(true)}
-                            className="flex-1 sm:flex-none flex items-center justify-center gap-2 text-sm font-medium text-white bg-brand-blue-600 hover:bg-brand-blue-700 px-4 py-2 rounded-lg transition shadow-md"
+                            className="flex-1 sm:flex-none flex items-center justify-center gap-2 text-sm font-bold text-white bg-brand-blue-600 hover:bg-brand-blue-700 px-5 py-3 rounded-xl transition shadow-md active:scale-95 pointer-events-auto"
                         >
                             <PlusIcon className="w-4 h-4" /> Add Member
                         </button>
@@ -257,49 +259,52 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
                 </div>
 
                 {familyMembers.length === 0 ? (
-                    <div className="text-center py-12 md:py-20 bg-white rounded-xl shadow-sm border border-slate-200 p-6 flex flex-col items-center">
+                    <div className="text-center py-12 md:py-20 bg-white rounded-2xl shadow-sm border border-slate-200 p-8 flex flex-col items-center">
                         <div className="bg-slate-50 p-6 rounded-full mb-6">
                            <UserIcon className="w-16 h-16 text-slate-300" />
                         </div>
                         <h3 className="text-xl font-bold text-slate-800">Your Dashboard is Empty</h3>
                         <p className="text-slate-500 mb-8 max-w-sm mx-auto leading-relaxed">
-                            We couldn't find any family members. If you were expecting to see data, try syncing or check the User Guide.
+                            We couldn't find any family records. If you were expecting data, try a manual sync or check the guide.
                         </p>
                         
                         <div className="flex flex-col gap-3 w-full max-w-xs">
                             <button 
                                 onClick={() => setShowAddMemberModal(true)}
-                                className="w-full inline-flex items-center justify-center gap-2 bg-brand-blue-600 text-white font-bold px-5 py-3 rounded-xl hover:bg-brand-blue-700 shadow-lg transition"
+                                className="w-full inline-flex items-center justify-center gap-3 bg-brand-blue-600 text-white font-bold px-6 py-4 rounded-2xl hover:bg-brand-blue-700 shadow-lg transition active:scale-95 pointer-events-auto"
                             >
-                                <PlusIcon className="w-5 h-5" /> Create Profile Folder
+                                <PlusIcon className="w-6 h-6" /> Create First Profile
                             </button>
                             
                             <button 
                                 onClick={handleSync}
                                 disabled={isSyncing}
-                                className="w-full inline-flex items-center justify-center gap-2 bg-white text-slate-700 border border-slate-300 font-bold px-5 py-3 rounded-xl hover:bg-slate-50 transition shadow-sm"
+                                className="w-full inline-flex items-center justify-center gap-3 bg-white text-slate-700 border-2 border-slate-200 font-bold px-6 py-4 rounded-2xl hover:bg-slate-50 transition active:scale-95 pointer-events-auto"
                             >
-                                {isSyncing ? <SpinnerIcon className="w-5 h-5 animate-spin" /> : <UsersIcon className="w-5 h-5" />}
-                                Sync Records
+                                {isSyncing ? <SpinnerIcon className="w-6 h-6 animate-spin text-brand-blue-600" /> : <UsersIcon className="w-6 h-6" />}
+                                Sync Data Now
                             </button>
 
                             <button 
                                 onClick={onOpenGuide}
-                                className="inline-flex items-center justify-center gap-2 text-brand-blue-600 font-bold px-5 py-2 hover:bg-brand-blue-50 rounded-lg transition text-sm"
+                                className="inline-flex items-center justify-center gap-2 text-brand-blue-600 font-bold px-5 py-3 hover:bg-brand-blue-50 rounded-xl transition text-sm pointer-events-auto"
                             >
-                                <HelpCircleIcon className="w-5 h-5" /> View How-to Guide
+                                <HelpCircleIcon className="w-5 h-5" /> View Tutorial
                             </button>
+
+                            <div className="h-px bg-slate-100 my-4 w-full"></div>
 
                             <button 
                                 onClick={onLogout}
-                                className="mt-4 inline-flex items-center justify-center gap-2 text-slate-400 hover:text-red-500 font-medium px-5 py-2 transition text-xs border border-dashed border-slate-200 rounded-lg"
+                                className="w-full inline-flex items-center justify-center gap-3 text-red-500 bg-red-50 border border-red-100 font-bold px-6 py-4 rounded-2xl hover:bg-red-100 transition active:scale-95 pointer-events-auto"
+                                aria-label="Log Out"
                             >
-                                <UserIcon className="w-4 h-4" /> Log Out of {user.email}
+                                <UserIcon className="w-6 h-6" /> Log Out
                             </button>
                         </div>
                         
-                        <div className="mt-12 text-xs text-slate-400">
-                           Identity: <span className="font-semibold">{user.email}</span>
+                        <div className="mt-8 text-[10px] text-slate-400 font-bold uppercase tracking-widest">
+                           Logged in as: {user.email}
                         </div>
                     </div>
                 ) : (
@@ -375,9 +380,9 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
             {isViewerOpen && reportToView && (
               <Suspense fallback={
                 <div className="fixed inset-0 z-50 flex items-center justify-center bg-black bg-opacity-60">
-                  <div className="bg-white p-4 rounded-lg flex items-center gap-3">
-                     <SpinnerIcon className="w-6 h-6 animate-spin text-brand-blue-600" />
-                     <span className="text-slate-700 font-medium">Loading Viewer...</span>
+                  <div className="bg-white p-6 rounded-2xl flex items-center gap-4 shadow-2xl">
+                     <SpinnerIcon className="w-8 h-8 animate-spin text-brand-blue-600" />
+                     <span className="text-slate-700 font-bold">Initializing Viewer...</span>
                   </div>
                 </div>
               }>
@@ -389,7 +394,7 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
               </Suspense>
             )}
 
-            <footer className="py-6 text-center text-slate-400 text-sm border-t border-slate-200 mt-auto bg-white">
+            <footer className="py-8 text-center text-slate-400 text-xs font-bold border-t border-slate-200 mt-auto bg-white uppercase tracking-widest">
                 <p>© {new Date().getFullYear()} medHist. v0.5.1</p>
             </footer>
         </div>

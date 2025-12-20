@@ -31,52 +31,59 @@ export const ReportViewerModal: React.FC<ReportViewerModalProps> = ({ isOpen, on
   
   const containerRef = useRef<HTMLDivElement>(null);
 
-  // Optimize PDF options to prevent re-renders
+  // Optimize PDF options to prevent unnecessary re-initialization
   const options = useMemo(() => ({
-    cMapUrl: `https://cdnjs.cloudflare.com/ajax/libs/pdf.js/${pdfjs.version}/cmaps/`,
+    cMapUrl: `https://unpkg.com/pdfjs-dist@${pdfjs.version}/cmaps/`,
     cMapPacked: true,
+    standardFontDataUrl: `https://unpkg.com/pdfjs-dist@${pdfjs.version}/standard_fonts/`,
   }), []);
 
-  // Create a memoized file object that includes the password if it exists
   const fileObj = useMemo(() => ({
     url: report.url,
     password: report.file.password
   }), [report.url, report.file.password]);
 
-  // Responsive width calculation
+  // Handle container resizing for responsive PDFs
   useEffect(() => {
     const updateWidth = () => {
       if (containerRef.current) {
         const width = containerRef.current.clientWidth;
-        setPageWidth(Math.min(width - 40, 800));
+        setPageWidth(Math.min(width - 32, 1200));
       }
     };
 
-    updateWidth();
-    window.addEventListener('resize', updateWidth);
-    return () => window.removeEventListener('resize', updateWidth);
+    if (isOpen) {
+        updateWidth();
+        const timeout = setTimeout(updateWidth, 100);
+        window.addEventListener('resize', updateWidth);
+        return () => {
+            window.removeEventListener('resize', updateWidth);
+            clearTimeout(timeout);
+        };
+    }
   }, [isOpen]);
 
-  // Handle Reset on new report
+  // Reset state on new report or modal open
   useEffect(() => {
-    // Only reset if we actually have a report URL change
-    setNumPages(null);
-    setPageNumber(1);
-    setIsLoading(true);
-    setError(null);
-    setLoadTimeout(false);
-    setScale(1.0);
+    if (isOpen) {
+        setNumPages(null);
+        setPageNumber(1);
+        setIsLoading(true);
+        setError(null);
+        setLoadTimeout(false);
+        setScale(1.0);
 
-    // Safety timeout: if PDF doesn't load in 10 seconds, show fallback
-    const timer = setTimeout(() => {
-        setIsLoading(prev => {
-            if (prev) setLoadTimeout(true);
-            return false;
-        });
-    }, 10000);
+        // Safety timeout: 30s is more reasonable for mobile processing of complex PDFs
+        const timer = setTimeout(() => {
+            setIsLoading(prev => {
+                if (prev) setLoadTimeout(true);
+                return false;
+            });
+        }, 30000);
 
-    return () => clearTimeout(timer);
-  }, [report.url]); 
+        return () => clearTimeout(timer);
+    }
+  }, [isOpen, report.url]); 
 
   function onDocumentLoadSuccess({ numPages }: { numPages: number }): void {
     setNumPages(numPages);
@@ -87,11 +94,10 @@ export const ReportViewerModal: React.FC<ReportViewerModalProps> = ({ isOpen, on
   
   function onDocumentLoadError(err: Error): void {
     console.error("PDF Load Error:", err);
-    // Suppress common insignificant errors like "Password required" if we're still handling it
     if (err.name === 'PasswordException') {
         setError("This file is password protected. Please re-upload with the correct password.");
     } else {
-        setError(`Failed to load document: ${err.message}`);
+        setError(`Failed to load document. It may be corrupted or in an unsupported format.`);
     }
     setIsLoading(false);
   }
@@ -99,7 +105,7 @@ export const ReportViewerModal: React.FC<ReportViewerModalProps> = ({ isOpen, on
   const goToPrevPage = () => setPageNumber(prev => Math.max(prev - 1, 1));
   const goToNextPage = () => setPageNumber(prev => Math.min(prev + 1, numPages || 1));
   
-  const handleZoomIn = () => setScale(prev => Math.min(prev + 0.25, 3.0));
+  const handleZoomIn = () => setScale(prev => Math.min(prev + 0.25, 4.0));
   const handleZoomOut = () => setScale(prev => Math.max(prev - 0.25, 0.5));
 
   if (!isOpen) return null;
@@ -107,57 +113,59 @@ export const ReportViewerModal: React.FC<ReportViewerModalProps> = ({ isOpen, on
   const isPdf = report.file.type === 'application/pdf';
 
   return (
-    <div className="fixed inset-0 bg-black bg-opacity-80 z-50 flex items-center justify-center sm:p-4 animate-fadeIn">
-      <div className="bg-white shadow-2xl w-full max-w-4xl h-full sm:h-[90vh] sm:rounded-2xl flex flex-col overflow-hidden">
-        <header className="flex items-center justify-between p-4 border-b border-slate-100 flex-shrink-0 bg-white">
+    <div className="fixed inset-0 bg-black bg-opacity-90 z-[100] flex items-center justify-center sm:p-4 animate-fadeIn pointer-events-auto">
+      <div className="bg-white shadow-2xl w-full max-w-5xl h-full sm:h-[95vh] sm:rounded-2xl flex flex-col overflow-hidden relative">
+        
+        <header className="flex items-center justify-between p-4 border-b border-slate-100 flex-shrink-0 bg-white z-20">
             <div className="flex flex-col min-w-0">
                 <h2 className="text-sm font-bold text-slate-800 truncate pr-4" title={report.file.name}>
                     {report.file.name}
                 </h2>
                 {numPages && isPdf && (
-                    <span className="text-[10px] text-slate-400 font-bold uppercase tracking-wider">
-                        Document • {numPages} Pages
+                    <span className="text-[10px] text-brand-blue-600 font-bold uppercase tracking-wider">
+                        Page {pageNumber} of {numPages}
                     </span>
                 )}
             </div>
-          <button 
-            onClick={onClose} 
-            className="p-2 -mr-2 text-slate-400 hover:text-slate-600 hover:bg-slate-100 rounded-full transition"
-          >
-            <CloseIcon className="w-6 h-6" />
-          </button>
+            <button 
+                onClick={onClose} 
+                className="p-3 -mr-2 text-slate-400 hover:text-slate-600 active:bg-slate-100 rounded-full transition pointer-events-auto"
+                aria-label="Close"
+            >
+                <CloseIcon className="w-7 h-7" />
+            </button>
         </header>
         
         <main 
           ref={containerRef}
-          className="flex-grow overflow-auto bg-slate-50 flex items-start justify-center relative p-4 scrollbar-hide"
+          className="flex-grow overflow-auto bg-slate-200 flex items-start justify-center relative p-2 sm:p-6 scrollbar-hide"
         >
-          {/* Loading Spinner */}
+          {/* Loading Overlay */}
           {isLoading && !loadTimeout && !error && (
-            <div className="absolute inset-0 flex flex-col items-center justify-center z-10 bg-slate-50 bg-opacity-90">
-              <SpinnerIcon className="w-10 h-10 text-brand-blue-600 animate-spin mb-3" />
-              <p className="text-sm font-bold text-slate-500 tracking-wide uppercase">Preparing Preview...</p>
+            <div className="absolute inset-0 flex flex-col items-center justify-center z-10 bg-slate-200">
+              <SpinnerIcon className="w-12 h-12 text-brand-blue-600 animate-spin mb-4" />
+              <p className="text-xs font-bold text-slate-500 tracking-widest uppercase">Rendering Documents...</p>
             </div>
           )}
 
           {/* Error State */}
           {error && (
-            <div className="text-center p-8 z-20 mt-10 max-w-sm">
+            <div className="text-center p-8 z-20 mt-10 max-w-sm bg-white rounded-2xl shadow-xl">
                <div className="bg-red-50 p-4 rounded-full w-16 h-16 flex items-center justify-center mx-auto mb-4">
                   <WarningIcon className="w-8 h-8 text-red-500" />
                </div>
-               <p className="font-bold text-slate-800 text-lg">Unable to Display</p>
+               <p className="font-bold text-slate-800 text-lg">Display Error</p>
                <p className="text-sm text-slate-500 mt-2 mb-6 leading-relaxed">{error}</p>
                <div className="flex flex-col gap-3">
                    <a 
                         href={report.url} 
                         download={report.file.name}
-                        className="w-full inline-flex items-center justify-center px-4 py-2.5 bg-brand-blue-600 text-white font-bold rounded-xl hover:bg-brand-blue-700 shadow-md transition"
+                        className="w-full inline-flex items-center justify-center px-4 py-3 bg-brand-blue-600 text-white font-bold rounded-xl hover:bg-brand-blue-700 shadow-md transition"
                     >
-                        Download File
+                        Download Original File
                     </a>
-                    <button onClick={onClose} className="text-sm text-slate-400 font-medium hover:text-slate-600">
-                        Go Back
+                    <button onClick={onClose} className="text-sm text-slate-400 font-bold hover:text-slate-600 p-2">
+                        Close Preview
                     </button>
                </div>
             </div>
@@ -165,118 +173,120 @@ export const ReportViewerModal: React.FC<ReportViewerModalProps> = ({ isOpen, on
 
           {/* Timeout Fallback */}
           {loadTimeout && !numPages && !error && (
-             <div className="text-center p-8 z-20 max-w-sm mt-10">
+             <div className="text-center p-8 z-20 max-w-sm mt-10 bg-white rounded-2xl shadow-xl">
                 <div className="bg-orange-50 p-4 rounded-full w-16 h-16 flex items-center justify-center mx-auto mb-4">
                     <WarningIcon className="w-8 h-8 text-orange-500" />
                 </div>
-                <h3 className="text-lg font-bold text-slate-800">Preview Timeout</h3>
+                <h3 className="text-lg font-bold text-slate-800">Connection Too Slow</h3>
                 <p className="text-sm text-slate-500 mt-2 mb-6 leading-relaxed">
-                    This file is taking longer than expected to render. You can still download it to your device.
+                    The file is too large or your connection is slow. Please download it directly.
                 </p>
                 <a 
                     href={report.url} 
                     download={report.file.name}
-                    className="w-full inline-flex items-center justify-center px-4 py-2.5 bg-brand-blue-600 text-white font-bold rounded-xl hover:bg-brand-blue-700 shadow-md transition"
+                    className="w-full inline-flex items-center justify-center px-4 py-3 bg-brand-blue-600 text-white font-bold rounded-xl hover:bg-brand-blue-700 shadow-md transition"
                 >
                     Download PDF
                 </a>
              </div>
           )}
           
-          {/* Content Rendering */}
-          {isPdf ? (
-            !error && !loadTimeout && (
-                <div className="shadow-2xl transition-all duration-300 origin-top bg-white">
-                    <Document
-                        key={fileObj.url} 
-                        file={fileObj}
-                        onLoadSuccess={onDocumentLoadSuccess}
-                        onLoadError={onDocumentLoadError}
-                        loading={null} 
-                        options={options}
-                        className={isLoading ? 'opacity-0' : 'opacity-100'}
-                    >
-                        <Page 
-                            pageNumber={pageNumber} 
-                            width={pageWidth * scale}
-                            renderTextLayer={true}
-                            renderAnnotationLayer={true}
-                            loading={<div className="h-[600px] w-full flex items-center justify-center bg-white"><SpinnerIcon className="w-8 h-8 animate-spin text-slate-200" /></div>}
-                        />
-                    </Document>
+          {/* Main Content Area */}
+          <div className={`transition-opacity duration-500 ${isLoading ? 'opacity-0' : 'opacity-100'}`}>
+            {isPdf ? (
+                !error && !loadTimeout && (
+                    <div className="shadow-2xl bg-white origin-top-center">
+                        <Document
+                            key={fileObj.url} 
+                            file={fileObj}
+                            onLoadSuccess={onDocumentLoadSuccess}
+                            onLoadError={onDocumentLoadError}
+                            loading={null} 
+                            options={options}
+                        >
+                            <Page 
+                                pageNumber={pageNumber} 
+                                width={pageWidth * scale}
+                                renderTextLayer={true}
+                                renderAnnotationLayer={true}
+                                loading={<div className="h-[600px] w-full flex items-center justify-center bg-white"><SpinnerIcon className="w-8 h-8 animate-spin text-slate-200" /></div>}
+                            />
+                        </Document>
+                    </div>
+                )
+            ) : (
+                <div className="shadow-2xl bg-white p-1">
+                    <img 
+                        src={report.url} 
+                        alt={report.file.name} 
+                        style={{ width: pageWidth * scale, maxWidth: 'none' }}
+                        className={`object-contain ${isLoading ? 'hidden' : 'block'}`}
+                        onLoad={() => setIsLoading(false)}
+                        onError={() => { setIsLoading(false); setError("This image could not be loaded."); }}
+                    />
                 </div>
-            )
-          ) : (
-            <div className="shadow-2xl bg-white p-1 rounded-sm">
-                <img 
-                    src={report.url} 
-                    alt={report.file.name} 
-                    style={{ width: scale === 1 ? 'auto' : pageWidth * scale, maxWidth: scale === 1 ? '100%' : 'none' }}
-                    className={`max-h-full object-contain ${isLoading ? 'hidden' : 'block'}`}
-                    onLoad={() => setIsLoading(false)}
-                    onError={() => { setIsLoading(false); setError("This image could not be loaded."); }}
-                />
-            </div>
-          )}
+            )}
+          </div>
         </main>
 
         {/* Improved Controls Footer */}
         {(!isLoading && !error && !loadTimeout) && (
-            <footer className="p-4 border-t border-slate-100 flex-shrink-0 bg-white safe-area-bottom">
+            <footer className="p-4 border-t border-slate-100 flex-shrink-0 bg-white safe-area-bottom z-20">
                 <div className="flex flex-col sm:flex-row items-center justify-between gap-4">
                     
-                    {/* Page Nav */}
+                    {/* Page Navigation */}
                     {isPdf && numPages ? (
-                        <div className="flex items-center gap-1 bg-slate-100 p-1 rounded-xl">
+                        <div className="flex items-center gap-1 bg-slate-100 p-1 rounded-2xl w-full sm:w-auto justify-between sm:justify-start">
                             <button 
                                 onClick={goToPrevPage} 
                                 disabled={pageNumber <= 1} 
-                                className="p-2 text-slate-600 hover:bg-white rounded-lg disabled:opacity-20 transition shadow-sm"
+                                className="p-3 text-slate-600 active:bg-white active:shadow-sm rounded-xl disabled:opacity-20 transition"
                             >
-                                <ArrowLeftIcon className="w-5 h-5" />
+                                <ArrowLeftIcon className="w-6 h-6" />
                             </button>
-                            <span className="px-4 text-xs font-bold text-slate-700 min-w-[100px] text-center">
+                            <span className="px-4 text-xs font-black text-slate-700 tracking-tighter">
                                 {pageNumber} / {numPages}
                             </span>
                             <button 
                                 onClick={goToNextPage} 
                                 disabled={pageNumber >= numPages} 
-                                className="p-2 text-slate-600 hover:bg-white rounded-lg disabled:opacity-20 transition shadow-sm"
+                                className="p-3 text-slate-600 active:bg-white active:shadow-sm rounded-xl disabled:opacity-20 transition"
                             >
-                                <ArrowRightIcon className="w-5 h-5" />
+                                <ArrowRightIcon className="w-6 h-6" />
                             </button>
                         </div>
                     ) : <div className="hidden sm:block w-32" />}
                     
-                    {/* Zoom Controls */}
-                    <div className="flex items-center gap-1 bg-slate-100 p-1 rounded-xl">
-                        <button 
-                            onClick={handleZoomOut} 
-                            disabled={scale <= 0.5}
-                            className="p-2 text-slate-600 hover:bg-white rounded-lg disabled:opacity-20 transition"
+                    {/* Zoom & Actions */}
+                    <div className="flex items-center gap-4 w-full sm:w-auto">
+                        <div className="flex items-center gap-1 bg-slate-100 p-1 rounded-2xl flex-grow sm:flex-grow-0 justify-between">
+                            <button 
+                                onClick={handleZoomOut} 
+                                disabled={scale <= 0.5}
+                                className="p-3 text-slate-600 active:bg-white rounded-xl disabled:opacity-20 transition"
+                            >
+                                <MinusIcon className="w-6 h-6" />
+                            </button>
+                            <span className="px-3 text-[10px] font-black text-slate-700 min-w-[50px] text-center">
+                                {Math.round(scale * 100)}%
+                            </span>
+                            <button 
+                                onClick={handleZoomIn} 
+                                disabled={scale >= 4.0}
+                                className="p-3 text-slate-600 active:bg-white rounded-xl disabled:opacity-20 transition"
+                            >
+                                <PlusIcon className="w-6 h-6" />
+                            </button>
+                        </div>
+                        
+                        <a 
+                            href={report.url} 
+                            download={report.file.name}
+                            className="p-3 bg-brand-blue-50 text-brand-blue-600 rounded-2xl hover:bg-brand-blue-100 transition sm:hidden"
                         >
-                            <MinusIcon className="w-5 h-5" />
-                        </button>
-                        <span className="px-3 text-xs font-bold text-slate-700 min-w-[60px] text-center">
-                            {Math.round(scale * 100)}%
-                        </span>
-                        <button 
-                            onClick={handleZoomIn} 
-                            disabled={scale >= 3.0}
-                            className="p-2 text-slate-600 hover:bg-white rounded-lg disabled:opacity-20 transition"
-                        >
-                            <PlusIcon className="w-5 h-5" />
-                        </button>
+                           <ArrowRightIcon className="w-6 h-6 rotate-90" />
+                        </a>
                     </div>
-
-                    {/* Action Button */}
-                    <a 
-                        href={report.url} 
-                        download={report.file.name}
-                        className="hidden sm:flex items-center gap-2 text-xs font-bold text-brand-blue-600 hover:bg-brand-blue-50 px-4 py-2 rounded-xl transition"
-                    >
-                        Save Copy
-                    </a>
                 </div>
             </footer>
         )}
