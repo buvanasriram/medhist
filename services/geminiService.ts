@@ -16,6 +16,7 @@ const getAIClient = () => {
     }
     
     try {
+        // ALWAYS use new GoogleGenAI({ apiKey: process.env.API_KEY });
         ai = new GoogleGenAI({ apiKey });
         return ai;
     } catch (error) {
@@ -76,10 +77,7 @@ const responseSchema = {
 // Helper function to extract text from a password-protected PDF using PDF.js
 const extractTextFromPdf = async (base64Data: string, password?: string): Promise<string> => {
     try {
-        // Convert base64 to binary string
         const binaryString = atob(base64Data);
-        
-        // Load the document with the password
         const loadingTask = pdfjs.getDocument({
             data: binaryString,
             password: password
@@ -88,7 +86,6 @@ const extractTextFromPdf = async (base64Data: string, password?: string): Promis
         const pdf = await loadingTask.promise;
         let fullText = '';
 
-        // Iterate over all pages
         for (let i = 1; i <= pdf.numPages; i++) {
             const page = await pdf.getPage(i);
             const textContent = await page.getTextContent();
@@ -98,7 +95,6 @@ const extractTextFromPdf = async (base64Data: string, password?: string): Promis
             fullText += `--- Page ${i} ---\n${pageText}\n\n`;
         }
         
-        // Check for empty text (scanned PDF issue)
         if (fullText.replace(/\s/g, '').length < 20) {
             throw new Error("SCANNED_PDF_DETECTED");
         }
@@ -140,7 +136,6 @@ export const extractReportInfo = async (fileBase64: string, mimeType: string, pa
         let contentPart;
 
         if (mimeType === 'application/pdf' && password) {
-            console.log("[GeminiService] Decrypting PDF locally...");
             const extractedText = await extractTextFromPdf(fileBase64, password);
             contentPart = { text: `Here is the text content extracted from the medical report:\n\n${extractedText}` };
         } else {
@@ -152,8 +147,9 @@ export const extractReportInfo = async (fileBase64: string, mimeType: string, pa
             };
         }
 
+        // Use 'gemini-3-flash-preview' for basic text/extraction tasks
         const response = await client.models.generateContent({
-            model: 'gemini-2.5-flash',
+            model: 'gemini-3-flash-preview',
             contents: {
                 parts: [
                     { text: prompt },
@@ -166,6 +162,7 @@ export const extractReportInfo = async (fileBase64: string, mimeType: string, pa
             },
         });
         
+        // Extract text directly from response.text property
         let jsonText = response.text;
         
         if (!jsonText) {
@@ -185,7 +182,6 @@ export const extractReportInfo = async (fileBase64: string, mimeType: string, pa
         // --- ROBUST FALLBACKS ---
         const dateRegex = /^\d{4}-\d{2}-\d{2}$/;
         if (!parsedData.date || !dateRegex.test(parsedData.date) || isNaN(Date.parse(parsedData.date))) {
-            console.warn(`[GeminiService] Invalid or missing date received: "${parsedData.date}". Defaulting to today's date.`);
             parsedData.date = new Date().toISOString().split('T')[0];
         }
 
@@ -205,11 +201,6 @@ export const extractReportInfo = async (fileBase64: string, mimeType: string, pa
 
     } catch (error: any) {
         console.error("Error calling Gemini API:", error);
-        if (error.message && error.message.includes('400')) {
-             if (error.message.includes('The document has no pages') || error.message.includes('INVALID_ARGUMENT')) {
-                 throw new Error("Gemini could not read this file. If it is password protected, please ensure you entered the correct password.");
-             }
-        }
         throw error;
     }
 };
@@ -225,7 +216,6 @@ interface FamilyData {
 export const chatWithHealthAssistant = async (userMessage: string, history: any[], data: FamilyData): Promise<string> => {
     const client = getAIClient();
 
-    // Prepare context about the family's health data
     const contextSummary = `
     CURRENT FAMILY DATA:
     
@@ -261,14 +251,16 @@ export const chatWithHealthAssistant = async (userMessage: string, history: any[
     `;
 
     try {
+        // Use 'gemini-3-flash-preview' for interactive chat tasks
         const chat = client.chats.create({
-            model: 'gemini-2.5-flash',
+            model: 'gemini-3-flash-preview',
             config: {
                 systemInstruction: systemPrompt,
             },
             history: history
         });
 
+        // Use the chat.sendMessage method for chat interactions
         const result = await chat.sendMessage({ message: userMessage });
         return result.text || "I'm sorry, I couldn't generate a response.";
     } catch (error) {
