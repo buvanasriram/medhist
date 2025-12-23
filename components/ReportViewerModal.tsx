@@ -1,9 +1,10 @@
-
 import React, { useState, useEffect, useRef } from 'react';
 import { CloseIcon } from './icons/CloseIcon';
 import { SpinnerIcon } from './icons/SpinnerIcon';
 import { WarningIcon } from './icons/WarningIcon';
 import { DownloadIcon } from './icons/DownloadIcon';
+import { ChevronDownIcon } from './icons/ChevronDownIcon';
+import { ChevronUpIcon } from './icons/ChevronUpIcon';
 import { Document, Page } from 'react-pdf';
 import type { ReportFile } from '../types';
 
@@ -19,8 +20,10 @@ interface ReportViewerModalProps {
 
 export const ReportViewerModal: React.FC<ReportViewerModalProps> = ({ isOpen, onClose, report }) => {
   const [numPages, setNumPages] = useState<number | null>(null);
+  const [pageNumber, setPageNumber] = useState(1);
   const [error, setError] = useState<string | null>(null);
   const [isLoading, setIsLoading] = useState(true);
+  const [isPageLoading, setIsPageLoading] = useState(false);
   const containerRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
@@ -28,6 +31,7 @@ export const ReportViewerModal: React.FC<ReportViewerModalProps> = ({ isOpen, on
       setIsLoading(true);
       setError(null);
       setNumPages(null);
+      setPageNumber(1);
     }
   }, [isOpen, report.url]);
 
@@ -42,66 +46,83 @@ export const ReportViewerModal: React.FC<ReportViewerModalProps> = ({ isOpen, on
 
   function onDocumentLoadError(err: Error) {
     console.error("PDF Load Error:", err);
-    setError("Browser security restricted the in-app preview.");
+    setError("Unable to render preview on this device.");
     setIsLoading(false);
   }
 
+  const changePage = (offset: number) => {
+    setPageNumber(prevPageNumber => {
+        const next = prevPageNumber + offset;
+        return Math.min(Math.max(1, next), numPages || 1);
+    });
+  };
+
   return (
-    <div className="fixed inset-0 bg-slate-900/90 backdrop-blur-sm z-[9999] flex items-center justify-center p-4">
-      <div className="bg-white w-full max-w-4xl h-[85vh] flex flex-col rounded-3xl shadow-2xl overflow-hidden relative border border-slate-200">
+    <div className="fixed inset-0 bg-slate-900/90 backdrop-blur-sm z-[9999] flex items-center justify-center p-2 sm:p-4">
+      <div className="bg-white w-full max-w-4xl h-[90vh] sm:h-[85vh] flex flex-col rounded-2xl sm:rounded-3xl shadow-2xl overflow-hidden relative border border-slate-200">
         
-        <header className="flex items-center justify-between px-6 py-4 border-b border-slate-100 bg-white">
-          <div className="text-left">
-            <h2 className="text-sm font-bold text-slate-800 truncate max-w-[200px] sm:max-w-md">
+        <header className="flex items-center justify-between px-4 sm:px-6 py-3 sm:py-4 border-b border-slate-100 bg-white z-20">
+          <div className="text-left min-w-0">
+            <h2 className="text-sm font-bold text-slate-800 truncate">
               {report.file.name}
             </h2>
             <p className="text-[10px] text-slate-400 font-bold uppercase tracking-widest">
               {isPdf ? 'Clinical PDF' : 'Medical Image'}
             </p>
           </div>
-          <button onClick={onClose} className="p-2 text-slate-400 hover:text-slate-900 transition">
+          <button onClick={onClose} className="p-2 text-slate-400 hover:text-slate-900 transition flex-shrink-0">
             <CloseIcon className="w-6 h-6" />
           </button>
         </header>
         
-        <main className="flex-grow bg-slate-50 overflow-y-auto relative" ref={containerRef}>
+        <main className="flex-grow bg-slate-100 overflow-y-auto relative" ref={containerRef}>
           {isLoading && !error && (
-            <div className="absolute inset-0 flex flex-col items-center justify-center bg-white/80 z-10">
+            <div className="absolute inset-0 flex flex-col items-center justify-center bg-white/80 z-30">
               <SpinnerIcon className="w-10 h-10 text-brand-blue-600 animate-spin mb-4" />
-              <p className="text-xs font-bold text-slate-400 uppercase tracking-widest">Loading Record...</p>
+              <p className="text-xs font-bold text-slate-400 uppercase tracking-widest">Opening Secure Record...</p>
             </div>
           )}
 
           {error && (
-            <div className="flex flex-col items-center justify-center min-h-full p-8 text-center">
+            <div className="flex flex-col items-center justify-center min-h-full p-8 text-center bg-white">
               <WarningIcon className="w-12 h-12 text-red-500 mb-4" />
-              <p className="font-bold text-slate-800 text-lg">Unable to Preview</p>
-              <p className="text-sm text-slate-500 mt-2 mb-8">This record is secure. Please open it in your device's native viewer.</p>
+              <p className="font-bold text-slate-800 text-lg">Preview Unavailable</p>
+              <p className="text-sm text-slate-500 mt-2 mb-8">This file is too complex for in-browser viewing.</p>
               <a href={report.url} target="_blank" rel="noopener noreferrer" className="bg-brand-blue-600 text-white font-bold px-6 py-3 rounded-xl flex items-center gap-2">
-                <DownloadIcon className="w-4 h-4" /> Open Full Record
+                <DownloadIcon className="w-4 h-4" /> Open Original File
               </a>
             </div>
           )}
           
-          <div className="flex flex-col items-center p-4">
+          <div className="flex flex-col items-center p-4 min-h-full justify-start">
             {isPdf ? (
-              <Document
-                file={report.url}
-                onLoadSuccess={onDocumentLoadSuccess}
-                onLoadError={onDocumentLoadError}
-                loading={<SpinnerIcon className="w-10 h-10 animate-spin text-brand-blue-600 my-20" />}
-              >
-                {Array.from(new Array(numPages || 0), (_, index) => (
-                  <div key={index} className="mb-6 shadow-xl border border-slate-200 bg-white">
+              <div className="relative">
+                 {isPageLoading && (
+                    <div className="absolute inset-0 flex items-center justify-center bg-white/40 z-10 rounded-lg">
+                        <SpinnerIcon className="w-8 h-8 text-brand-blue-600 animate-spin" />
+                    </div>
+                 )}
+                 <Document
+                    key={`doc_${report.url}`} // Force isolation per URL
+                    file={report.url}
+                    onLoadSuccess={onDocumentLoadSuccess}
+                    onLoadError={onDocumentLoadError}
+                    loading={null}
+                    className="shadow-2xl border border-slate-200"
+                  >
                     <Page 
-                      pageNumber={index + 1} 
-                      width={containerRef.current ? Math.min(containerRef.current.clientWidth - 40, 800) : 300}
+                      key={`page_${pageNumber}_${report.url}`} // Force isolation per page/file combo
+                      pageNumber={pageNumber} 
+                      width={containerRef.current ? Math.min(containerRef.current.clientWidth - 32, 800) : 300}
                       renderTextLayer={false}
                       renderAnnotationLayer={false}
+                      onLoadStart={() => setIsPageLoading(true)}
+                      onLoadSuccess={() => setIsPageLoading(false)}
+                      onRenderError={() => setError("Rendering failed on this device.")}
+                      className="bg-white"
                     />
-                  </div>
-                ))}
-              </Document>
+                  </Document>
+              </div>
             ) : (
               <img 
                 src={report.url} 
@@ -113,11 +134,35 @@ export const ReportViewerModal: React.FC<ReportViewerModalProps> = ({ isOpen, on
           </div>
         </main>
 
-        <footer className="p-4 bg-white border-t border-slate-100 flex gap-3">
-          <a href={report.url} target="_blank" rel="noopener noreferrer" className="flex-1 flex items-center justify-center gap-2 py-4 bg-slate-100 text-slate-700 font-bold rounded-2xl text-sm transition hover:bg-slate-200">
-            <DownloadIcon className="w-4 h-4" /> Open Native
+        {isPdf && !isLoading && numPages && numPages > 1 && (
+            <div className="bg-white border-t border-slate-100 px-4 py-3 flex items-center justify-between z-20">
+                <button 
+                    disabled={pageNumber <= 1}
+                    onClick={() => changePage(-1)}
+                    className="p-2 text-brand-blue-600 disabled:text-slate-300 transition-colors"
+                >
+                    <div className="rotate-90"><ChevronDownIcon className="w-6 h-6" /></div>
+                </button>
+                
+                <span className="text-xs font-bold text-slate-500 uppercase tracking-widest">
+                    Page {pageNumber} of {numPages}
+                </span>
+
+                <button 
+                    disabled={pageNumber >= numPages}
+                    onClick={() => changePage(1)}
+                    className="p-2 text-brand-blue-600 disabled:text-slate-300 transition-colors"
+                >
+                    <div className="-rotate-90"><ChevronDownIcon className="w-6 h-6" /></div>
+                </button>
+            </div>
+        )}
+
+        <footer className="p-4 bg-white border-t border-slate-100 flex gap-3 z-20">
+          <a href={report.url} target="_blank" rel="noopener noreferrer" className="flex-1 flex items-center justify-center gap-2 py-3 sm:py-4 bg-slate-100 text-slate-700 font-bold rounded-xl sm:rounded-2xl text-xs sm:text-sm transition hover:bg-slate-200">
+            <DownloadIcon className="w-4 h-4" /> {isPdf ? 'Download' : 'Full Size'}
           </a>
-          <button onClick={onClose} className="flex-1 py-4 bg-brand-blue-600 text-white font-bold rounded-2xl text-sm transition hover:bg-brand-blue-700 shadow-lg">
+          <button onClick={onClose} className="flex-1 py-3 sm:py-4 bg-brand-blue-600 text-white font-bold rounded-xl sm:rounded-2xl text-xs sm:text-sm transition hover:bg-brand-blue-700 shadow-lg">
             Close Record
           </button>
         </footer>
