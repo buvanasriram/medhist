@@ -1,4 +1,3 @@
-
 import { createClient } from '@supabase/supabase-js';
 import type { SupabaseClient } from '@supabase/supabase-js';
 import type { FamilyMember, TimelineEntry, ReportFile, Medication, ExtractedMedication } from '../types';
@@ -90,11 +89,19 @@ export const signUp = async (name: string, email: string, password: string, fami
         if (familyInput.isJoin) {
             const joinCode = familyInput.value.trim().toUpperCase();
             const { data: family } = await supabase!.from('families').select('id').eq('join_code', joinCode).maybeSingle();
-            if (!family) throw new Error(`Invalid Family Invite Code '${joinCode}'.`);
+            if (!family || !family.id) throw new Error(`Invalid Family Invite Code '${joinCode}'.`);
             familyId = family.id;
         } else {
             const newJoinCode = Math.random().toString(36).substring(2, 8).toUpperCase();
-            const { data: newFamily } = await supabase!.from('families').insert({ name: familyInput.value, join_code: newJoinCode }).select('id').single();
+            const { data: newFamily, error: familyError } = await supabase!
+                .from('families')
+                .insert({ name: familyInput.value, join_code: newJoinCode })
+                .select('id')
+                .single();
+            
+            if (familyError || !newFamily) {
+                throw new Error(familyError?.message || "Failed to create family group.");
+            }
             familyId = newFamily.id;
         }
 
@@ -331,7 +338,7 @@ export const addTimelineEntry = async (entryData: any, fileData: any, medication
         .select()
         .single();
 
-    if (entryError) throw entryError;
+    if (entryError || !entry) throw entryError || new Error("Failed to create timeline entry.");
 
     const { data: profile } = await supabase!.from('profiles').select('family_id').eq('id', session.user.id).single();
     const familyId = profile?.family_id || entry.family_member_id;
