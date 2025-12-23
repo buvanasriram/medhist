@@ -1,11 +1,11 @@
-# medHist: Your Family's Medical Timeline (v0.5.1)
+# medHist: Your Family's Medical Timeline (v0.6.1)
 
 medHist is a secure, family-focused web application that allows families to upload medical reports (PDFs/images). It uses Google Gemini AI to automatically extract key details (diagnosis, doctor, date, medications, appointments) and creates a chronological clinical timeline for every family member.
 
-## Project Status: v0.5.1 (Stable)
+## Project Status: v0.6.1 (Experimental Rendering Fix)
 *   **Architecture**: Family Group Model (Multi-tenant).
-*   **Latest Fixes**: Resolved PDF version mismatch errors and enhanced Supabase storage path hunting logic for high reliability with special characters/spaces in filenames.
-*   **Status**: Production-ready stable release.
+*   **Latest Fixes**: Implemented **Resolution Throttling** (`devicePixelRatio={1}`) to solve memory crashes on High-DPI mobile screens (e.g., iPhone/Samsung OLEDs). This fixes the "Preview Unavailable" error for small PDFs.
+*   **Status**: Experimental release for mobile verification.
 
 ## Features
 
@@ -13,6 +13,7 @@ medHist is a secure, family-focused web application that allows families to uplo
 *   **Installable App**: Works as a native app on iOS and Android via PWA technology.
 *   **Offline Ready**: Caches core assets so the app loads instantly, even with spotty connection.
 *   **Home Screen Icon**: Dedicated app icon for quick access.
+*   **Optimized Rendering**: Forced 1x resolution rendering for PDFs to maintain stability on low-RAM mobile devices.
 
 ### 👤 Profile Management
 *   **Edit Details**: Update names, relationships, and birth dates for any family member.
@@ -31,11 +32,6 @@ medHist is a secure, family-focused web application that allows families to uplo
 ### 🏠 Family Hub
 *   **Family Health Board**: At-a-glance dashboard showing status, age, and active meds.
 *   **Medication Manager**: Track active vs. stopped medications with history view.
-
-## Technical Improvements in v0.5.1
-*   **PDF.js Pinning**: Fixed `API version mismatch` errors by pinning `pdfjs-dist` to `4.8.69` across the worker and the main bundle.
-*   **Storage Robustness**: Implemented a "multi-stage path hunting" logic in `supabaseService.ts` to handle URL encoding differences for files with spaces or special characters.
-*   **Bucket Alignment**: Standardized all storage operations on the `medical-reports` bucket.
 
 ## Environment Variables
 

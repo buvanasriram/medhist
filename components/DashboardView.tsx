@@ -1,4 +1,3 @@
-
 import React, { useState, useMemo, Suspense } from 'react';
 import { Header } from './Header';
 import { MemberCard } from './MemberCard';
@@ -349,7 +348,7 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
             )}
 
             <footer className="py-8 text-center text-slate-400 text-[10px] font-bold border-t border-slate-100 mt-auto bg-white uppercase tracking-widest relative z-0">
-                <p>© {new Date().getFullYear()} medHist. v0.5.1</p>
+                <p>© {new Date().getFullYear()} medHist. v0.6.1</p>
             </footer>
         </div>
     );

@@ -4,7 +4,6 @@ import { SpinnerIcon } from './icons/SpinnerIcon';
 import { WarningIcon } from './icons/WarningIcon';
 import { DownloadIcon } from './icons/DownloadIcon';
 import { ChevronDownIcon } from './icons/ChevronDownIcon';
-import { ChevronUpIcon } from './icons/ChevronUpIcon';
 import { Document, Page } from 'react-pdf';
 import type { ReportFile } from '../types';
 
@@ -103,7 +102,7 @@ export const ReportViewerModal: React.FC<ReportViewerModalProps> = ({ isOpen, on
                     </div>
                  )}
                  <Document
-                    key={`doc_${report.url}`} // Force isolation per URL
+                    key={`doc_${report.url}`} // Force isolation
                     file={report.url}
                     onLoadSuccess={onDocumentLoadSuccess}
                     onLoadError={onDocumentLoadError}
@@ -111,9 +110,12 @@ export const ReportViewerModal: React.FC<ReportViewerModalProps> = ({ isOpen, on
                     className="shadow-2xl border border-slate-200"
                   >
                     <Page 
-                      key={`page_${pageNumber}_${report.url}`} // Force isolation per page/file combo
+                      key={`page_${pageNumber}_${report.url}`} // Force isolation
                       pageNumber={pageNumber} 
                       width={containerRef.current ? Math.min(containerRef.current.clientWidth - 32, 800) : 300}
+                      // EXPERIMENTAL FIX: Resolution Throttling
+                      // This prevents mobile browsers from over-rendering at 3x density and crashing.
+                      devicePixelRatio={1}
                       renderTextLayer={false}
                       renderAnnotationLayer={false}
                       onLoadStart={() => setIsPageLoading(true)}
@@ -143,11 +145,9 @@ export const ReportViewerModal: React.FC<ReportViewerModalProps> = ({ isOpen, on
                 >
                     <div className="rotate-90"><ChevronDownIcon className="w-6 h-6" /></div>
                 </button>
-                
                 <span className="text-xs font-bold text-slate-500 uppercase tracking-widest">
                     Page {pageNumber} of {numPages}
                 </span>
-
                 <button 
                     disabled={pageNumber >= numPages}
                     onClick={() => changePage(1)}
