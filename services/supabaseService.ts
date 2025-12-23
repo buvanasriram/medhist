@@ -93,16 +93,16 @@ export const signUp = async (name: string, email: string, password: string, fami
             familyId = family.id;
         } else {
             const newJoinCode = Math.random().toString(36).substring(2, 8).toUpperCase();
-            const { data: newFamily, error: familyError } = await supabase!
+            const response = await supabase!
                 .from('families')
                 .insert({ name: familyInput.value, join_code: newJoinCode })
                 .select('id')
                 .single();
             
-            if (familyError || !newFamily) {
-                throw new Error(familyError?.message || "Failed to create family group.");
+            if (response.error || !response.data) {
+                throw new Error(response.error?.message || "Failed to create family group.");
             }
-            familyId = newFamily.id;
+            familyId = response.data.id;
         }
 
         await supabase!.from('profiles').insert({ id: user.id, family_id: familyId, full_name: name });
@@ -329,7 +329,7 @@ export const addTimelineEntry = async (entryData: any, fileData: any, medication
     const session = await getSession();
     if (!session) throw new Error("No session");
 
-    const { data: entry, error: entryError } = await supabase!
+    const response = await supabase!
         .from('timeline_entries')
         .insert({
             ...entryData,
@@ -338,7 +338,8 @@ export const addTimelineEntry = async (entryData: any, fileData: any, medication
         .select()
         .single();
 
-    if (entryError || !entry) throw entryError || new Error("Failed to create timeline entry.");
+    if (response.error || !response.data) throw response.error || new Error("Failed to create timeline entry.");
+    const entry = response.data;
 
     const { data: profile } = await supabase!.from('profiles').select('family_id').eq('id', session.user.id).single();
     const familyId = profile?.family_id || entry.family_member_id;
