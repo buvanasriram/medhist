@@ -6,13 +6,12 @@ import { UploadModal } from './UploadModal';
 import { ConfirmationModal } from './ConfirmationModal';
 import { extractReportInfo } from '../services/geminiService';
 import { fileToBase64 } from '../utils/fileUtils';
+import { generateDoctorBrief } from '../utils/pdfGenerator';
 import * as supabaseService from '../services/supabaseService';
 import type { FamilyMember, TimelineEntry, User, ReportFile, Medication } from '../types';
 import { PlusIcon } from './icons/PlusIcon';
 import { SpinnerIcon } from './icons/SpinnerIcon';
-import { FilterIcon } from './icons/FilterIcon';
 import { ArrowLeftIcon } from './icons/ArrowLeftIcon';
-import { SearchIcon } from './icons/SearchIcon';
 import { StethoscopeIcon } from './icons/StethoscopeIcon';
 import { ClipboardIcon } from './icons/ClipboardIcon';
 import { DownloadIcon } from './icons/DownloadIcon'; 
@@ -59,9 +58,6 @@ export const TimelineView: React.FC<TimelineViewProps> = ({
   const [isLoading, setIsLoading] = useState<boolean>(false);
   const [isGeneratingPdf, setIsGeneratingPdf] = useState<boolean>(false);
   const [error, setError] = useState<string | null>(null);
-
-  // Memoize the report object for stability
-  const memoizedReportToView = useMemo(() => reportToViewRaw, [reportToViewRaw?.url, reportToViewRaw?.filePath]);
 
   const handleUpload = useCallback(async (file: File, memberId: string, password?: string) => {
     setIsLoading(true);
@@ -150,11 +146,11 @@ export const TimelineView: React.FC<TimelineViewProps> = ({
       if (!selectedMember) return;
       setIsGeneratingPdf(true);
       try {
-        const { generateDoctorBrief } = await import('../utils/pdfGenerator');
         const memberMeds = medications.filter(m => m.family_member_id === selectedMemberId);
         await generateDoctorBrief(selectedMember, memberMeds, memberEntries);
       } catch (e) {
-        alert("Failed to initialize PDF generator.");
+        console.error("Brief generation error", e);
+        alert("Failed to generate PDF summary.");
       } finally {
         setIsGeneratingPdf(false);
       }
@@ -236,11 +232,11 @@ export const TimelineView: React.FC<TimelineViewProps> = ({
 
       {isUploadModalOpen && <UploadModal isOpen={isUploadModalOpen} onClose={() => setUploadModalOpen(false)} onUpload={handleUpload} familyMembers={familyMembers} initialSelectedMemberId={selectedMemberId} isLoading={isLoading} error={error} setError={setError} />}
 
-      {isViewerOpen && memoizedReportToView && (
+      {isViewerOpen && reportToViewRaw && (
         <ReportViewerModal 
             isOpen={isViewerOpen} 
             onClose={() => { setViewerOpen(false); setReportToViewRaw(null); }} 
-            report={memoizedReportToView} 
+            report={reportToViewRaw} 
         />
       )}
       

@@ -1,3 +1,4 @@
+
 import React, { useState, useEffect, useRef, useCallback } from 'react';
 import { LoginPage } from './components/auth/LoginPage';
 import { SignupPage } from './components/auth/SignupPage';
@@ -84,11 +85,11 @@ const App: React.FC = () => {
     
     checkSession();
     
-    const { data: { subscription } } = supabaseService.onAuthStateChange(async (event, session) => {
+    const { data: { subscription } } = supabaseService.onAuthStateChange(async (event, currentSession) => {
       if (!isMounted) return;
       
-      if (event === 'SIGNED_OUT') {
-          // INSTANT UI RESET: Force clear everything immediately
+      // ONLY clear data if the session is explicitly null
+      if (event === 'SIGNED_OUT' && !currentSession) {
           setSession(null);
           setCurrentUser(null);
           setFamilyMembers([]);
@@ -100,19 +101,19 @@ const App: React.FC = () => {
           return;
       }
 
-      setSession(session);
-      
       if (event === 'PASSWORD_RECOVERY') setIsRecoveryMode(true);
 
-      if (session?.user) {
+      if (currentSession?.user) {
+        setSession(currentSession);
         const user = { 
-          id: session.user.id, 
-          name: session.user.user_metadata?.full_name || session.user.email, 
-          email: session.user.email || '' 
+          id: currentSession.user.id, 
+          name: currentSession.user.user_metadata?.full_name || currentSession.user.email, 
+          email: currentSession.user.email || '' 
         };
         setCurrentUser(user);
         
-        if (event === 'SIGNED_IN' || event === 'INITIAL_SESSION') {
+        // Only trigger load if data isn't already there or it's a new login
+        if (event === 'SIGNED_IN' || (event === 'INITIAL_SESSION' && familyMembers.length === 0)) {
             await loadUserData(user.id);
         }
       }
@@ -122,7 +123,7 @@ const App: React.FC = () => {
         isMounted = false;
         subscription.unsubscribe();
     };
-  }, [loadUserData]); 
+  }, [loadUserData, familyMembers.length]); 
   
   const handleLogin = async (email: string, password: string):Promise<string|null> => {
     return await supabaseService.signIn(email, password);
@@ -141,36 +142,38 @@ const App: React.FC = () => {
   };
 
   const handleLogout = async () => {
-    // 1. Instant local reset to prevent UI hanging on mobile
-    setCurrentUser(null);
-    setSession(null);
-    setRoute('/login');
-    setIsSyncing(false);
-    
-    // 2. Perform server-side sign out in background
+    setIsLoading(true); // Show loader during exit
     try {
         await supabaseService.signOut();
     } catch (e) {
-        console.warn("Background signout issue:", e);
+        console.warn("Signout issue:", e);
+    } finally {
+        setCurrentUser(null);
+        setSession(null);
+        setFamilyMembers([]);
+        setTimelineEntries([]);
+        setMedications([]);
+        setRoute('/login');
+        setIsLoading(false);
     }
   };
 
-  if (isLoading && !session) {
+  if (isLoading) {
       return (
         <div className="min-h-screen bg-slate-50 flex flex-col items-center justify-center text-slate-600">
              <SpinnerIcon className="w-10 h-10 text-brand-blue-600 animate-spin mb-4" />
-             <p className="text-slate-400 font-bold uppercase tracking-widest text-[10px]">Initializing medHist...</p>
+             <p className="text-slate-400 font-bold uppercase tracking-widest text-[10px]">Verifying Secure Session...</p>
         </div>
       );
   }
 
-  if (!session) {
+  if (!session || !currentUser) {
     if (route === '/signup') return <SignupPage onSignup={handleSignup} onNavigateToLogin={() => setRoute('/login')} />;
     if (route === '/forgot-password') return <ForgotPasswordPage onNavigateToLogin={() => setRoute('/login')} />;
     return <LoginPage onLogin={handleLogin} onNavigateToSignup={() => setRoute('/signup')} onNavigateToForgotPassword={() => setRoute('/forgot-password')} />;
   }
   
-  if (dataLoadError && currentUser) {
+  if (dataLoadError) {
       return (
         <div className="min-h-screen bg-slate-50 flex flex-col items-center justify-center p-6 text-center">
              <div className="bg-white p-8 rounded-2xl shadow-xl max-w-sm w-full border border-slate-100">
@@ -187,7 +190,6 @@ const App: React.FC = () => {
   }
 
   if (isRecoveryMode) return <UpdatePasswordPage onSuccess={() => { setIsRecoveryMode(false); setRoute('/'); }} />;
-  if (!currentUser) return null;
 
   if (viewMode === 'guide') return <GuideView user={currentUser} onBack={() => setViewMode('dashboard')} onLogout={handleLogout} />;
 
@@ -202,6 +204,7 @@ const App: React.FC = () => {
             timelineEntries={timelineEntries}
             onRefreshData={() => loadUserData(currentUser.id)}
             onOpenGuide={() => setViewMode('guide')}
+            medications={medications}
           />
       );
   }

@@ -1,4 +1,5 @@
-import React, { useState, useMemo, Suspense } from 'react';
+
+import React, { useState, useMemo } from 'react';
 import { Header } from './Header';
 import { MemberCard } from './MemberCard';
 import { MedicationManager } from './MedicationManager';
@@ -15,6 +16,7 @@ import { SpinnerIcon } from './icons/SpinnerIcon';
 import { HelpCircleIcon } from './icons/HelpCircleIcon';
 import { HealthAssistant } from './HealthAssistant';
 import { ReportViewerModal } from './ReportViewerModal';
+import { generateDoctorBrief } from '../utils/pdfGenerator';
 import type { User, FamilyMember, TimelineEntry, Medication, ReportFile } from '../types';
 import * as supabaseService from '../services/supabaseService';
 
@@ -54,6 +56,7 @@ const getDaysUntil = (dateString: string): string => {
     
     if (diffDays === 0) return "Today";
     if (diffDays === 1) return "Tomorrow";
+    if (diffDays < 0) return `${Math.abs(diffDays)} days ago`;
     return `In ${diffDays} days`;
 };
 
@@ -147,12 +150,12 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
 
         setGeneratingPdfMemberId(memberId);
         try {
-            const { generateDoctorBrief } = await import('../utils/pdfGenerator');
             const memberMeds = medications.filter(m => m.family_member_id === memberId);
             const memberEntries = timelineEntries.filter(e => e.family_member_id === memberId);
             await generateDoctorBrief(member, memberMeds, memberEntries);
         } catch (e) {
-            console.error("Failed to load PDF generator:", e);
+            console.error("Failed to generate PDF:", e);
+            alert("Error generating PDF brief. Please try again.");
         } finally {
             setGeneratingPdfMemberId(null);
         }
@@ -227,11 +230,11 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
                     </div>
                 </div>
 
-                {(isSyncing && familyMembers.length === 0) ? (
+                {isSyncing ? (
                     <div className="text-center py-20 bg-white rounded-2xl shadow-lg border border-slate-100 flex flex-col items-center">
                         <SpinnerIcon className="w-12 h-12 text-brand-blue-600 animate-spin mb-4" />
-                        <h3 className="text-lg font-bold text-slate-800">Finalizing Account Setup...</h3>
-                        <p className="text-slate-500 text-sm">We're creating your family space. Just a moment.</p>
+                        <h3 className="text-lg font-bold text-slate-800">Syncing Records...</h3>
+                        <p className="text-slate-500 text-sm">Ensuring your medical timeline is up to date.</p>
                     </div>
                 ) : familyMembers.length === 0 ? (
                     <div className="text-center py-12 md:py-20 bg-white rounded-2xl shadow-lg border border-slate-100 p-8 flex flex-col items-center z-30 relative">
@@ -240,32 +243,23 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
                         </div>
                         <h3 className="text-xl font-bold text-slate-800">Your Dashboard is Empty</h3>
                         <p className="text-slate-500 mb-8 max-w-sm mx-auto leading-relaxed">
-                            Log in again or try a manual sync if you're expecting family data here.
+                            No family members found. Add your first member to start tracking health records.
                         </p>
                         
                         <div className="flex flex-col gap-4 w-full max-w-xs relative z-40">
-                            <button 
-                                onClick={onRefreshData}
-                                disabled={isSyncing}
+                             <button 
+                                onClick={() => setShowAddMemberModal(true)}
                                 className="w-full inline-flex items-center justify-center gap-3 bg-brand-blue-600 text-white font-bold px-6 py-4.5 rounded-2xl hover:bg-brand-blue-700 transition active:scale-95 pointer-events-auto shadow-lg touch-manipulation"
                             >
-                                {isSyncing ? <SpinnerIcon className="w-6 h-6 animate-spin" /> : <UsersIcon className="w-6 h-6" />}
-                                Sync Data Now
+                                <PlusIcon className="w-6 h-6" />
+                                Add Family Member
                             </button>
 
                             <button 
-                                onClick={onLogout}
-                                className="w-full inline-flex items-center justify-center gap-3 text-red-500 bg-red-50 border border-red-100 font-bold px-6 py-4.5 rounded-2xl hover:bg-red-100 transition active:scale-95 pointer-events-auto touch-manipulation"
-                                aria-label="Log Out"
-                            >
-                                <UserIcon className="w-6 h-6" /> Log Out
-                            </button>
-
-                            <button 
-                                onClick={onOpenGuide}
+                                onClick={onRefreshData}
                                 className="inline-flex items-center justify-center gap-2 text-slate-400 font-bold px-5 py-3 hover:text-brand-blue-600 transition text-xs pointer-events-auto"
                             >
-                                <HelpCircleIcon className="w-4 h-4" /> Need help? View Guide
+                                <HelpCircleIcon className="w-4 h-4" /> Refresh Data
                             </button>
                         </div>
                     </div>
@@ -348,7 +342,7 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
             )}
 
             <footer className="py-8 text-center text-slate-400 text-[10px] font-bold border-t border-slate-100 mt-auto bg-white uppercase tracking-widest relative z-0">
-                <p>© {new Date().getFullYear()} medHist. v0.6.1</p>
+                <p>© {new Date().getFullYear()} medHist. v0.6.2</p>
             </footer>
         </div>
     );
