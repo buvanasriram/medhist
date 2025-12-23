@@ -15,12 +15,9 @@ import { ArrowRightIcon } from './icons/ArrowRightIcon';
 import { SpinnerIcon } from './icons/SpinnerIcon';
 import { HelpCircleIcon } from './icons/HelpCircleIcon';
 import { HealthAssistant } from './HealthAssistant';
+import { ReportViewerModal } from './ReportViewerModal';
 import type { User, FamilyMember, TimelineEntry, Medication, ReportFile } from '../types';
 import * as supabaseService from '../services/supabaseService';
-
-const ReportViewerModal = React.lazy(() => 
-  import('./ReportViewerModal').then(module => ({ default: module.ReportViewerModal }))
-);
 
 interface DashboardViewProps {
     user: User;
@@ -32,6 +29,7 @@ interface DashboardViewProps {
     onSelectMember: (memberId: string) => void;
     onRefreshData: () => void;
     onOpenGuide?: () => void;
+    isSyncing?: boolean;
 }
 
 const calculateAge = (dobString: string | undefined | null): number | null => {
@@ -61,29 +59,16 @@ const getDaysUntil = (dateString: string): string => {
 };
 
 export const DashboardView: React.FC<DashboardViewProps> = ({ 
-    user, onLogout, familyMembers, timelineEntries, medications, familyInfo, onSelectMember, onRefreshData, onOpenGuide
+    user, onLogout, familyMembers, timelineEntries, medications, familyInfo, onSelectMember, onRefreshData, onOpenGuide, isSyncing = false
 }) => {
     const [showInviteModal, setShowInviteModal] = useState(false);
     const [showAddMemberModal, setShowAddMemberModal] = useState(false);
     const [managingMedsMemberId, setManagingMedsMemberId] = useState<string | null>(null);
     const [editingMemberId, setEditingMemberId] = useState<string | null>(null);
-    const [isSyncing, setIsSyncing] = useState(false);
     
     const [isViewerOpen, setViewerOpen] = useState(false);
-    const [reportToView, setReportToView] = useState<{ url: string, file: ReportFile } | null>(null);
+    const [reportToView, setReportToView] = useState<{ url: string, filePath?: string, file: ReportFile } | null>(null);
     const [generatingPdfMemberId, setGeneratingPdfMemberId] = useState<string | null>(null);
-
-    const handleSync = async () => {
-        if (isSyncing) return;
-        setIsSyncing(true);
-        try {
-            await onRefreshData();
-        } catch (e) {
-            console.error("Sync failed:", e);
-        } finally {
-            setTimeout(() => setIsSyncing(false), 1200);
-        }
-    };
 
     const getLastCheckup = (memberId: string) => {
         const memberEntries = timelineEntries
@@ -125,7 +110,7 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
         onRefreshData();
     };
 
-    const handleAddMedication = async (data: { name: string, dosage: string, frequency: string, purpose: string }) => {
+    const handleAddMedication = async (data: { name: string, dosage: string, frequency: string, purpose: string, start_date: string }) => {
         if(managingMedsMemberId) {
             await supabaseService.addMedication({ family_member_id: managingMedsMemberId, ...data });
             onRefreshData();
@@ -149,8 +134,7 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
                 alert("Could not load report link.");
                 return;
             }
-            // Use signed URL directly for better performance/memory on mobile
-            setReportToView({ url: result.signedUrl, file: result.metadata });
+            setReportToView({ url: result.signedUrl, filePath: result.filePath, file: result.metadata });
             setViewerOpen(true);
         } catch (error) {
             console.error('Error viewing report', error);
@@ -244,7 +228,13 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
                     </div>
                 </div>
 
-                {familyMembers.length === 0 ? (
+                {(isSyncing && familyMembers.length === 0) ? (
+                    <div className="text-center py-20 bg-white rounded-2xl shadow-lg border border-slate-100 flex flex-col items-center">
+                        <SpinnerIcon className="w-12 h-12 text-brand-blue-600 animate-spin mb-4" />
+                        <h3 className="text-lg font-bold text-slate-800">Finalizing Account Setup...</h3>
+                        <p className="text-slate-500 text-sm">We're creating your family space. Just a moment.</p>
+                    </div>
+                ) : familyMembers.length === 0 ? (
                     <div className="text-center py-12 md:py-20 bg-white rounded-2xl shadow-lg border border-slate-100 p-8 flex flex-col items-center z-30 relative">
                         <div className="bg-slate-50 p-6 rounded-full mb-6">
                            <UserIcon className="w-16 h-16 text-slate-300" />
@@ -256,7 +246,7 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
                         
                         <div className="flex flex-col gap-4 w-full max-w-xs relative z-40">
                             <button 
-                                onClick={handleSync}
+                                onClick={onRefreshData}
                                 disabled={isSyncing}
                                 className="w-full inline-flex items-center justify-center gap-3 bg-brand-blue-600 text-white font-bold px-6 py-4.5 rounded-2xl hover:bg-brand-blue-700 transition active:scale-95 pointer-events-auto shadow-lg touch-manipulation"
                             >
@@ -278,10 +268,6 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
                             >
                                 <HelpCircleIcon className="w-4 h-4" /> Need help? View Guide
                             </button>
-                        </div>
-                        
-                        <div className="mt-10 text-[10px] text-slate-400 font-bold uppercase tracking-widest opacity-60">
-                           {user.email}
                         </div>
                     </div>
                 ) : (
@@ -355,20 +341,11 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
             )}
 
             {isViewerOpen && reportToView && (
-              <Suspense fallback={
-                <div className="fixed inset-0 z-[200] flex items-center justify-center bg-black bg-opacity-60">
-                  <div className="bg-white p-6 rounded-2xl flex items-center gap-4 shadow-2xl">
-                     <SpinnerIcon className="w-8 h-8 animate-spin text-brand-blue-600" />
-                     <span className="text-slate-700 font-bold">Opening...</span>
-                  </div>
-                </div>
-              }>
                 <ReportViewerModal 
                     isOpen={isViewerOpen} 
                     onClose={() => { setViewerOpen(false); setReportToView(null); }} 
                     report={reportToView} 
                 />
-              </Suspense>
             )}
 
             <footer className="py-8 text-center text-slate-400 text-[10px] font-bold border-t border-slate-100 mt-auto bg-white uppercase tracking-widest relative z-0">

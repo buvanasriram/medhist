@@ -21,7 +21,6 @@ const getEnvVar = (key: string) => {
   return undefined;
 };
 
-// Prioritize hardcoded credentials for stability in this environment
 const supabaseUrl = CREDENTIALS.SUPABASE_URL || getEnvVar('VITE_SUPABASE_URL');
 const supabaseAnonKey = CREDENTIALS.SUPABASE_ANON_KEY || getEnvVar('VITE_SUPABASE_ANON_KEY');
 
@@ -48,6 +47,8 @@ export type Session = any;
 
 const MOCK_USER_ID = 'mock-user-123';
 let mockSession: Session | null = null;
+
+const STORAGE_BUCKET = 'medical-reports';
 
 // --- AUTH FUNCTIONS ---
 
@@ -80,8 +81,9 @@ export const signUp = async (name: string, email: string, password: string, fami
     });
 
     if (authError) return authError.message;
-    const userId = authData.user?.id || authData.data?.user?.id;
-    if (!userId) return "Signup failed: User not created.";
+    
+    const user = authData.user;
+    if (!user) return "Signup failed: User not created.";
 
     try {
         let familyId = '';
@@ -96,8 +98,14 @@ export const signUp = async (name: string, email: string, password: string, fami
             familyId = newFamily.id;
         }
 
-        await supabase!.from('profiles').insert({ id: userId, family_id: familyId, full_name: name });
-        // Profile trigger will create the 'Self' member automatically
+        await supabase!.from('profiles').insert({ id: user.id, family_id: familyId, full_name: name });
+        await supabase!.from('family_members').insert({ 
+            family_id: familyId, 
+            name: name, 
+            relationship: 'Self', 
+            linked_user_id: user.id 
+        });
+
         return null;
     } catch (err: any) {
         await signOut();
@@ -126,21 +134,23 @@ export const signOut = async (): Promise<void> => {
     }
 };
 
-export const sendPasswordResetEmail = async (email: string): Promise<string | null> => {
+export const sendPasswordResetEmail = async (email: string): Promise<string|null> => {
     if (isMock) return null;
-    const { error } = await supabase!.auth.resetPasswordForEmail(email, { redirectTo: window.location.origin });
+    const { error } = await supabase!.auth.resetPasswordForEmail(email, {
+        redirectTo: `${window.location.origin}/update-password`,
+    });
     return error ? error.message : null;
 };
 
-export const updatePassword = async (newPassword: string): Promise<string | null> => {
+export const updatePassword = async (password: string): Promise<string|null> => {
     if (isMock) return null;
-    const { error } = await supabase!.auth.updateUser({ password: newPassword });
+    const { error } = await supabase!.auth.updateUser({ password });
     return error ? error.message : null;
 };
 
-export const updateUserEmail = async (newEmail: string): Promise<string | null> => {
+export const updateUserEmail = async (email: string): Promise<string|null> => {
     if (isMock) return null;
-    const { error } = await supabase!.auth.updateUser({ email: newEmail });
+    const { error } = await supabase!.auth.updateUser({ email });
     return error ? error.message : null;
 };
 
@@ -151,96 +161,93 @@ export const getUserData = async (userId: string) => {
         return { familyMembers: [], timelineEntries: [], medications: [], familyInfo: { name: 'Demo Family', joinCode: 'MOCK12' } };
     }
 
-    // Step 1: Get Profile (Resilient single fetch)
-    const { data: profile, error: profileErr } = await supabase!
-        .from('profiles')
-        .select('family_id')
-        .eq('id', userId)
-        .single();
-    
-    if (profileErr || !profile) {
-        console.error("Profile fetch error:", profileErr);
-        throw new Error("Could not find your family profile.");
+    let profile = null;
+    let retries = 0;
+    while (!profile && retries < 15) {
+        const { data } = await supabase!
+            .from('profiles')
+            .select('family_id')
+            .eq('id', userId)
+            .maybeSingle();
+        
+        if (data && data.family_id) {
+            profile = data;
+        } else {
+            retries++;
+            await new Promise(resolve => setTimeout(resolve, 800));
+        }
     }
+    
+    if (!profile) throw new Error("Syncing your account... please refresh in a moment.");
 
     const familyId = profile.family_id;
 
-    // Step 2: Get Family Info (Split from join for reliability)
-    const { data: family, error: familyErr } = await supabase!
+    const { data: familyInfo } = await supabase!
         .from('families')
         .select('name, join_code')
         .eq('id', familyId)
         .single();
-    
-    const familyInfo = family ? { name: family.name, joinCode: family.join_code } : null;
 
-    // Step 3: Get Family Members
-    const { data: familyMembers, error: membersErr } = await supabase!
+    const { data: familyMembers } = await supabase!
         .from('family_members')
         .select('*')
         .eq('family_id', familyId);
-    
-    if (membersErr) console.error("Members fetch error:", membersErr);
 
     const memberIds = familyMembers?.map(m => m.id) || [];
-    
-    // Step 4: Get Timeline Entries
-    let timelineEntries: TimelineEntry[] = [];
-    if (memberIds.length > 0) {
-        const { data: entries, error: entriesErr } = await supabase!
-            .from('timeline_entries')
-            .select('*')
-            .in('family_member_id', memberIds)
-            .order('date', { ascending: false });
-        
-        if (entriesErr) console.error("Entries fetch error:", entriesErr);
-        timelineEntries = entries || [];
-    }
 
-    // Step 5: Get Medications
-    let medications: Medication[] = [];
-    if (memberIds.length > 0) {
-        const { data: meds, error: medsErr } = await supabase!
-            .from('medications')
-            .select('*')
-            .in('family_member_id', memberIds)
-            .order('created_at', { ascending: false });
-        
-        if (medsErr) console.error("Meds fetch error:", medsErr);
-        medications = meds || [];
-    }
+    const { data: timelineEntries } = await supabase!
+        .from('timeline_entries')
+        .select('*, files(*)')
+        .in('family_member_id', memberIds)
+        .order('date', { ascending: false });
+
+    const { data: medications } = await supabase!
+        .from('medications')
+        .select('*')
+        .in('family_member_id', memberIds)
+        .order('created_at', { ascending: false });
 
     return {
         familyMembers: familyMembers || [],
-        timelineEntries,
-        medications,
-        familyInfo
+        timelineEntries: (timelineEntries || []).map(e => ({
+            ...e,
+            file: e.files?.[0] ? {
+                id: e.files[0].id,
+                name: e.files[0].name,
+                type: e.files[0].type
+            } : undefined
+        })),
+        medications: medications || [],
+        familyInfo: familyInfo ? { name: familyInfo.name, joinCode: familyInfo.join_code } : null
     };
 };
 
-export const addFamilyMember = async (details: { name: string; relationship: string; dob: string; }): Promise<void> => {
+export const addFamilyMember = async (details: { name: string; relationship: string; dob: string; }) => {
     if (isMock) return;
-    const userRes = await supabase!.auth.getUser();
-    const userId = userRes.data.user?.id;
-    if (!userId) throw new Error("Authentication required.");
+    const session = await getSession();
+    if (!session) throw new Error("No session");
 
-    const { data: profile } = await supabase!.from('profiles').select('family_id').eq('id', userId).single();
-    if (!profile) throw new Error("Family profile not found.");
+    const { data: profile } = await supabase!
+        .from('profiles')
+        .select('family_id')
+        .eq('id', session.user.id)
+        .single();
 
-    const { error } = await supabase!.from('family_members').insert({
-        family_id: profile.family_id,
-        name: details.name,
-        relationship: details.relationship,
-        dob: details.dob || null
-    });
+    if (!profile) throw new Error("Profile not found");
+
+    const { error } = await supabase!
+        .from('family_members')
+        .insert({
+            family_id: profile.family_id,
+            name: details.name,
+            relationship: details.relationship,
+            dob: details.dob || null
+        });
 
     if (error) throw error;
 };
 
-export const updateFamilyMember = async (
-    memberId: string, 
-    updates: { name: string, relationship: string, dob?: string }
-): Promise<void> => {
+export const updateFamilyMember = async (id: string, updates: { name: string; relationship: string; dob: string; }) => {
     if (isMock) return;
     const { error } = await supabase!
         .from('family_members')
@@ -249,106 +256,209 @@ export const updateFamilyMember = async (
             relationship: updates.relationship,
             dob: updates.dob || null
         })
-        .eq('id', memberId);
-
+        .eq('id', id);
     if (error) throw error;
 };
 
-export const addTimelineEntry = async (
-    newEntryData: any, 
-    fileData: { name: string, type: string, data: string, password?: string },
-    medications?: ExtractedMedication[]
-): Promise<void> => {
+export const addMedication = async (data: any) => {
     if (isMock) return;
+    const { error } = await supabase!
+        .from('medications')
+        .insert({
+            family_member_id: data.family_member_id,
+            timeline_entry_id: data.timeline_entry_id,
+            name: data.name,
+            dosage: data.dosage,
+            frequency: data.frequency,
+            purpose: data.purpose,
+            start_date: data.start_date,
+            active: true
+        });
+    if (error) throw error;
+};
 
-    const blob = base64ToBlob(fileData.data, fileData.type);
-    const filePath = `reports/${Date.now()}_${fileData.name}`;
-    const { error: uploadError } = await supabase!.storage.from('reports').upload(filePath, blob);
-    if (uploadError) throw uploadError;
+export const stopMedication = async (id: string) => {
+    if (isMock) return;
+    const { error } = await supabase!
+        .from('medications')
+        .update({
+            active: false,
+            stopped_at: new Date().toISOString()
+        })
+        .eq('id', id);
+    if (error) throw error;
+};
 
-    const { data: entry, error: entryError } = await supabase!.from('timeline_entries').insert({
-        ...newEntryData,
-        file_path: filePath,
-        file_name: fileData.name,
-        file_type: fileData.type,
-        file_password: fileData.password || null
-    }).select('id').single();
+/**
+ * Robust path cleaner for Supabase Storage.
+ */
+const sanitizePath = (path: string): string => {
+    if (!path) return '';
+    let clean = path.trim();
+    
+    try { clean = decodeURIComponent(clean); } catch (e) { /* ignore */ }
+    
+    const bucketPrefixes = [
+        `${STORAGE_BUCKET}/`, 
+        `/${STORAGE_BUCKET}/`, 
+        'reports/', 
+        '/reports/', 
+        'medical_reports/', 
+        '/medical_reports/',
+        'medical-reports/',
+        '/medical-reports/'
+    ];
+    for (const prefix of bucketPrefixes) {
+        if (clean.toLowerCase().startsWith(prefix.toLowerCase())) {
+            clean = clean.substring(prefix.length);
+        }
+    }
+    
+    return clean.replace(/^\/+/, '');
+};
+
+export const addTimelineEntry = async (entryData: any, fileData: any, medications?: ExtractedMedication[]) => {
+    if (isMock) return;
+    const session = await getSession();
+    if (!session) throw new Error("No session");
+
+    const { data: entry, error: entryError } = await supabase!
+        .from('timeline_entries')
+        .insert({
+            ...entryData,
+            uploaded_by_user_id: session.user.id
+        })
+        .select()
+        .single();
 
     if (entryError) throw entryError;
 
+    const { data: profile } = await supabase!.from('profiles').select('family_id').eq('id', session.user.id).single();
+    const familyId = profile?.family_id || entry.family_member_id;
+    const filePath = `${familyId}/${entry.id}/${fileData.name}`;
+    
+    const fileBlob = base64ToBlob(fileData.data, fileData.type);
+    const { error: uploadError } = await supabase!.storage
+        .from(STORAGE_BUCKET)
+        .upload(filePath, fileBlob, { contentType: fileData.type, upsert: true });
+
+    if (uploadError) throw uploadError;
+
+    const { error: fileError } = await supabase!
+        .from('files')
+        .insert({
+            timeline_entry_id: entry.id,
+            name: fileData.name,
+            type: fileData.type,
+            file_path: filePath,
+            password: fileData.password
+        });
+
+    if (fileError) throw fileError;
+
     if (medications && medications.length > 0) {
         const medsToInsert = medications.map(m => ({
-            family_member_id: newEntryData.family_member_id,
+            family_member_id: entry.family_member_id,
             timeline_entry_id: entry.id,
             name: m.name,
-            dosage: m.dosage || null,
-            frequency: m.frequency || null,
-            purpose: m.purpose || null,
-            start_date: m.startDate || newEntryData.date,
+            dosage: m.dosage,
+            frequency: m.frequency,
+            purpose: m.purpose,
+            start_date: m.startDate,
             active: true
         }));
         await supabase!.from('medications').insert(medsToInsert);
     }
+
+    return entry;
+};
+
+export const deleteTimelineEntry = async (entryId: string) => {
+    if (isMock) return;
+
+    const { data: fileRecord } = await supabase!
+        .from('files')
+        .select('file_path')
+        .eq('timeline_entry_id', entryId)
+        .maybeSingle();
+
+    if (fileRecord?.file_path) {
+        const cleanPath = sanitizePath(fileRecord.file_path);
+        await supabase!.storage.from(STORAGE_BUCKET).remove([cleanPath]);
+    }
+
+    await supabase!.from('timeline_entries').delete().eq('id', entryId);
 };
 
 export const getFileForEntry = async (entryId: string) => {
     if (isMock) return null;
-    const { data: entry, error } = await supabase!
-        .from('timeline_entries')
-        .select('file_path, file_name, file_type, file_password')
-        .eq('id', entryId)
-        .single();
-    
-    if (error || !entry) return null;
 
-    const { data } = await supabase!.storage.from('reports').createSignedUrl(entry.file_path, 3600);
+    const { data: fileMetadata, error: metaError } = await supabase!
+        .from('files')
+        .select('*')
+        .eq('timeline_entry_id', entryId)
+        .maybeSingle();
+
+    if (metaError || !fileMetadata) return null;
+
+    const dbPath = fileMetadata.file_path || (fileMetadata as any).storage_path;
+    if (!dbPath) return null;
+
+    const cleanPath = sanitizePath(dbPath);
+
+    // Multi-stage path hunting to handle various encoding scenarios
+    const pathsToTry = [
+        dbPath,                                        // 1. Exact DB path
+        cleanPath,                                     // 2. Sanity-cleaned path
+        dbPath.replace(/ /g, '%20'),                   // 3. Simple space encoding
+        encodeURIComponent(dbPath).replace(/%2F/g, '/') // 4. Segment-wise encoding
+    ];
+
+    let finalResult = null;
+    for (const p of pathsToTry) {
+        if (!p) continue;
+        const result = await supabase!.storage.from(STORAGE_BUCKET).createSignedUrl(p, 3600);
+        if (!result.error && result.data?.signedUrl) {
+            finalResult = { signedUrl: result.data.signedUrl, path: p };
+            break;
+        }
+    }
+
+    if (!finalResult) {
+        console.error(`[Supabase] Storage Error for ID ${entryId}: Not found in '${STORAGE_BUCKET}' at:`, pathsToTry);
+        return null;
+    }
+
     return {
-        signedUrl: data?.signedUrl || '',
+        signedUrl: finalResult.signedUrl,
+        filePath: finalResult.path,
         metadata: {
-            name: entry.file_name,
-            type: entry.file_type,
-            password: entry.file_password
+            id: fileMetadata.id,
+            name: fileMetadata.name,
+            type: fileMetadata.type,
+            password: fileMetadata.password
         }
     };
 };
 
-export const deleteTimelineEntry = async (entryId: string): Promise<void> => {
-    if (isMock) return;
-    const { data: entry } = await supabase!.from('timeline_entries').select('file_path').eq('id', entryId).single();
-    if (entry?.file_path) {
-        await supabase!.storage.from('reports').remove([entry.file_path]);
+export const downloadFile = async (path: string): Promise<Blob | null> => {
+    if (isMock) return null;
+    const cleanPath = sanitizePath(path);
+    const { data, error } = await supabase!.storage.from(STORAGE_BUCKET).download(cleanPath);
+    if (error) {
+        const { data: fallbackData } = await supabase!.storage.from(STORAGE_BUCKET).download(path);
+        return fallbackData || null;
     }
-    await supabase!.from('timeline_entries').delete().eq('id', entryId);
+    return data;
 };
 
-export const ignoreMismatch = async (entryId: string): Promise<void> => {
+export const ignoreMismatch = async (entryId: string) => {
     if (isMock) return;
     await supabase!.from('timeline_entries').update({ mismatch_ignored: true }).eq('id', entryId);
 };
 
-export const addMedication = async (data: { family_member_id: string, name: string, dosage?: string, frequency?: string, purpose?: string, start_date?: string }): Promise<void> => {
-    if (isMock) return;
-    await supabase!.from('medications').insert({
-        family_member_id: data.family_member_id,
-        name: data.name,
-        dosage: data.dosage,
-        frequency: data.frequency,
-        purpose: data.purpose,
-        start_date: data.start_date || new Date().toISOString().split('T')[0],
-        active: true
-    });
-};
-
-export const stopMedication = async (id: string): Promise<void> => {
-    if (isMock) return;
-    await supabase!.from('medications').update({
-        active: false,
-        stopped_at: new Date().toISOString()
-    }).eq('id', id);
-};
-
 export const createShareLink = async (entryId: string): Promise<string | null> => {
-    if (isMock) return "https://mock-medhist-share.link/r/" + entryId;
+    if (isMock) return "https://example.com/share/mock-link";
     const result = await getFileForEntry(entryId);
     return result?.signedUrl || null;
 };

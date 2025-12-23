@@ -75,9 +75,7 @@ export const HealthAssistant: React.FC<HealthAssistantProps> = ({ familyMembers,
   };
 
   const renderMessageText = (text: string) => {
-    // Regex to match [VIEW:Title:ID]
     const parts = text.split(/(\[VIEW:.*?:.*?\])/g);
-    
     return parts.map((part, index) => {
         const match = part.match(/\[VIEW:(.*?):(.*?)(?:\|.*?)?\]/); 
         if (match) {
@@ -98,32 +96,28 @@ export const HealthAssistant: React.FC<HealthAssistantProps> = ({ familyMembers,
   };
 
   return (
-    <>
-      <button
-        onClick={() => setIsOpen(!isOpen)}
-        className={`fixed bottom-6 right-6 p-4 rounded-full shadow-xl transition-all duration-300 z-[100] pointer-events-auto ${
-          isOpen ? 'bg-slate-200 text-slate-600 rotate-90' : 'bg-brand-blue-600 text-white hover:bg-brand-blue-700'
-        }`}
-      >
-        {isOpen ? <CloseIcon className="w-6 h-6" /> : <ChatIcon className="w-7 h-7" />}
-      </button>
-
+    <div className="fixed inset-0 pointer-events-none z-[500] flex flex-col justify-end items-end p-6">
       {isOpen && (
-        <div className="fixed bottom-24 right-4 md:right-6 w-[90vw] md:w-80 h-[50vh] md:h-[450px] bg-white rounded-2xl shadow-2xl flex flex-col border border-slate-200 z-[90] overflow-hidden animate-fadeIn pointer-events-auto">
-          <div className="bg-brand-blue-600 p-3 text-white flex items-center gap-3">
-            <div className="bg-white/20 p-1.5 rounded-lg">
-                <StethoscopeIcon className="w-4 h-4" />
+        <div className="w-full max-w-[360px] h-[500px] max-h-[70vh] bg-white rounded-3xl shadow-2xl flex flex-col border border-slate-200 overflow-hidden animate-fadeIn pointer-events-auto mb-4">
+          <div className="bg-brand-blue-600 p-4 text-white flex items-center justify-between">
+            <div className="flex items-center gap-3">
+                <div className="bg-white/20 p-2 rounded-xl">
+                    <StethoscopeIcon className="w-5 h-5" />
+                </div>
+                <div>
+                    <h3 className="font-bold text-sm leading-tight text-left">Assistant</h3>
+                    <p className="text-[10px] text-blue-100 text-left">AI Medical Context</p>
+                </div>
             </div>
-            <div>
-                <h3 className="font-bold text-sm leading-tight">medHist Assistant</h3>
-                <p className="text-[10px] text-blue-100">Private • AI Powered</p>
-            </div>
+            <button onClick={() => setIsOpen(false)} className="p-2 hover:bg-white/10 rounded-full transition">
+                <CloseIcon className="w-5 h-5" />
+            </button>
           </div>
 
-          <div className="flex-grow overflow-y-auto p-3 space-y-3 bg-slate-50">
+          <div className="flex-grow overflow-y-auto p-4 space-y-4 bg-slate-50">
             {messages.map((msg, idx) => (
               <div key={idx} className={`flex ${msg.role === 'user' ? 'justify-end' : 'justify-start'}`}>
-                <div className={`max-w-[85%] rounded-2xl px-3 py-2 text-sm shadow-sm ${
+                <div className={`max-w-[85%] rounded-2xl px-3 py-2 text-sm shadow-sm text-left ${
                   msg.role === 'user' 
                     ? 'bg-brand-blue-600 text-white rounded-br-none' 
                     : 'bg-white text-slate-700 border border-slate-200 rounded-bl-none'
@@ -134,35 +128,44 @@ export const HealthAssistant: React.FC<HealthAssistantProps> = ({ familyMembers,
             ))}
             {isLoading && (
               <div className="flex justify-start">
-                 <div className="bg-white p-2 rounded-2xl rounded-bl-none border border-slate-200 shadow-sm flex items-center gap-2">
-                    <SpinnerIcon className="w-3 h-3 text-brand-blue-600 animate-spin" />
-                    <span className="text-xs text-slate-500">Processing...</span>
+                 <div className="bg-white p-3 rounded-2xl rounded-bl-none border border-slate-200 shadow-sm flex items-center gap-2">
+                    <SpinnerIcon className="w-4 h-4 text-brand-blue-600 animate-spin" />
+                    <span className="text-xs text-slate-500 font-bold uppercase tracking-widest">Thinking...</span>
                  </div>
               </div>
             )}
             <div ref={messagesEndRef} />
           </div>
 
-          <form onSubmit={handleSend} className="p-2 bg-white border-t border-slate-200">
+          <form onSubmit={handleSend} className="p-3 bg-white border-t border-slate-100">
             <div className="relative flex items-center">
               <input
                 type="text"
-                placeholder="Ask a question..."
-                className="w-full pl-3 pr-10 py-2 bg-slate-100 border-none rounded-xl text-sm focus:ring-2 focus:ring-brand-blue-500 focus:bg-white transition placeholder-slate-400"
+                placeholder="Ask your records..."
+                className="w-full pl-4 pr-12 py-3 bg-slate-100 border-none rounded-2xl text-sm focus:ring-2 focus:ring-brand-blue-500 focus:bg-white transition"
                 value={input}
                 onChange={(e) => setInput(e.target.value)}
               />
               <button 
                 type="submit" 
                 disabled={!input.trim() || isLoading}
-                className="absolute right-1 p-1.5 bg-brand-blue-600 text-white rounded-lg hover:bg-brand-blue-700 disabled:opacity-50 disabled:cursor-not-allowed transition"
+                className="absolute right-2 p-2 bg-brand-blue-600 text-white rounded-xl hover:bg-brand-blue-700 disabled:opacity-50 transition"
               >
-                <SendIcon className="w-3.5 h-3.5" />
+                <SendIcon className="w-4 h-4" />
               </button>
             </div>
           </form>
         </div>
       )}
-    </>
+
+      <button
+        onClick={() => setIsOpen(!isOpen)}
+        className={`p-5 rounded-full shadow-2xl transition-all duration-300 pointer-events-auto active:scale-90 ${
+          isOpen ? 'bg-white text-slate-600' : 'bg-brand-blue-600 text-white hover:bg-brand-blue-700'
+        }`}
+      >
+        {isOpen ? <CloseIcon className="w-7 h-7" /> : <ChatIcon className="w-8 h-8" />}
+      </button>
+    </div>
   );
 };

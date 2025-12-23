@@ -1,5 +1,5 @@
 
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect, useRef, useCallback } from 'react';
 import { LoginPage } from './components/auth/LoginPage';
 import { SignupPage } from './components/auth/SignupPage';
 import { UpdatePasswordPage } from './components/auth/UpdatePasswordPage';
@@ -19,6 +19,7 @@ const App: React.FC = () => {
   );
   
   const [isLoading, setIsLoading] = useState<boolean>(true);
+  const [isSyncing, setIsSyncing] = useState<boolean>(false);
   const [dataLoadError, setDataLoadError] = useState<string | null>(null);
   const [isRecoveryMode, setIsRecoveryMode] = useState<boolean>(false);
   const [viewMode, setViewMode] = useState<'dashboard' | 'timeline' | 'guide'>('dashboard');
@@ -31,53 +32,32 @@ const App: React.FC = () => {
 
   const isSigningUpRef = useRef<boolean>(false);
   const routeRef = useRef(route);
-  const isLoadingDataRef = useRef<boolean>(false);
   
   useEffect(() => {
     routeRef.current = route;
   }, [route]);
 
-  useEffect(() => {
-    if (isLoading) {
-      const timer = setTimeout(() => {
-        if (isLoading) {
-           console.warn("[App] Safety Timeout: Forcing load state to complete.");
-           setIsLoading(false);
-           isLoadingDataRef.current = false;
-        }
-      }, 15000);
-      return () => clearTimeout(timer);
-    }
-  }, [isLoading]);
-
-  const loadUserData = async (userId: string, isRetry = false) => {
-      if (isLoadingDataRef.current && !isRetry) return;
-      
-      isLoadingDataRef.current = true;
+  const loadUserData = useCallback(async (userId: string) => {
+      setIsSyncing(true);
       setDataLoadError(null);
       
       try {
+          // The service now handles the polling/waiting logic
           const data = await supabaseService.getUserData(userId);
           
-          // If we have no members, the DB trigger might be lagging (common on first login)
-          if ((!data.familyMembers || data.familyMembers.length === 0) && !isRetry) {
-              console.log("[App] No data found. Retrying in 1.5s...");
-              setTimeout(() => loadUserData(userId, true), 1500);
-              return;
-          }
-
           setFamilyMembers(data.familyMembers || []);
           setTimelineEntries(data.timelineEntries || []);
           setMedications(data.medications || []);
           setFamilyInfo(data.familyInfo || null);
+          setIsSyncing(false);
+          setIsLoading(false);
       } catch (e: any) {
-          console.error("[App] Failed to load user data:", e);
-          setDataLoadError(e.message || "Connection lost. Please try again.");
-      } finally {
-          isLoadingDataRef.current = false;
+          console.error("[App] Data Load Error:", e);
+          setDataLoadError(e.message || "Connection error. Please try refreshing.");
+          setIsSyncing(false);
           setIsLoading(false);
       }
-  };
+  }, []);
 
   useEffect(() => {
     let mounted = true;
@@ -86,48 +66,35 @@ const App: React.FC = () => {
         setIsRecoveryMode(true);
     }
 
-    const checkSession = async () => {
-      try {
-        const currentSession = await supabaseService.getSession();
-        if (!mounted) return;
+    const init = async () => {
+      const currentSession = await supabaseService.getSession();
+      if (!mounted) return;
 
+      if (currentSession?.user) {
         setSession(currentSession);
-        
-        if (currentSession?.user) {
-          const user = { 
-            id: currentSession.user.id, 
-            name: currentSession.user.user_metadata?.full_name || currentSession.user.email,
-            email: currentSession.user.email || ''
-          };
-          setCurrentUser(user);
-          
-          if(routeRef.current !== '/signup') {
-             await loadUserData(user.id);
-          }
-          if (mounted && window.location.pathname !== '/signup') {
-               setRoute('/');
-          }
+        const user = { 
+          id: currentSession.user.id, 
+          name: currentSession.user.user_metadata?.full_name || currentSession.user.email,
+          email: currentSession.user.email || ''
+        };
+        setCurrentUser(user);
+        if (routeRef.current !== '/signup') {
+            await loadUserData(user.id);
         } else {
-            if (mounted && routeRef.current !== '/signup') {
-                setRoute('/login');
-            }
+            setIsLoading(false);
         }
-      } catch (err) {
-          console.error("Session check failed:", err);
-      } finally {
-          if (mounted) setIsLoading(false);
+      } else {
+          setIsLoading(false);
       }
     };
     
-    checkSession();
+    init();
     
     const { data: { subscription } } = supabaseService.onAuthStateChange(async (event, session) => {
       if (!mounted) return;
       setSession(session);
       
-      if (event === 'PASSWORD_RECOVERY') {
-          setIsRecoveryMode(true);
-      }
+      if (event === 'PASSWORD_RECOVERY') setIsRecoveryMode(true);
 
        if (session?.user) {
         const user = { 
@@ -139,10 +106,6 @@ const App: React.FC = () => {
         
         if (event === 'SIGNED_IN' && !isSigningUpRef.current) {
             await loadUserData(user.id);
-        }
-        
-        if (!isSigningUpRef.current && routeRef.current !== '/signup') {
-             setRoute('/');
         }
       } else {
         setCurrentUser(null);
@@ -156,33 +119,25 @@ const App: React.FC = () => {
         mounted = false;
         subscription.unsubscribe();
     };
-  }, [isRecoveryMode]); 
+  }, [isRecoveryMode, loadUserData]); 
   
   const handleLogin = async (email: string, password: string):Promise<string|null> => {
-    const error = await supabaseService.signIn(email, password);
-    return error;
+    return await supabaseService.signIn(email, password);
   };
 
   const handleSignup = async (name: string, email: string, password: string, familyInput: { isJoin: boolean, value: string }): Promise<string|null> => {
     isSigningUpRef.current = true;
+    setIsLoading(true);
     try {
         const error = await supabaseService.signUp(name, email, password, familyInput);
-        if(error) return error;
-        
-        await new Promise(resolve => setTimeout(resolve, 800));
-        const session = await supabaseService.getSession();
-        if (session?.user) {
-             const user = { 
-                id: session.user.id, 
-                name: session.user.user_metadata?.full_name || session.user.email,
-                email: session.user.email || ''
-             };
-             setCurrentUser(user);
-             await loadUserData(user.id);
+        if(error) {
+            setIsLoading(false);
+            return error;
         }
-        setRoute('/');
+        // getUserData will poll inside loadUserData
         return null;
     } catch (e: any) {
+        setIsLoading(false);
         return e.message;
     } finally {
         isSigningUpRef.current = false;
@@ -190,85 +145,50 @@ const App: React.FC = () => {
   };
 
   const handleLogout = async () => {
+    setIsLoading(true);
+    await supabaseService.signOut();
     setCurrentUser(null);
     setSession(null);
     setRoute('/login');
-    setIsRecoveryMode(false);
-    setViewMode('dashboard');
-    await supabaseService.signOut();
+    setIsLoading(false);
   };
+
+  if (isLoading) {
+      return (
+        <div className="min-h-screen bg-slate-50 flex flex-col items-center justify-center text-slate-600">
+             <SpinnerIcon className="w-10 h-10 text-brand-blue-600 animate-spin mb-4" />
+             <p className="text-slate-400 font-bold uppercase tracking-widest text-[10px]">Syncing Timeline...</p>
+        </div>
+      );
+  }
 
   if (dataLoadError && currentUser) {
       return (
-        <div className="min-h-screen bg-slate-50 flex flex-col items-center justify-center text-slate-600 p-6 text-center">
+        <div className="min-h-screen bg-slate-50 flex flex-col items-center justify-center p-6 text-center">
              <div className="bg-white p-8 rounded-2xl shadow-xl max-w-sm w-full border border-slate-100">
-                 <div className="bg-red-50 w-16 h-16 rounded-full flex items-center justify-center mx-auto mb-6">
-                    <span className="text-3xl">📡</span>
-                 </div>
-                 <h2 className="text-xl font-bold text-slate-800 mb-2">Sync Error</h2>
+                 <div className="bg-red-50 w-16 h-16 rounded-full flex items-center justify-center mx-auto mb-6 text-2xl">📡</div>
+                 <h2 className="text-xl font-bold text-slate-800 mb-2">Service Error</h2>
                  <p className="text-sm text-slate-500 mb-8 leading-relaxed">{dataLoadError}</p>
-                 
                  <div className="flex flex-col gap-3">
-                     <button 
-                        onClick={() => { setIsLoading(true); loadUserData(currentUser.id); }}
-                        className="w-full bg-brand-blue-600 text-white font-bold py-4 rounded-xl hover:bg-brand-blue-700 transition active:scale-95 shadow-md"
-                     >
-                        Retry Now
-                     </button>
-                     <button 
-                        onClick={handleLogout}
-                        className="w-full bg-slate-100 text-slate-600 font-bold py-4 rounded-xl hover:bg-slate-200 transition active:scale-95"
-                     >
-                        Log Out
-                     </button>
+                     <button onClick={() => loadUserData(currentUser.id)} className="w-full bg-brand-blue-600 text-white font-bold py-4 rounded-xl shadow-md active:scale-95 transition">Retry Connection</button>
+                     <button onClick={handleLogout} className="w-full bg-slate-100 text-slate-600 font-bold py-4 rounded-xl active:bg-slate-200 transition">Log Out</button>
                  </div>
              </div>
         </div>
       );
   }
 
-  if (isLoading) {
-      return (
-        <div className="min-h-screen bg-slate-50 flex flex-col items-center justify-center text-slate-600">
-             <SpinnerIcon className="w-10 h-10 text-brand-blue-600 animate-spin mb-4" />
-             <p className="text-slate-400 font-bold uppercase tracking-widest text-[10px]">Connecting to Cloud...</p>
-        </div>
-      );
-  }
-
-  if (isRecoveryMode) {
-    return (
-        <UpdatePasswordPage onSuccess={() => { setIsRecoveryMode(false); setRoute('/'); }} />
-    );
-  }
+  if (isRecoveryMode) return <UpdatePasswordPage onSuccess={() => { setIsRecoveryMode(false); setRoute('/'); }} />;
 
   if (!session) {
-    if (route === '/signup') {
-        return <SignupPage onSignup={handleSignup} onNavigateToLogin={() => setRoute('/login')} />;
-    }
-    if (route === '/forgot-password') {
-        return <ForgotPasswordPage onNavigateToLogin={() => setRoute('/login')} />;
-    }
-    return (
-        <LoginPage 
-            onLogin={handleLogin} 
-            onNavigateToSignup={() => setRoute('/signup')} 
-            onNavigateToForgotPassword={() => setRoute('/forgot-password')}
-        />
-    );
+    if (route === '/signup') return <SignupPage onSignup={handleSignup} onNavigateToLogin={() => setRoute('/login')} />;
+    if (route === '/forgot-password') return <ForgotPasswordPage onNavigateToLogin={() => setRoute('/login')} />;
+    return <LoginPage onLogin={handleLogin} onNavigateToSignup={() => setRoute('/signup')} onNavigateToForgotPassword={() => setRoute('/forgot-password')} />;
   }
   
   if (!currentUser) return null;
 
-  if (viewMode === 'guide') {
-      return (
-          <GuideView 
-            user={currentUser} 
-            onBack={() => setViewMode('dashboard')} 
-            onLogout={handleLogout}
-          />
-      );
-  }
+  if (viewMode === 'guide') return <GuideView user={currentUser} onBack={() => setViewMode('dashboard')} onLogout={handleLogout} />;
 
   if (viewMode === 'timeline') {
       return (
@@ -296,6 +216,7 @@ const App: React.FC = () => {
         onSelectMember={(id) => { setSelectedMemberId(id); setViewMode('timeline'); }}
         onRefreshData={() => loadUserData(currentUser.id)}
         onOpenGuide={() => setViewMode('guide')}
+        isSyncing={isSyncing}
     />
   );
 };

@@ -4,12 +4,8 @@ import ReactDOM from 'react-dom/client';
 import App from './App';
 import { pdfjs } from 'react-pdf';
 
-// Use the standard worker for better mobile/legacy browser support
-try {
-  pdfjs.GlobalWorkerOptions.workerSrc = `https://unpkg.com/pdfjs-dist@${pdfjs.version}/build/pdf.worker.min.js`;
-} catch (error) {
-  console.warn("Failed to configure PDF worker:", error);
-}
+// Configure the worker to use the exact version matched to the import map
+pdfjs.GlobalWorkerOptions.workerSrc = `https://esm.sh/pdfjs-dist@4.8.69/build/pdf.worker.mjs`;
 
 const rootElement = document.getElementById('root');
 if (!rootElement) {

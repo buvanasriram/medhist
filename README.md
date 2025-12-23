@@ -1,21 +1,20 @@
-
-# medHist: Your Family's Medical Timeline (v0.5.0)
+# medHist: Your Family's Medical Timeline (v0.5.1)
 
 medHist is a secure, family-focused web application that allows families to upload medical reports (PDFs/images). It uses Google Gemini AI to automatically extract key details (diagnosis, doctor, date, medications, appointments) and creates a chronological clinical timeline for every family member.
 
-## Project Status: v0.5.0
+## Project Status: v0.5.1 (Stable)
 *   **Architecture**: Family Group Model (Multi-tenant).
-*   **New Features**: **Progressive Web App (PWA)**, Profile & Email Editing, AI Health Assistant.
-*   **Status**: Stable release.
+*   **Latest Fixes**: Resolved PDF version mismatch errors and enhanced Supabase storage path hunting logic for high reliability with special characters/spaces in filenames.
+*   **Status**: Production-ready stable release.
 
 ## Features
 
-### 📱 Mobile Experience (New in v0.5.0)
+### 📱 Mobile Experience
 *   **Installable App**: Works as a native app on iOS and Android via PWA technology.
 *   **Offline Ready**: Caches core assets so the app loads instantly, even with spotty connection.
 *   **Home Screen Icon**: Dedicated app icon for quick access.
 
-### 👤 Profile Management (New in v0.5.0)
+### 👤 Profile Management
 *   **Edit Details**: Update names, relationships, and birth dates for any family member.
 *   **Email Update**: Securely update your login email address (with confirmation flow).
 
@@ -33,15 +32,12 @@ medHist is a secure, family-focused web application that allows families to uplo
 *   **Family Health Board**: At-a-glance dashboard showing status, age, and active meds.
 *   **Medication Manager**: Track active vs. stopped medications with history view.
 
+## Technical Improvements in v0.5.1
+*   **PDF.js Pinning**: Fixed `API version mismatch` errors by pinning `pdfjs-dist` to `4.8.69` across the worker and the main bundle.
+*   **Storage Robustness**: Implemented a "multi-stage path hunting" logic in `supabaseService.ts` to handle URL encoding differences for files with spaces or special characters.
+*   **Bucket Alignment**: Standardized all storage operations on the `medical-reports` bucket.
+
 ## Environment Variables
-
-To run this project, you need to set up the following environment variables.
-
-**Local Development:**
-You can put these in `credentials.ts` (for preview) or a `.env` file.
-
-**Deployment (Netlify/Vercel):**
-Add these in the project settings under "Environment Variables".
 
 | Variable | Description |
 | :--- | :--- |
@@ -49,53 +45,8 @@ Add these in the project settings under "Environment Variables".
 | `VITE_SUPABASE_ANON_KEY` | Your Supabase Public (Anon) Key |
 | `API_KEY` | Your Google Gemini API Key |
 
-## Development
-
-1.  Install dependencies:
-    ```bash
-    npm install
-    ```
-
-2.  Start the development server:
-    ```bash
-    npm run dev
-    ```
-
-## Testing
-
-We support two types of testing depending on your environment.
-
-### 1. Unit Tests (Works in Cloud/AI Studio)
-Use this if you are in the online editor. It tests the logic functions without needing a browser.
-```bash
-npm run test
-```
-
-### 2. End-to-End Tests (Requires Local Machine)
-Use this if you have downloaded the code. It launches a real browser to test the full app experience.
-```bash
-# 1. Install Browsers (Run once)
-npx playwright install
-
-# 2. Generate Test PDF (Ensure 'npm run dev' is running)
-npm run gen:pdf
-
-# 3. Run Tests
-npm run test:e2e
-```
-
-## Deployment on Netlify/Vercel
-
-1.  Connect your GitHub repository.
-2.  **Build Command:** `npm run build`
-3.  **Publish Directory:** `dist`
-4.  Add Environment Variables in site settings.
-5.  Deploy!
-
 ## Tech Stack
-
-*   **Frontend**: React, TypeScript, Vite, Tailwind CSS
-*   **Mobile/PWA**: Vite PWA Plugin, Service Workers
-*   **AI**: Google Gemini API (`@google/genai`)
-*   **Backend/Auth/Storage**: Supabase
-*   **PDF Handling**: React-PDF, PDF.js
+*   **Frontend**: React 19, TypeScript, Vite, Tailwind CSS
+*   **AI**: Google Gemini API (`gemini-3-flash-preview`)
+*   **Backend**: Supabase (Auth, DB, Storage)
+*   **PDF**: React-PDF + PDF.js (Pinned v4.8.69)
