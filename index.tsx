@@ -4,12 +4,13 @@ import ReactDOM from 'react-dom/client';
 import App from './App';
 import { pdfjs } from 'react-pdf';
 
-// DIAGNOSTIC: Log the versions to the console so we can verify parity
-console.log(`[medHist] PDF.js API Version: ${pdfjs.version}`);
+// 1. Detect runtime version
+const pdfVersion = pdfjs.version || '4.8.69';
+console.log(`[medHist] Initializing PDF.js v${pdfVersion}`);
 
-// CRITICAL: Force worker to the exact version we want.
-// Using unpkg here as a secondary source to ensure the file isn't cached wrongly by esm.sh
-pdfjs.GlobalWorkerOptions.workerSrc = `https://unpkg.com/pdfjs-dist@4.8.69/build/pdf.worker.min.mjs`;
+// 2. Set worker to match API EXACTLY using standard .js for legacy mobile support
+// Using the same major.minor.patch version as the loaded library
+pdfjs.GlobalWorkerOptions.workerSrc = `https://cdnjs.cloudflare.com/ajax/libs/pdf.js/${pdfVersion}/pdf.worker.min.js`;
 
 const rootElement = document.getElementById('root');
 if (!rootElement) {

@@ -1,3 +1,4 @@
+
 import { createClient } from '@supabase/supabase-js';
 import type { SupabaseClient } from '@supabase/supabase-js';
 import type { FamilyMember, TimelineEntry, ReportFile, Medication, ExtractedMedication } from '../types';
@@ -170,7 +171,8 @@ export const getUserData = async (userId: string) => {
 
     let profile = null;
     let retries = 0;
-    while (!profile && retries < 15) {
+    // Faster polling for better UI responsiveness
+    while (!profile && retries < 20) {
         const { data } = await supabase!
             .from('profiles')
             .select('family_id')
@@ -181,11 +183,12 @@ export const getUserData = async (userId: string) => {
             profile = data;
         } else {
             retries++;
-            await new Promise(resolve => setTimeout(resolve, 800));
+            // Poll every 500ms instead of 800ms
+            await new Promise(resolve => setTimeout(resolve, 500));
         }
     }
     
-    if (!profile) throw new Error("Syncing your account... please refresh in a moment.");
+    if (!profile) throw new Error("Synchronization in progress. Please refresh in a moment.");
 
     const familyId = profile.family_id;
 
