@@ -3,9 +3,7 @@ import { defineConfig, loadEnv } from 'vite'
 import react from '@vitejs/plugin-react'
 import { VitePWA } from 'vite-plugin-pwa'
 
-// https://vitejs.dev/config/
 export default defineConfig(({ mode }) => {
-  // Load env file based on `mode` in the current working directory.
   const env = loadEnv(mode, '.', '');
 
   return {
@@ -13,7 +11,7 @@ export default defineConfig(({ mode }) => {
     plugins: [
       react(),
       VitePWA({
-        registerType: 'autoUpdate',
+        registerType: 'autoUpdate', // Forces immediate update of the app when a new version is pushed
         includeAssets: ['medhist-logo.svg'],
         manifest: {
           name: 'medHist: Family Medical Timeline',
@@ -44,52 +42,28 @@ export default defineConfig(({ mode }) => {
           ]
         },
         workbox: {
-          // Caching strategies
+          cleanupOutdatedCaches: true, // Prevents version mismatch crashes
           globPatterns: ['**/*.{js,css,html,ico,png,svg,woff2}'],
           runtimeCaching: [
             {
-              // Cache Google Fonts
-              urlPattern: /^https:\/\/fonts\.googleapis\.com\/.*/i,
+              urlPattern: /^https:\/\/unpkg\.com\/pdfjs-dist@.*/i,
+              handler: 'CacheFirst',
+              options: {
+                cacheName: 'pdf-worker-cache',
+                expiration: {
+                  maxEntries: 5,
+                  maxAgeSeconds: 60 * 60 * 24 * 30
+                }
+              }
+            },
+            {
+              urlPattern: /^https:\/\/(fonts\.googleapis\.com|fonts\.gstatic\.com)\/.*/i,
               handler: 'CacheFirst',
               options: {
                 cacheName: 'google-fonts-cache',
                 expiration: {
                   maxEntries: 10,
-                  maxAgeSeconds: 60 * 60 * 24 * 365 // 365 days
-                },
-                cacheableResponse: {
-                  statuses: [0, 200]
-                }
-              }
-            },
-            {
-              // Cache Google Fonts Static Assets (woff2)
-              urlPattern: /^https:\/\/fonts\.gstatic\.com\/.*/i,
-              handler: 'CacheFirst',
-              options: {
-                cacheName: 'gstatic-fonts-cache',
-                expiration: {
-                  maxEntries: 10,
-                  maxAgeSeconds: 60 * 60 * 24 * 365 // 365 days
-                },
-                cacheableResponse: {
-                  statuses: [0, 200]
-                }
-              }
-            },
-            {
-              // Cache CDNs (PDF Worker, Tailwind, React-PDF CSS)
-              // Matches cdnjs.cloudflare.com AND cdn.jsdelivr.net
-              urlPattern: /^https:\/\/(cdnjs\.cloudflare\.com|cdn\.jsdelivr\.net)\/.*/i,
-              handler: 'CacheFirst',
-              options: {
-                cacheName: 'cdn-assets-cache',
-                expiration: {
-                  maxEntries: 20,
-                  maxAgeSeconds: 60 * 60 * 24 * 30 // 30 days
-                },
-                cacheableResponse: {
-                  statuses: [0, 200]
+                  maxAgeSeconds: 60 * 60 * 24 * 365
                 }
               }
             }
@@ -107,11 +81,6 @@ export default defineConfig(({ mode }) => {
     },
     build: {
       target: 'esnext'
-    },
-    esbuild: {
-      supported: {
-        'top-level-await': true
-      },
-    },
+    }
   }
 })

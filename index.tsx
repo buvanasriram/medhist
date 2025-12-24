@@ -4,16 +4,15 @@ import ReactDOM from 'react-dom/client';
 import App from './App';
 import { pdfjs } from 'react-pdf';
 
-// 1. Detect the exact version of the PDF.js API that was bundled/loaded
-const pdfVersion = pdfjs.version;
-console.log(`[medHist] PDF.js API Version: ${pdfVersion}`);
-
 /**
- * 2. PERMANENT FIX: Use unpkg.com as the worker source.
- * Unlike cdnjs, unpkg mirrors every single version of the NPM registry.
- * This ensures the worker script ALWAYS exists for the exact version loaded in the app.
- * We use the .mjs extension as required by PDF.js v4.0+.
+ * [medHist] v0.6.9 - Registry Lockdown
+ * This logic ensures the PDF.js API and Worker are always in sync.
  */
+const pdfVersion = pdfjs.version || '4.8.69';
+console.log(`[medHist] PDF.js API: ${pdfVersion}`);
+
+// Use unpkg as it mirrors the NPM registry exactly. 
+// cdnjs often lacks the specific minor versions bundled by build tools like Vite/Vercel.
 pdfjs.GlobalWorkerOptions.workerSrc = `https://unpkg.com/pdfjs-dist@${pdfVersion}/build/pdf.worker.min.mjs`;
 
 const rootElement = document.getElementById('root');
