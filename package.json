@@ -2,7 +2,7 @@
 {
   "name": "medhist-app",
   "private": true,
-  "version": "0.6.3",
+  "version": "0.6.5",
   "type": "module",
   "scripts": {
     "dev": "vite",
@@ -15,8 +15,8 @@
     "@supabase/supabase-js": "^2.44.4",
     "react": "^19.2.0",
     "react-dom": "^19.2.0",
-    "react-pdf": "^10.2.0",
-    "pdfjs-dist": "^4.8.69",
+    "react-pdf": "10.2.0",
+    "pdfjs-dist": "4.8.69",
     "jspdf": "^2.5.1",
     "jspdf-autotable": "^3.8.2"
   },

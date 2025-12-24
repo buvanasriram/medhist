@@ -4,8 +4,12 @@ import ReactDOM from 'react-dom/client';
 import App from './App';
 import { pdfjs } from 'react-pdf';
 
-// Use a stable, high-availability CDN for the worker that matches our package.json exactly
-pdfjs.GlobalWorkerOptions.workerSrc = `https://cdnjs.cloudflare.com/ajax/libs/pdf.js/4.8.69/pdf.worker.min.mjs`;
+// DIAGNOSTIC: Log the versions to the console so we can verify parity
+console.log(`[medHist] PDF.js API Version: ${pdfjs.version}`);
+
+// CRITICAL: Force worker to the exact version we want.
+// Using unpkg here as a secondary source to ensure the file isn't cached wrongly by esm.sh
+pdfjs.GlobalWorkerOptions.workerSrc = `https://unpkg.com/pdfjs-dist@4.8.69/build/pdf.worker.min.mjs`;
 
 const rootElement = document.getElementById('root');
 if (!rootElement) {
