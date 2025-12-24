@@ -1,4 +1,5 @@
-import React, { useState, useEffect, useRef } from 'react';
+
+import React, { useState, useEffect, useRef, useMemo } from 'react';
 import { CloseIcon } from './icons/CloseIcon';
 import { SpinnerIcon } from './icons/SpinnerIcon';
 import { WarningIcon } from './icons/WarningIcon';
@@ -24,6 +25,11 @@ export const ReportViewerModal: React.FC<ReportViewerModalProps> = ({ isOpen, on
   const [isLoading, setIsLoading] = useState(true);
   const [isPageLoading, setIsPageLoading] = useState(false);
   const containerRef = useRef<HTMLDivElement>(null);
+
+  // Detect if we are on a touch device (likely mobile/tablet) to apply resolution throttling
+  const isTouchDevice = useMemo(() => {
+    return (('ontouchstart' in window) || (navigator.maxTouchPoints > 0));
+  }, []);
 
   useEffect(() => {
     if (isOpen) {
@@ -113,9 +119,9 @@ export const ReportViewerModal: React.FC<ReportViewerModalProps> = ({ isOpen, on
                       key={`page_${pageNumber}_${report.url}`} // Force isolation
                       pageNumber={pageNumber} 
                       width={containerRef.current ? Math.min(containerRef.current.clientWidth - 32, 800) : 300}
-                      // EXPERIMENTAL FIX: Resolution Throttling
-                      // This prevents mobile browsers from over-rendering at 3x density and crashing.
-                      devicePixelRatio={1}
+                      // For mobile (touch devices), force 1x DPI to save memory. 
+                      // For desktops, use system default (likely 2x for Retina/Laptop) for high quality.
+                      devicePixelRatio={isTouchDevice ? 1 : undefined}
                       renderTextLayer={false}
                       renderAnnotationLayer={false}
                       onLoadStart={() => setIsPageLoading(true)}

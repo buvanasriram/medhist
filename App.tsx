@@ -30,9 +30,14 @@ const App: React.FC = () => {
   const [medications, setMedications] = useState<Medication[]>([]);
   const [familyInfo, setFamilyInfo] = useState<{name: string, joinCode: string} | null>(null);
 
-  const isSigningUpRef = useRef<boolean>(false);
+  // Prevention for the infinite loop
+  const loadedForUserId = useRef<string | null>(null);
   
   const loadUserData = useCallback(async (userId: string) => {
+      // Prevent redundant loads if we've already successfully loaded data for this user
+      if (loadedForUserId.current === userId && familyMembers.length > 0) return;
+      
+      console.log(`[App] loadUserData for: ${userId}`);
       setIsSyncing(true);
       setDataLoadError(null);
       
@@ -42,14 +47,14 @@ const App: React.FC = () => {
           setTimelineEntries(data.timelineEntries || []);
           setMedications(data.medications || []);
           setFamilyInfo(data.familyInfo || null);
-          setDataLoadError(null);
+          loadedForUserId.current = userId;
       } catch (e: any) {
           console.error("[App] Data Load Error:", e);
           setDataLoadError(e.message || "Connection error. Please try refreshing.");
       } finally {
           setIsSyncing(false);
       }
-  }, []);
+  }, [familyMembers.length]);
 
   useEffect(() => {
     let isMounted = true;
@@ -64,12 +69,12 @@ const App: React.FC = () => {
         if (!isMounted) return;
 
         if (currentSession?.user) {
-          setSession(currentSession);
           const user = { 
             id: currentSession.user.id, 
             name: currentSession.user.user_metadata?.full_name || currentSession.user.email,
             email: currentSession.user.email || ''
           };
+          setSession(currentSession);
           setCurrentUser(user);
           if (window.location.pathname === '/login' || window.location.pathname === '/') {
              setRoute('/');
@@ -88,13 +93,15 @@ const App: React.FC = () => {
     const { data: { subscription } } = supabaseService.onAuthStateChange(async (event, currentSession) => {
       if (!isMounted) return;
       
-      // ONLY clear data if the session is explicitly null
+      console.log(`[App] Auth Event: ${event}`);
+
       if (event === 'SIGNED_OUT' && !currentSession) {
           setSession(null);
           setCurrentUser(null);
           setFamilyMembers([]);
           setTimelineEntries([]);
           setMedications([]);
+          loadedForUserId.current = null;
           setRoute('/login');
           setIsLoading(false);
           setIsSyncing(false);
@@ -104,16 +111,16 @@ const App: React.FC = () => {
       if (event === 'PASSWORD_RECOVERY') setIsRecoveryMode(true);
 
       if (currentSession?.user) {
-        setSession(currentSession);
         const user = { 
           id: currentSession.user.id, 
           name: currentSession.user.user_metadata?.full_name || currentSession.user.email, 
           email: currentSession.user.email || '' 
         };
+        
+        setSession(currentSession);
         setCurrentUser(user);
         
-        // Only trigger load if data isn't already there or it's a new login
-        if (event === 'SIGNED_IN' || (event === 'INITIAL_SESSION' && familyMembers.length === 0)) {
+        if (event === 'SIGNED_IN' || event === 'INITIAL_SESSION') {
             await loadUserData(user.id);
         }
       }
@@ -123,26 +130,10 @@ const App: React.FC = () => {
         isMounted = false;
         subscription.unsubscribe();
     };
-  }, [loadUserData, familyMembers.length]); 
-  
-  const handleLogin = async (email: string, password: string):Promise<string|null> => {
-    return await supabaseService.signIn(email, password);
-  };
-
-  const handleSignup = async (name: string, email: string, password: string, familyInput: { isJoin: boolean, value: string }): Promise<string|null> => {
-    isSigningUpRef.current = true;
-    try {
-        const error = await supabaseService.signUp(name, email, password, familyInput);
-        return error;
-    } catch (e: any) {
-        return e.message;
-    } finally {
-        isSigningUpRef.current = false;
-    }
-  };
+  }, [loadUserData]); // Remove familyMembers.length to break the loop
 
   const handleLogout = async () => {
-    setIsLoading(true); // Show loader during exit
+    setIsLoading(true);
     try {
         await supabaseService.signOut();
     } catch (e) {
@@ -153,8 +144,21 @@ const App: React.FC = () => {
         setFamilyMembers([]);
         setTimelineEntries([]);
         setMedications([]);
+        loadedForUserId.current = null;
         setRoute('/login');
         setIsLoading(false);
+    }
+  };
+
+  const handleLogin = async (email: string, password: string):Promise<string|null> => {
+    return await supabaseService.signIn(email, password);
+  };
+
+  const handleSignup = async (name: string, email: string, password: string, familyInput: { isJoin: boolean, value: string }): Promise<string|null> => {
+    try {
+        return await supabaseService.signUp(name, email, password, familyInput);
+    } catch (e: any) {
+        return e.message;
     }
   };
 
@@ -181,7 +185,7 @@ const App: React.FC = () => {
                  <h2 className="text-xl font-bold text-slate-800 mb-2">Sync Error</h2>
                  <p className="text-sm text-slate-500 mb-8 leading-relaxed">{dataLoadError}</p>
                  <div className="flex flex-col gap-3">
-                     <button onClick={() => loadUserData(currentUser.id)} className="w-full bg-brand-blue-600 text-white font-bold py-4 rounded-xl shadow-md active:scale-95 transition">Retry Connection</button>
+                     <button onClick={() => { loadedForUserId.current = null; loadUserData(currentUser.id); }} className="w-full bg-brand-blue-600 text-white font-bold py-4 rounded-xl shadow-md active:scale-95 transition">Retry Connection</button>
                      <button onClick={handleLogout} className="w-full bg-slate-100 text-slate-600 font-bold py-4 rounded-xl active:bg-slate-200 transition">Log Out</button>
                  </div>
              </div>
@@ -202,7 +206,7 @@ const App: React.FC = () => {
             onBackToDashboard={() => setViewMode('dashboard')}
             familyMembers={familyMembers}
             timelineEntries={timelineEntries}
-            onRefreshData={() => loadUserData(currentUser.id)}
+            onRefreshData={() => { loadedForUserId.current = null; loadUserData(currentUser.id); }}
             onOpenGuide={() => setViewMode('guide')}
             medications={medications}
           />
@@ -218,7 +222,7 @@ const App: React.FC = () => {
         medications={medications}
         familyInfo={familyInfo}
         onSelectMember={(id) => { setSelectedMemberId(id); setViewMode('timeline'); }}
-        onRefreshData={() => loadUserData(currentUser.id)}
+        onRefreshData={() => { loadedForUserId.current = null; loadUserData(currentUser.id); }}
         onOpenGuide={() => setViewMode('guide')}
         isSyncing={isSyncing}
     />
