@@ -19,8 +19,8 @@ const App: React.FC = () => {
     window.location.pathname === '/signup' ? '/signup' : '/login'
   );
   
-  // Harmony v1.0 Live - Mockup deactivated
   const [isMockupMode, setIsMockupMode] = useState<boolean>(false);
+  const [showPublicGuide, setShowPublicGuide] = useState<boolean>(false);
 
   const [isLoading, setIsLoading] = useState<boolean>(true);
   const [isSyncing, setIsSyncing] = useState<boolean>(false);
@@ -71,6 +71,7 @@ const App: React.FC = () => {
             setViewMode('dashboard');
             forceResetUI();
         }
+        setShowPublicGuide(false);
     };
     window.addEventListener('popstate', handlePopState);
 
@@ -175,6 +176,10 @@ const App: React.FC = () => {
     }
   };
 
+  if (showPublicGuide) {
+      return <GuideView user={{ name: 'Guest' }} onBack={() => setShowPublicGuide(false)} onLogout={() => {}} />;
+  }
+
   if (isMockupMode) {
     return <MockupPreview onApprove={(logoIdx) => {
         setIsMockupMode(false);
@@ -191,9 +196,22 @@ const App: React.FC = () => {
   }
 
   if (!session || !currentUser) {
-    if (route === '/signup') return <SignupPage onSignup={handleSignup} onNavigateToLogin={() => setRoute('/login')} />;
+    if (route === '/signup') return (
+        <SignupPage 
+            onSignup={handleSignup} 
+            onNavigateToLogin={() => setRoute('/login')} 
+            onOpenGuide={() => setShowPublicGuide(true)}
+        />
+    );
     if (route === '/forgot-password') return <ForgotPasswordPage onNavigateToLogin={() => setRoute('/login')} />;
-    return <LoginPage onLogin={handleLogin} onNavigateToSignup={() => setRoute('/signup')} onNavigateToForgotPassword={() => setRoute('/forgot-password')} />;
+    return (
+        <LoginPage 
+            onLogin={handleLogin} 
+            onNavigateToSignup={() => setRoute('/signup')} 
+            onNavigateToForgotPassword={() => setRoute('/forgot-password')} 
+            onOpenGuide={() => setShowPublicGuide(true)}
+        />
+    );
   }
   
   if (dataLoadError) {

@@ -1,4 +1,3 @@
-
 import { defineConfig, loadEnv } from 'vite'
 import react from '@vitejs/plugin-react'
 import { VitePWA } from 'vite-plugin-pwa'
@@ -17,7 +16,7 @@ export default defineConfig(({ mode }) => {
           name: 'medHist: Family Medical Timeline',
           short_name: 'medHist',
           description: 'Secure family medical records and timeline manager.',
-          theme_color: '#0f7ef1',
+          theme_color: '#be123c',
           background_color: '#ffffff',
           display: 'standalone',
           orientation: 'portrait',

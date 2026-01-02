@@ -22,14 +22,18 @@ export const GuideView: React.FC<GuideViewProps> = ({ onBack, user, onLogout }) 
       <main className="container mx-auto p-4 sm:p-6 md:p-12 max-w-5xl flex-grow pb-24">
         <button 
             onClick={onBack}
-            className="flex items-center gap-2 text-slate-900 hover:text-rose-700 mb-10 transition font-black text-[10px] uppercase tracking-[0.3em]"
+            className="flex items-center gap-2 text-slate-900 hover:text-rose-700 mb-12 transition font-black text-[10px] uppercase tracking-[0.3em]"
         >
-            <ArrowLeftIcon className="w-5 h-5" /> Back to Family Board
+            <ArrowLeftIcon className="w-5 h-5" /> Back to Entry
         </button>
 
         <div className="mb-16">
-            <h1 className="text-5xl font-black text-slate-900 tracking-tighter leading-none mb-4">Intelligence</h1>
-            <p className="text-slate-900 text-[10px] font-black uppercase tracking-[0.5em]">medHist Clinical Intelligence Center</p>
+            <h1 className="text-xl font-light text-slate-800 tracking-tight flex items-center gap-2 flex-wrap">
+              <span>med<span className="font-black text-rose-800">Hist</span></span>
+              <span className="h-4 w-px bg-slate-200 mx-2 hidden sm:block"></span>
+              <span className="text-slate-400 font-medium">AI Powered Clinical Intelligence Center</span>
+            </h1>
+            <div className="h-1 w-12 bg-rose-700 rounded-full mt-4"></div>
         </div>
 
         <div className="grid grid-cols-1 md:grid-cols-2 gap-8 mb-20">

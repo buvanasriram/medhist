@@ -8,8 +8,6 @@ import { CloseIcon } from './icons/CloseIcon';
 import { SpinnerIcon } from './icons/SpinnerIcon';
 import { ConfirmationModal } from './ConfirmationModal';
 import { CalendarIcon } from './icons/CalendarIcon';
-import { ChevronDownIcon } from './icons/ChevronDownIcon';
-import { ChevronUpIcon } from './icons/ChevronUpIcon';
 
 interface MedicationManagerProps {
   isOpen: boolean;
@@ -25,7 +23,7 @@ export const MedicationManager: React.FC<MedicationManagerProps> = ({ isOpen, on
   const [dosage, setDosage] = useState('');
   const [frequency, setFrequency] = useState('');
   const [purpose, setPurpose] = useState('');
-  const [startDate, setStartDate] = useState(new Date().toISOString().split('T')[0]); // Default to today
+  const [startDate, setStartDate] = useState(new Date().toISOString().split('T')[0]);
 
   const [isAdding, setIsAdding] = useState(false);
   const [isAddFormOpen, setIsAddFormOpen] = useState(false);
@@ -33,10 +31,7 @@ export const MedicationManager: React.FC<MedicationManagerProps> = ({ isOpen, on
   const [showHistory, setShowHistory] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
-  // Confirmation State
   const [medToStop, setMedToStop] = useState<string | null>(null);
-
-  // Optimistic State
   const [optimisticStoppedIds, setOptimisticStoppedIds] = useState<Set<string>>(new Set());
 
   const handleAdd = async (e: React.FormEvent) => {
@@ -51,7 +46,7 @@ export const MedicationManager: React.FC<MedicationManagerProps> = ({ isOpen, on
         setFrequency('');
         setPurpose('');
         setStartDate(new Date().toISOString().split('T')[0]);
-        // We keep the form open to allow rapid entry of multiple meds
+        setIsAddFormOpen(false); 
     } catch (error) {
         console.error("Failed to add medication:", error);
         setError("Failed to add medication. Please try again.");
@@ -60,27 +55,19 @@ export const MedicationManager: React.FC<MedicationManagerProps> = ({ isOpen, on
     }
   };
 
-  const requestStop = (id: string) => {
-      setMedToStop(id);
-  }
-
   const confirmStop = async () => {
       const id = medToStop;
       if (!id) return;
 
-      setMedToStop(null); // Close modal
+      setMedToStop(null);
       setIsStoppingId(id);
       setError(null);
-
-      // Optimistically hide it
       setOptimisticStoppedIds(prev => new Set(prev).add(id));
 
       try {
           await onDelete(id);
       } catch (error) {
-          console.error("Failed to stop medication:", error);
-          setError("Failed to update medication status. Please check your connection.");
-          // Revert optimistic update
+          setError("Failed to update medication status.");
           setOptimisticStoppedIds(prev => {
               const next = new Set(prev);
               next.delete(id);
@@ -91,8 +78,6 @@ export const MedicationManager: React.FC<MedicationManagerProps> = ({ isOpen, on
       }
   }
 
-  // Filter out items that are optimistically stopped for the "Active" view
-  // But keep them if showing history so they don't disappear entirely during transition
   const displayedMeds = showHistory 
       ? medications 
       : medications.filter(m => m.active && !optimisticStoppedIds.has(m.id));
@@ -101,43 +86,46 @@ export const MedicationManager: React.FC<MedicationManagerProps> = ({ isOpen, on
 
   return (
     <>
-    <div className="fixed inset-0 bg-black bg-opacity-60 z-50 flex items-center justify-center p-4">
-      <div className="bg-white rounded-lg shadow-2xl w-full max-w-lg relative max-h-[90vh] flex flex-col">
-        <div className="p-6 border-b border-slate-100 flex items-start justify-between">
-          <div className="flex items-center gap-3">
-              <div className="bg-brand-blue-100 p-2 rounded-lg">
-                  <PillIcon className="w-6 h-6 text-brand-blue-600" />
+    <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-sm z-[100] flex items-center justify-center p-4">
+      <div className="bg-white rounded-[2.5rem] shadow-2xl w-full max-w-lg relative max-h-[90vh] flex flex-col overflow-hidden border border-slate-100">
+        
+        {/* Header */}
+        <div className="p-8 border-b border-slate-100 flex items-start justify-between bg-white z-10 flex-shrink-0">
+          <div className="flex items-center gap-4">
+              <div className="bg-rose-50 p-3 rounded-xl shadow-inner border border-rose-100">
+                  <PillIcon className="w-6 h-6 text-rose-700" />
               </div>
-              <div>
-                <h2 className="text-xl font-bold text-slate-800">Medications</h2>
-                <p className="text-sm text-slate-500">Managing for {memberName}</p>
+              <div className="text-left">
+                <p className="text-[10px] font-black text-rose-700 uppercase tracking-[0.3em] mb-1 leading-none">Pharmacy Registry</p>
+                <h2 className="text-2xl font-black text-slate-900 tracking-tighter leading-none">{memberName}</h2>
               </div>
           </div>
-          <button onClick={onClose} className="text-slate-400 hover:text-slate-600 transition">
+          <button onClick={onClose} className="p-2 text-slate-300 hover:text-slate-900 transition">
             <CloseIcon className="w-6 h-6" />
           </button>
         </div>
 
-        <div className="flex-grow overflow-y-auto p-6">
-            {error && <div className="mb-4 p-3 bg-red-50 text-red-700 text-sm rounded-md border border-red-100">{error}</div>}
+        {/* Scrollable Content */}
+        <div className="flex-grow overflow-y-auto p-8 pt-6 pb-6 scroll-smooth">
+            {error && <div className="mb-6 p-4 bg-red-50 text-red-700 text-[10px] font-black uppercase tracking-widest rounded-xl border border-red-100 text-left">{error}</div>}
 
-            <div className="flex justify-between items-center mb-4">
-                <h3 className="text-sm font-semibold text-slate-700">
-                    {showHistory ? "All Medications (Including Stopped)" : "Active Medications"}
+            <div className="flex justify-between items-center mb-6">
+                <h3 className="text-[10px] font-black text-slate-400 uppercase tracking-[0.2em]">
+                    {showHistory ? "Full Dispense History" : "Current Medication"}
                 </h3>
                 <button 
                     onClick={() => setShowHistory(!showHistory)}
-                    className="text-xs text-brand-blue-600 hover:text-brand-blue-800 font-medium underline"
+                    className="text-[9px] font-black uppercase tracking-widest text-rose-700 hover:underline decoration-rose-200"
                 >
-                    {showHistory ? "Show Active Only" : "Show All History"}
+                    {showHistory ? "Show Active Only" : "Show Full History"}
                 </button>
             </div>
 
-            <div className="space-y-3">
+            <div className="space-y-4">
                 {displayedMeds.length === 0 ? (
-                    <div className="text-center py-8 text-slate-400 border-2 border-dashed border-slate-200 rounded-lg">
-                        <PillIcon className="w-8 h-8 mx-auto mb-2 opacity-50" />
-                        <p>{showHistory ? "No medications found." : "No active medications."}</p>
+                    <div className="text-center py-16 text-slate-300 border-2 border-dashed border-slate-50 rounded-[2rem] bg-slate-50/50">
+                        <PillIcon className="w-10 h-10 mx-auto mb-4 opacity-30" />
+                        <p className="text-[10px] font-black uppercase tracking-[0.3em]">{showHistory ? "No records found." : "No active medication."}</p>
                     </div>
                 ) : (
                     displayedMeds.map(med => {
@@ -145,20 +133,20 @@ export const MedicationManager: React.FC<MedicationManagerProps> = ({ isOpen, on
                         const isOptimisticStop = optimisticStoppedIds.has(med.id);
                         
                         return (
-                        <div key={med.id} className={`flex items-center justify-between p-3 rounded-lg border ${isStopped || isOptimisticStop ? 'bg-slate-50 border-slate-200' : 'bg-white border-slate-200 shadow-sm'}`}>
-                            <div>
-                                <h4 className={`font-semibold ${isStopped || isOptimisticStop ? 'text-slate-500 line-through' : 'text-slate-800'}`}>
+                        <div key={med.id} className={`flex items-center justify-between p-5 rounded-2xl border transition-all duration-300 text-left ${isStopped || isOptimisticStop ? 'bg-slate-50/50 border-slate-100 grayscale opacity-60' : 'bg-white border-slate-100 shadow-sm shadow-slate-200/40 hover:shadow-md'}`}>
+                            <div className="min-w-0 pr-4">
+                                <h4 className={`text-base font-black tracking-tight ${isStopped || isOptimisticStop ? 'text-slate-400' : 'text-slate-900'}`}>
                                     {med.name}
                                 </h4>
-                                <div className="text-xs text-slate-500 space-y-0.5">
-                                    <p>{med.dosage || 'No dosage'} • {med.frequency || 'As directed'}</p>
-                                    {med.purpose && <p className="text-brand-blue-600 font-medium">{med.purpose}</p>}
-                                    <div className="flex items-center gap-2 mt-1">
+                                <div className="text-[10px] text-slate-400 font-bold tracking-tight mt-0.5 space-y-1">
+                                    <p className="uppercase tracking-widest">{med.dosage || '-'} • {med.frequency || '-'}</p>
+                                    {med.purpose && <p className="text-rose-700 font-black uppercase tracking-wider">{med.purpose}</p>}
+                                    <div className="flex items-center gap-2 mt-2 opacity-60">
                                         {med.start_date && (
-                                            <span className="flex items-center gap-1"><CalendarIcon className="w-3 h-3"/> Started: {new Date(med.start_date).toLocaleDateString()}</span>
+                                            <span className="flex items-center gap-1"><CalendarIcon className="w-3.5 h-3.5"/> Start: {new Date(med.start_date).toLocaleDateString()}</span>
                                         )}
                                         {med.stopped_at && isStopped && (
-                                            <span className="text-red-500 font-medium ml-1">• Stopped: {new Date(med.stopped_at).toLocaleDateString()}</span>
+                                            <span className="text-red-700 font-black ml-1">• Stopped: {new Date(med.stopped_at).toLocaleDateString()}</span>
                                         )}
                                     </div>
                                 </div>
@@ -166,13 +154,13 @@ export const MedicationManager: React.FC<MedicationManagerProps> = ({ isOpen, on
                             
                             {!isStopped && !isOptimisticStop && (
                                 <button 
-                                    onClick={() => requestStop(med.id)}
-                                    className="text-slate-400 hover:text-red-500 p-2 transition"
-                                    title="Stop taking this medication"
+                                    onClick={() => setMedToStop(med.id)}
+                                    className="p-3 text-slate-200 hover:text-red-700 hover:bg-red-50 rounded-xl transition-all active:scale-90"
+                                    title="Discontinue Medication"
                                     disabled={!!isStoppingId}
                                 >
                                     {isStoppingId === med.id ? (
-                                        <SpinnerIcon className="w-5 h-5 animate-spin text-brand-blue-600" />
+                                        <SpinnerIcon className="w-5 h-5 animate-spin text-rose-700" />
                                     ) : (
                                         <StopCircleIcon className="w-6 h-6" />
                                     )}
@@ -184,80 +172,70 @@ export const MedicationManager: React.FC<MedicationManagerProps> = ({ isOpen, on
             </div>
         </div>
 
-        <div className="bg-slate-50 border-t border-slate-200 transition-all duration-300">
-            <button 
-                onClick={() => setIsAddFormOpen(!isAddFormOpen)}
-                className="w-full flex items-center justify-between p-4 text-left hover:bg-slate-100 transition focus:outline-none"
-            >
-                <span className="text-sm font-bold text-slate-700 flex items-center gap-2">
+        {/* Sticky Action Footer */}
+        <div className="p-6 bg-white border-t border-slate-100 z-20 flex-shrink-0">
+            {!isAddFormOpen ? (
+                <button 
+                    onClick={() => setIsAddFormOpen(true)}
+                    className="w-full flex items-center justify-center gap-3 bg-slate-100 hover:bg-slate-900 text-slate-600 hover:text-white px-8 py-3.5 rounded-2xl transition-all shadow-sm text-[9px] font-black uppercase tracking-[0.2em]"
+                >
                     <PlusIcon className="w-4 h-4" /> Add Manual Medication
-                </span>
-                {isAddFormOpen ? (
-                    <ChevronUpIcon className="w-4 h-4 text-slate-500" />
-                ) : (
-                    <ChevronDownIcon className="w-4 h-4 text-slate-500" />
-                )}
-            </button>
-            
-            {isAddFormOpen && (
-                <div className="px-6 pb-6 animate-fadeIn">
-                    <form onSubmit={handleAdd} className="space-y-3">
-                        <div>
+                </button>
+            ) : (
+                <div className="bg-rose-50/80 p-6 rounded-[2rem] border border-rose-100/50 animate-fadeIn text-left">
+                    <form id="addMedForm" onSubmit={handleAdd} className="space-y-3">
+                        <div className="flex items-center justify-between mb-1">
+                            <h4 className="text-[10px] font-black uppercase tracking-[0.3em] text-rose-700">New Clinical Record</h4>
+                            <button type="button" onClick={() => setIsAddFormOpen(false)} className="text-slate-300 hover:text-rose-700 transition"><CloseIcon className="w-4 h-4"/></button>
+                        </div>
+                        
+                        <div className="grid grid-cols-1 gap-3">
                             <input 
                                 type="text" 
-                                placeholder="Medication Name (e.g. Lisinopril)" 
-                                className="w-full text-sm rounded-md border-slate-300 shadow-sm focus:border-brand-blue-500 focus:ring-brand-blue-500 py-2 px-3 border"
+                                placeholder="Drug Name (e.g. Metformin)" 
+                                className="w-full bg-white border border-rose-200/50 rounded-xl py-3 px-4 text-xs font-bold text-slate-900 placeholder-slate-300 focus:outline-none focus:border-rose-500 transition shadow-sm"
                                 value={name}
                                 onChange={e => setName(e.target.value)}
                                 required
                                 disabled={isAdding}
                             />
-                        </div>
-                        <div className="grid grid-cols-2 gap-3">
-                            <input 
-                                type="text" 
-                                placeholder="Dosage (e.g. 10mg)" 
-                                className="w-full text-sm rounded-md border-slate-300 shadow-sm focus:border-brand-blue-500 focus:ring-brand-blue-500 py-2 px-3 border"
-                                value={dosage}
-                                onChange={e => setDosage(e.target.value)}
-                                disabled={isAdding}
-                            />
-                            <input 
-                                type="text" 
-                                placeholder="Frequency (e.g. Daily)" 
-                                className="w-full text-sm rounded-md border-slate-300 shadow-sm focus:border-brand-blue-500 focus:ring-brand-blue-500 py-2 px-3 border"
-                                value={frequency}
-                                onChange={e => setFrequency(e.target.value)}
-                                disabled={isAdding}
-                            />
-                        </div>
-                        <div className="grid grid-cols-2 gap-3">
-                            <input 
-                                type="text" 
-                                placeholder="Purpose (e.g. Hypertension)" 
-                                className="w-full text-sm rounded-md border-slate-300 shadow-sm focus:border-brand-blue-500 focus:ring-brand-blue-500 py-2 px-3 border"
-                                value={purpose}
-                                onChange={e => setPurpose(e.target.value)}
-                                disabled={isAdding}
-                            />
-                            <div className="relative">
+                            <div className="grid grid-cols-2 gap-3">
+                                <input 
+                                    type="text" 
+                                    placeholder="Dosage (500mg)" 
+                                    className="w-full bg-white border border-rose-200/50 rounded-xl py-3 px-4 text-xs font-bold text-slate-900 placeholder-slate-300 focus:outline-none focus:border-rose-500 transition shadow-sm"
+                                    value={dosage}
+                                    onChange={e => setDosage(e.target.value)}
+                                    disabled={isAdding}
+                                />
+                                <input 
+                                    type="text" 
+                                    placeholder="Freq (2x Daily)" 
+                                    className="w-full bg-white border border-rose-200/50 rounded-xl py-3 px-4 text-xs font-bold text-slate-900 placeholder-slate-300 focus:outline-none focus:border-rose-500 transition shadow-sm"
+                                    value={frequency}
+                                    onChange={e => setFrequency(e.target.value)}
+                                    disabled={isAdding}
+                                />
+                            </div>
+                            <div className="grid grid-cols-1 gap-2">
+                                <label className="text-[8px] font-black uppercase tracking-widest text-rose-400 pl-1">Protocol Start Date</label>
                                 <input 
                                     type="date" 
-                                    className="w-full text-sm rounded-md border-slate-300 shadow-sm focus:border-brand-blue-500 focus:ring-brand-blue-500 py-2 px-3 border"
+                                    className="w-full bg-white border border-rose-200/50 rounded-xl py-3 px-4 text-xs font-bold text-slate-900 focus:outline-none focus:border-rose-500 transition shadow-sm"
                                     value={startDate}
                                     onChange={e => setStartDate(e.target.value)}
                                     disabled={isAdding}
-                                    title="Start Date"
+                                    required
                                 />
                             </div>
                         </div>
                         
                         <button 
                             type="submit" 
-                            className="w-full bg-brand-blue-600 text-white font-semibold text-sm py-2 rounded-lg shadow hover:bg-brand-blue-700 transition disabled:bg-brand-blue-300 flex justify-center items-center gap-2"
+                            className="w-full bg-slate-900 hover:bg-rose-700 text-white font-black py-4 rounded-2xl shadow-xl transition active:scale-95 flex justify-center items-center gap-3 text-[10px] uppercase tracking-[0.2em] mt-2"
                             disabled={isAdding}
                         >
-                            {isAdding ? <><SpinnerIcon className="w-4 h-4 animate-spin"/> Adding...</> : 'Add Medication'}
+                            {isAdding ? <><SpinnerIcon className="w-4 h-4 animate-spin"/> Syncing...</> : 'Save to Registry'}
                         </button>
                     </form>
                 </div>
@@ -270,8 +248,8 @@ export const MedicationManager: React.FC<MedicationManagerProps> = ({ isOpen, on
         isOpen={!!medToStop}
         onClose={() => setMedToStop(null)}
         onConfirm={confirmStop}
-        title="Stop Medication?"
-        message="This will move the medication to history. You can still view it by toggling 'Show All History'."
+        title="Discontinue Medication?"
+        message="This will move the protocol to archive history. It remains searchable in the full timeline."
     />
     </>
   );

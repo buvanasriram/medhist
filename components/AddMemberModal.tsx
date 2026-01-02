@@ -52,45 +52,46 @@ export const AddMemberModal: React.FC<AddMemberModalProps> = ({ isOpen, onClose,
 
   return (
     <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-sm z-50 flex items-center justify-center p-4">
-      <div className="bg-white rounded-3xl shadow-2xl w-full max-w-md relative overflow-hidden border border-slate-100">
-        <div className="p-6 border-b border-slate-50 text-left">
+      <div className="bg-white rounded-[2.5rem] shadow-2xl w-full max-w-md relative overflow-hidden border border-slate-100 flex flex-col max-h-[90vh]">
+        
+        {/* Header */}
+        <div className="p-8 border-b border-slate-50 text-left bg-white z-10">
           <div className="flex items-start justify-between">
             <div>
-              <h2 className="text-xl font-bold text-slate-800">New Family Member</h2>
-              <p className="text-sm text-slate-500 mt-1">Add a folder for a child, parent, or spouse.</p>
+              <p className="text-[10px] font-black text-rose-700 uppercase tracking-[0.3em] mb-1 leading-none">Family Registry</p>
+              <h2 className="text-2xl font-black text-slate-900 tracking-tighter leading-none">New Member</h2>
             </div>
-            <button onClick={handleClose} className="p-2 text-slate-400 hover:text-slate-600 transition" disabled={isLoading}>
+            <button onClick={handleClose} className="p-2 text-slate-300 hover:text-slate-600 transition" disabled={isLoading}>
               <CloseIcon className="w-6 h-6" />
             </button>
           </div>
         </div>
 
-        <form onSubmit={handleSubmit} className="p-6 text-left">
-          <div className="space-y-5">
+        {/* Scrollable Body */}
+        <div className="flex-grow overflow-y-auto p-8 pt-6 pb-4 text-left">
+          <form id="addMemberForm" onSubmit={handleSubmit} className="space-y-6">
             <div>
-              <label htmlFor="memberName" className="block text-xs font-bold text-slate-400 uppercase tracking-widest mb-2">Legal Name</label>
+              <label htmlFor="memberName" className="block text-[10px] font-black text-slate-400 uppercase tracking-widest mb-2.5">Legal Name</label>
               <div className="relative rounded-xl shadow-sm">
                  <div className="pointer-events-none absolute inset-y-0 left-0 flex items-center pl-4">
                    <UserIcon className="h-5 w-5 text-rose-700" />
                 </div>
-                <input type="text" id="memberName" value={name} onChange={(e) => setName(e.target.value)} className="block w-full rounded-xl border border-slate-200 py-3 pl-12 text-slate-700 font-medium focus:border-rose-500 focus:ring-rose-500" placeholder="Full name as on records" required disabled={isLoading} />
+                <input type="text" id="memberName" value={name} onChange={(e) => setName(e.target.value)} className="block w-full rounded-xl border border-slate-200 py-3.5 pl-12 text-slate-900 font-bold text-sm focus:border-rose-500 focus:ring-rose-500 transition" placeholder="Full name as on records" required disabled={isLoading} />
               </div>
             </div>
 
             <div>
-              <label htmlFor="relationship" className="block text-xs font-bold text-slate-400 uppercase tracking-widest mb-2">Relationship</label>
+              <label htmlFor="relationship" className="block text-[10px] font-black text-slate-400 uppercase tracking-widest mb-2.5">Relationship</label>
               <div className="relative rounded-xl shadow-sm">
                  <div className="pointer-events-none absolute inset-y-0 left-0 flex items-center pl-4">
                    <UsersIcon className="h-5 w-5 text-rose-700" />
                 </div>
-                <input type="text" id="relationship" value={relationship} onChange={(e) => setRelationship(e.target.value)} className="block w-full rounded-xl border border-slate-200 py-3 pl-12 text-slate-700 font-medium focus:border-rose-500 focus:ring-rose-500" placeholder="e.g., Daughter, Spouse" required disabled={isLoading} />
+                <input type="text" id="relationship" value={relationship} onChange={(e) => setRelationship(e.target.value)} className="block w-full rounded-xl border border-slate-200 py-3.5 pl-12 text-slate-900 font-bold text-sm focus:border-rose-500 focus:ring-rose-500 transition" placeholder="e.g., Daughter, Spouse" required disabled={isLoading} />
               </div>
             </div>
 
             <div>
-              <div className="flex items-center justify-between mb-2">
-                <label htmlFor="dob" className="block text-xs font-bold text-slate-400 uppercase tracking-widest">Date of Birth</label>
-              </div>
+              <label htmlFor="dob" className="block text-[10px] font-black text-slate-400 uppercase tracking-widest mb-2.5">Date of Birth</label>
               <div className="relative rounded-xl shadow-sm">
                  <div className="pointer-events-none absolute inset-y-0 left-0 flex items-center pl-4">
                    <CalendarIcon className="h-5 w-5 text-rose-700" />
@@ -101,22 +102,35 @@ export const AddMemberModal: React.FC<AddMemberModalProps> = ({ isOpen, onClose,
                     value={dob} 
                     onChange={(e) => setDob(e.target.value)} 
                     max={new Date().toISOString().split('T')[0]}
-                    className="block w-full rounded-xl border border-slate-200 py-3 pl-12 text-slate-700 font-medium focus:border-rose-500 focus:ring-rose-500" 
+                    className="block w-full rounded-xl border border-slate-200 py-3.5 pl-12 text-slate-900 font-bold text-sm focus:border-rose-500 focus:ring-rose-500 transition" 
                     disabled={isLoading} 
                 />
               </div>
             </div>
             
-            {error && <p className="text-sm font-bold text-red-600 bg-red-50 p-3 rounded-xl border border-red-100">{error}</p>}
-          </div>
+            {error && <p className="text-[10px] font-black uppercase tracking-widest text-red-600 bg-red-50 p-4 rounded-xl border border-red-100">{error}</p>}
+          </form>
+        </div>
 
-          <div className="mt-8 flex flex-col gap-3">
-            <button type="submit" disabled={isLoading} className="w-full bg-slate-900 text-white font-bold py-4 rounded-2xl shadow-lg hover:bg-rose-900 transition active:scale-95 flex items-center justify-center gap-2">
-              {isLoading ? <><SpinnerIcon className="w-5 h-5 animate-spin" /> Saving...</> : 'Add New Member'}
-            </button>
-            <button type="button" onClick={handleClose} disabled={isLoading} className="w-full py-3 text-sm font-bold text-slate-500 hover:text-slate-800 transition">Cancel</button>
-          </div>
-        </form>
+        {/* Sticky Action Footer */}
+        <div className="p-8 bg-slate-50 border-t border-slate-100 z-10 flex flex-col gap-3">
+          <button 
+            form="addMemberForm"
+            type="submit" 
+            disabled={isLoading} 
+            className="w-full bg-slate-900 text-white font-black py-4 rounded-2xl shadow-xl hover:bg-rose-900 transition active:scale-95 flex items-center justify-center gap-3 text-[10px] uppercase tracking-[0.2em] disabled:opacity-50"
+          >
+            {isLoading ? <><SpinnerIcon className="w-4 h-4 animate-spin" /> Syncing...</> : 'Create Folder'}
+          </button>
+          <button 
+            type="button" 
+            onClick={handleClose} 
+            disabled={isLoading} 
+            className="w-full py-3 text-[10px] font-black uppercase tracking-widest text-slate-400 hover:text-slate-900 transition"
+          >
+            Cancel
+          </button>
+        </div>
       </div>
     </div>
   );

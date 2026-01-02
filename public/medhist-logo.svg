@@ -1,12 +1,16 @@
-
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512">
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 100">
   <defs>
-    <linearGradient id="tealGrad" x1="0%" y1="0%" x2="100%" y2="100%">
-      <stop offset="0%" style="stop-color:#14b8a6;stop-opacity:1" />
-      <stop offset="100%" style="stop-color:#0d9488;stop-opacity:1" />
+    <linearGradient id="roseGrad" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" style="stop-color:#be123c;stop-opacity:1" />
+      <stop offset="100%" style="stop-color:#9f1239;stop-opacity:1" />
     </linearGradient>
   </defs>
-  <rect width="512" height="512" rx="120" fill="url(#tealGrad)"/>
-  <path d="M120 256h60l25-60 40 120 35-90 20 30h92" fill="none" stroke="white" stroke-width="32" stroke-linecap="round" stroke-linejoin="round"/>
-  <circle cx="410" cy="256" r="16" fill="white" />
+  <!-- Background Shield Shape -->
+  <path d="M50 5 L85 15 V45 C85 75, 50 95, 50 95 C50 95, 15 75, 15 45 V15 L50 5" fill="url(#roseGrad)" />
+  <!-- Central Heart Symbol -->
+  <path d="M50 78 C 32 65, 22 52, 22 38 C 22 25, 38 22, 50 32 C 62 22, 78 25, 78 38 C 78 52, 68 65, 50 78" fill="rgba(255,255,255,0.2)" />
+  <!-- ECG Line -->
+  <path d="M30 50 L42 50 L48 35 L52 65 L58 50 L70 50" fill="none" stroke="white" stroke-width="4" stroke-linecap="round" stroke-linejoin="round" />
+  <!-- Text Branding -->
+  <text x="50" y="82" font-size="10" font-weight="900" font-family="sans-serif" text-anchor="middle" fill="white">medHist</text>
 </svg>
