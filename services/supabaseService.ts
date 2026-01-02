@@ -171,9 +171,10 @@ export const getUserData = async (userId: string) => {
 
     let profile = null;
     let retries = 0;
-    // Faster polling for better UI responsiveness
-    while (!profile && retries < 20) {
-        const { data } = await supabase!
+    const MAX_RETRIES = 12; // Cap polling at 6 seconds
+    
+    while (!profile && retries < MAX_RETRIES) {
+        const { data, error } = await supabase!
             .from('profiles')
             .select('family_id')
             .eq('id', userId)
@@ -183,12 +184,11 @@ export const getUserData = async (userId: string) => {
             profile = data;
         } else {
             retries++;
-            // Poll every 500ms instead of 800ms
             await new Promise(resolve => setTimeout(resolve, 500));
         }
     }
     
-    if (!profile) throw new Error("Synchronization in progress. Please refresh in a moment.");
+    if (!profile) throw new Error("Synchronization Timeout: Your medical profile is still being provisioned. Please try again in a moment.");
 
     const familyId = profile.family_id;
 

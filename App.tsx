@@ -34,7 +34,9 @@ const App: React.FC = () => {
   const [medications, setMedications] = useState<Medication[]>([]);
   const [familyInfo, setFamilyInfo] = useState<{name: string, joinCode: string} | null>(null);
 
+  // Ref locks to prevent infinite parallel fetch loops
   const loadedForUserId = useRef<string | null>(null);
+  const isFetchingRef = useRef<boolean>(false);
   
   const forceResetUI = useCallback(() => {
     setIsSyncing(false);
@@ -43,108 +45,90 @@ const App: React.FC = () => {
   }, []);
 
   const loadUserData = useCallback(async (userId: string) => {
-      // Prevent redundant loading if already loaded for this user
-      if (loadedForUserId.current === userId) return;
+      // 1. Atomic Lock: If already loading or already loaded, abort.
+      if (isFetchingRef.current || loadedForUserId.current === userId) return;
       
+      isFetchingRef.current = true;
       setIsSyncing(true);
       setDataLoadError(null);
       
       try {
+          console.log(`[medHist] Syncing data for user: ${userId}`);
           const data = await supabaseService.getUserData(userId);
+          
           setFamilyMembers(data.familyMembers || []);
           setTimelineEntries(data.timelineEntries || []);
           setMedications(data.medications || []);
           setFamilyInfo(data.familyInfo || null);
+          
+          // 2. Mark as successfully loaded
           loadedForUserId.current = userId;
       } catch (e: any) {
           console.error("[App] Data Load Error:", e);
           setDataLoadError(e.message || "Connection error. Please try refreshing.");
       } finally {
           setIsSyncing(false);
+          isFetchingRef.current = false;
       }
-  }, []); // Dependencies are now empty to keep the function stable
-
-  // Effect 1: Navigation & Popstate (Back Button)
-  useEffect(() => {
-    const handlePopState = () => {
-        // If we're not on the dashboard, the back button should return us there
-        setViewMode(prev => {
-            if (prev !== 'dashboard') return 'dashboard';
-            return prev;
-        });
-        setShowPublicGuide(false);
-    };
-    
-    window.addEventListener('popstate', handlePopState);
-    return () => window.removeEventListener('popstate', handlePopState);
   }, []);
 
-  // Effect 2: Initial Session Check
+  // Combined Navigation & Auth Effect
   useEffect(() => {
+    // A. Handle URL/Navigation State
     if (window.location.hash && window.location.hash.includes('type=recovery')) {
         setIsRecoveryMode(true);
     }
 
-    const checkSession = async () => {
-      try {
-        const currentSession = await supabaseService.getSession();
-        if (currentSession?.user) {
-          const user = { 
-            id: currentSession.user.id, 
-            name: currentSession.user.user_metadata?.full_name || currentSession.user.email,
-            email: currentSession.user.email || ''
-          };
-          setSession(currentSession);
-          setCurrentUser(user);
-          if (window.location.pathname === '/login' || window.location.pathname === '/') {
-             setRoute('/');
-          }
-          await loadUserData(user.id);
-        }
-      } catch (e) {
-        console.error("Auth init error", e);
-      } finally {
-        setIsLoading(false);
-      }
+    const handlePopState = () => {
+        setViewMode(prev => (prev !== 'dashboard' ? 'dashboard' : prev));
+        setShowPublicGuide(false);
     };
-    
-    checkSession();
-  }, [loadUserData]);
+    window.addEventListener('popstate', handlePopState);
 
-  // Effect 3: Auth State Listener
-  useEffect(() => {
+    // B. Unified Auth Listener (Handles initial session + changes)
     const { data: { subscription } } = supabaseService.onAuthStateChange(async (event, currentSession) => {
-      if (event === 'SIGNED_OUT' && !currentSession) {
-          setSession(null);
-          setCurrentUser(null);
-          setFamilyMembers([]);
-          setTimelineEntries([]);
-          setMedications([]);
-          loadedForUserId.current = null;
-          setRoute('/login');
-          forceResetUI();
+      console.log(`[medHist] Auth Event: ${event}`);
+
+      if (!currentSession?.user) {
+          if (event === 'SIGNED_OUT') {
+              setSession(null);
+              setCurrentUser(null);
+              loadedForUserId.current = null;
+              setRoute('/login');
+              forceResetUI();
+          }
+          setIsLoading(false);
           return;
       }
 
-      if (event === 'PASSWORD_RECOVERY') setIsRecoveryMode(true);
-
-      if (currentSession?.user) {
-        const user = { 
-          id: currentSession.user.id, 
-          name: currentSession.user.user_metadata?.full_name || currentSession.user.email, 
-          email: currentSession.user.email || '' 
-        };
-        
-        setSession(currentSession);
-        setCurrentUser(user);
-        
-        if (event === 'SIGNED_IN' || event === 'INITIAL_SESSION') {
-            await loadUserData(user.id);
-        }
+      if (event === 'PASSWORD_RECOVERY') {
+          setIsRecoveryMode(true);
       }
+
+      // Initialize User State
+      const user = { 
+        id: currentSession.user.id, 
+        name: currentSession.user.user_metadata?.full_name || currentSession.user.email, 
+        email: currentSession.user.email || '' 
+      };
+      
+      setSession(currentSession);
+      setCurrentUser(user);
+      
+      // Navigate away from login if session is active
+      if (window.location.pathname === '/login' || window.location.pathname === '/') {
+          setRoute('/');
+      }
+
+      // Trigger data sync
+      await loadUserData(user.id);
+      setIsLoading(false);
     });
 
-    return () => subscription.unsubscribe();
+    return () => {
+      window.removeEventListener('popstate', handlePopState);
+      subscription.unsubscribe();
+    };
   }, [loadUserData, forceResetUI]);
 
   const handleLogout = async () => {
@@ -154,18 +138,12 @@ const App: React.FC = () => {
     } catch (e) {
         console.warn("Signout issue:", e);
     } finally {
-        setCurrentUser(null);
-        setSession(null);
-        setFamilyMembers([]);
-        setTimelineEntries([]);
-        setMedications([]);
         loadedForUserId.current = null;
-        setRoute('/login');
         forceResetUI();
     }
   };
 
-  const handleLogin = async (email: string, password: string):Promise<string|null> => {
+  const handleLogin = async (email: string, password: string): Promise<string|null> => {
     return await supabaseService.signIn(email, password);
   };
 
@@ -182,16 +160,14 @@ const App: React.FC = () => {
   }
 
   if (isMockupMode) {
-    return <MockupPreview onApprove={(logoIdx) => {
-        setIsMockupMode(false);
-    }} />;
+    return <MockupPreview onApprove={() => setIsMockupMode(false)} />;
   }
 
   if (isLoading) {
       return (
         <div className="min-h-screen bg-slate-50 flex flex-col items-center justify-center text-slate-600">
              <SpinnerIcon className="w-10 h-10 text-rose-700 animate-spin mb-4" />
-             <p className="text-slate-400 font-bold uppercase tracking-widest text-[10px]">Verifying Secure Session...</p>
+             <p className="text-slate-400 font-black uppercase tracking-widest text-[10px]">Verifying Secure Session...</p>
         </div>
       );
   }
@@ -218,13 +194,13 @@ const App: React.FC = () => {
   if (dataLoadError) {
       return (
         <div className="min-h-screen bg-slate-50 flex flex-col items-center justify-center p-6 text-center">
-             <div className="bg-white p-8 rounded-2xl shadow-xl max-w-sm w-full border border-slate-100">
-                 <div className="bg-red-50 w-16 h-16 rounded-full flex items-center justify-center mx-auto mb-6 text-2xl">📡</div>
-                 <h2 className="text-xl font-bold text-slate-800 mb-2">Sync Error</h2>
-                 <p className="text-sm text-slate-500 mb-8 leading-relaxed">{dataLoadError}</p>
+             <div className="bg-white p-8 rounded-[3rem] shadow-2xl max-w-sm w-full border border-slate-100">
+                 <div className="bg-red-50 w-16 h-16 rounded-3xl flex items-center justify-center mx-auto mb-6 text-2xl">📡</div>
+                 <h2 className="text-xl font-black text-slate-900 mb-2 tracking-tight">Sync Error</h2>
+                 <p className="text-[11px] text-slate-500 mb-8 leading-relaxed font-bold">{dataLoadError}</p>
                  <div className="flex flex-col gap-3">
-                     <button onClick={() => { loadedForUserId.current = null; loadUserData(currentUser.id); }} className="w-full bg-slate-900 text-white font-bold py-4 rounded-xl shadow-md active:scale-95 transition">Retry Connection</button>
-                     <button onClick={handleLogout} className="w-full bg-slate-100 text-slate-600 font-bold py-4 rounded-xl active:bg-slate-200 transition">Log Out</button>
+                     <button onClick={() => { loadedForUserId.current = null; loadUserData(currentUser.id); }} className="w-full bg-slate-900 text-white font-black py-4 rounded-2xl shadow-xl active:scale-95 transition text-[10px] uppercase tracking-widest">Retry Connection</button>
+                     <button onClick={handleLogout} className="w-full bg-slate-100 text-slate-600 font-black py-4 rounded-2xl active:bg-slate-200 transition text-[10px] uppercase tracking-widest">Log Out</button>
                  </div>
              </div>
         </div>
@@ -241,7 +217,7 @@ const App: React.FC = () => {
             onLogout={handleLogout} 
             user={currentUser} 
             initialSelectedMemberId={selectedMemberId}
-            onBackToDashboard={() => { setViewMode('dashboard'); forceResetUI(); }}
+            onBackToDashboard={() => setViewMode('dashboard')}
             familyMembers={familyMembers}
             timelineEntries={timelineEntries}
             onRefreshData={() => { loadedForUserId.current = null; loadUserData(currentUser.id); }}
@@ -259,7 +235,7 @@ const App: React.FC = () => {
         timelineEntries={timelineEntries}
         medications={medications}
         familyInfo={familyInfo}
-        onSelectMember={(id) => { setSelectedMemberId(id); setViewMode('timeline'); forceResetUI(); }}
+        onSelectMember={(id) => { setSelectedMemberId(id); setViewMode('timeline'); }}
         onRefreshData={() => { loadedForUserId.current = null; loadUserData(currentUser.id); }}
         onOpenGuide={() => setViewMode('guide')}
         isSyncing={isSyncing}
