@@ -5,7 +5,7 @@ import { SpinnerIcon } from './icons/SpinnerIcon';
 import { WarningIcon } from './icons/WarningIcon';
 import { DownloadIcon } from './icons/DownloadIcon';
 import { ChevronDownIcon } from './icons/ChevronDownIcon';
-import { Document, Page } from 'react-pdf';
+import { Document, Page, pdfjs } from 'react-pdf';
 import type { ReportFile } from '../types';
 
 interface ReportViewerModalProps {
@@ -25,8 +25,9 @@ export const ReportViewerModal: React.FC<ReportViewerModalProps> = ({ isOpen, on
   const [isLoading, setIsLoading] = useState(true);
   const [isPageLoading, setIsPageLoading] = useState(false);
   const containerRef = useRef<HTMLDivElement>(null);
+  const loadingTimeoutRef = useRef<number | null>(null);
 
-  // Detect if we are on a touch device (likely mobile/tablet) to apply resolution throttling
+  // Detect mobile for resolution throttling
   const isTouchDevice = useMemo(() => {
     return (('ontouchstart' in window) || (navigator.maxTouchPoints > 0));
   }, []);
@@ -37,21 +38,52 @@ export const ReportViewerModal: React.FC<ReportViewerModalProps> = ({ isOpen, on
       setError(null);
       setNumPages(null);
       setPageNumber(1);
+
+      // Mobile Back-Button Integration:
+      // Push a state so the physical back button closes the modal instead of leaving the app/page
+      window.history.pushState({ modalOpen: true }, '');
+
+      const handlePopState = () => {
+        // If the user hits back, close the modal
+        onClose();
+      };
+      window.addEventListener('popstate', handlePopState);
+
+      // Defensive timeout
+      loadingTimeoutRef.current = window.setTimeout(() => {
+        if (isLoading) {
+          setError("The document is taking too long to load. This can happen on low-memory mobile devices.");
+          setIsLoading(false);
+        }
+      }, 15000);
+
+      return () => {
+        window.removeEventListener('popstate', handlePopState);
+        if (loadingTimeoutRef.current) window.clearTimeout(loadingTimeoutRef.current);
+        // Clean up global worker memory if possible on unmount
+        if (isTouchDevice) {
+            // Force worker cleanup hint
+            try { (pdfjs as any)._workerProxy?.destroy(); } catch(e) {}
+        }
+      };
     }
-  }, [isOpen, report.url]);
+  }, [isOpen, report.url, onClose, isTouchDevice]);
 
   if (!isOpen) return null;
 
   const isPdf = report.file.type === 'application/pdf';
 
   function onDocumentLoadSuccess({ numPages }: { numPages: number }) {
+    if (loadingTimeoutRef.current) window.clearTimeout(loadingTimeoutRef.current);
     setNumPages(numPages);
     setIsLoading(false);
+    setError(null);
   }
 
   function onDocumentLoadError(err: Error) {
     console.error("PDF Load Error:", err);
-    setError("Unable to render preview on this device.");
+    if (loadingTimeoutRef.current) window.clearTimeout(loadingTimeoutRef.current);
+    setError("Unable to render preview. The secure link may have expired or the file is too complex for mobile RAM.");
     setIsLoading(false);
   }
 
@@ -60,6 +92,20 @@ export const ReportViewerModal: React.FC<ReportViewerModalProps> = ({ isOpen, on
         const next = prevPageNumber + offset;
         return Math.min(Math.max(1, next), numPages || 1);
     });
+  };
+
+  const handleClose = () => {
+    // If the modal was opened via pushState, we should go back in history to keep it clean
+    if (window.history.state?.modalOpen) {
+        window.history.back();
+    } else {
+        onClose();
+    }
+  };
+
+  const handleRetry = () => {
+    setError(null);
+    setIsLoading(true);
   };
 
   return (
@@ -75,7 +121,7 @@ export const ReportViewerModal: React.FC<ReportViewerModalProps> = ({ isOpen, on
               {isPdf ? 'Clinical PDF' : 'Medical Image'}
             </p>
           </div>
-          <button onClick={onClose} className="p-2 text-slate-400 hover:text-slate-900 transition flex-shrink-0">
+          <button onClick={handleClose} className="p-2 text-slate-400 hover:text-slate-900 transition flex-shrink-0">
             <CloseIcon className="w-6 h-6" />
           </button>
         </header>
@@ -92,10 +138,17 @@ export const ReportViewerModal: React.FC<ReportViewerModalProps> = ({ isOpen, on
             <div className="flex flex-col items-center justify-center min-h-full p-8 text-center bg-white">
               <WarningIcon className="w-12 h-12 text-red-500 mb-4" />
               <p className="font-bold text-slate-800 text-lg">Preview Unavailable</p>
-              <p className="text-sm text-slate-500 mt-2 mb-8">This file is too complex for in-browser viewing.</p>
-              <a href={report.url} target="_blank" rel="noopener noreferrer" className="bg-brand-blue-600 text-white font-bold px-6 py-3 rounded-xl flex items-center gap-2">
-                <DownloadIcon className="w-4 h-4" /> Open Original File
-              </a>
+              <p className="text-sm text-slate-500 mt-2 mb-8 leading-relaxed max-w-xs mx-auto">
+                {error}
+              </p>
+              <div className="flex flex-col gap-3 w-full max-w-xs">
+                <button onClick={handleRetry} className="bg-slate-100 text-slate-700 font-bold py-3 rounded-xl hover:bg-slate-200 transition">
+                   Refresh Viewer
+                </button>
+                <a href={report.url} target="_blank" rel="noopener noreferrer" className="bg-brand-blue-600 text-white font-bold px-6 py-3 rounded-xl flex items-center justify-center gap-2 shadow-lg">
+                  <DownloadIcon className="w-4 h-4" /> Open Original File
+                </a>
+              </div>
             </div>
           )}
           
@@ -108,7 +161,7 @@ export const ReportViewerModal: React.FC<ReportViewerModalProps> = ({ isOpen, on
                     </div>
                  )}
                  <Document
-                    key={`doc_${report.url}`} // Force isolation
+                    key={`doc_${report.url}`}
                     file={report.url}
                     onLoadSuccess={onDocumentLoadSuccess}
                     onLoadError={onDocumentLoadError}
@@ -116,11 +169,9 @@ export const ReportViewerModal: React.FC<ReportViewerModalProps> = ({ isOpen, on
                     className="shadow-2xl border border-slate-200"
                   >
                     <Page 
-                      key={`page_${pageNumber}_${report.url}`} // Force isolation
+                      key={`page_${pageNumber}_${report.url}`}
                       pageNumber={pageNumber} 
                       width={containerRef.current ? Math.min(containerRef.current.clientWidth - 32, 800) : 300}
-                      // For mobile (touch devices), force 1x DPI to save memory. 
-                      // For desktops, use system default (likely 2x for Retina/Laptop) for high quality.
                       devicePixelRatio={isTouchDevice ? 1 : undefined}
                       renderTextLayer={false}
                       renderAnnotationLayer={false}
@@ -168,7 +219,7 @@ export const ReportViewerModal: React.FC<ReportViewerModalProps> = ({ isOpen, on
           <a href={report.url} target="_blank" rel="noopener noreferrer" className="flex-1 flex items-center justify-center gap-2 py-3 sm:py-4 bg-slate-100 text-slate-700 font-bold rounded-xl sm:rounded-2xl text-xs sm:text-sm transition hover:bg-slate-200">
             <DownloadIcon className="w-4 h-4" /> {isPdf ? 'Download' : 'Full Size'}
           </a>
-          <button onClick={onClose} className="flex-1 py-3 sm:py-4 bg-brand-blue-600 text-white font-bold rounded-xl sm:rounded-2xl text-xs sm:text-sm transition hover:bg-brand-blue-700 shadow-lg">
+          <button onClick={handleClose} className="flex-1 py-3 sm:py-4 bg-brand-blue-600 text-white font-bold rounded-xl sm:rounded-2xl text-xs sm:text-sm transition hover:bg-brand-blue-700 shadow-lg">
             Close Record
           </button>
         </footer>

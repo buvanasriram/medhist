@@ -30,11 +30,16 @@ const App: React.FC = () => {
   const [medications, setMedications] = useState<Medication[]>([]);
   const [familyInfo, setFamilyInfo] = useState<{name: string, joinCode: string} | null>(null);
 
-  // Prevention for the infinite loop
   const loadedForUserId = useRef<string | null>(null);
   
+  // Reset navigation state helper to prevent "Hangs"
+  const forceResetUI = useCallback(() => {
+    setIsSyncing(false);
+    setIsLoading(false);
+    setDataLoadError(null);
+  }, []);
+
   const loadUserData = useCallback(async (userId: string) => {
-      // Prevent redundant loads if we've already successfully loaded data for this user
       if (loadedForUserId.current === userId && familyMembers.length > 0) return;
       
       console.log(`[App] loadUserData for: ${userId}`);
@@ -58,6 +63,16 @@ const App: React.FC = () => {
 
   useEffect(() => {
     let isMounted = true;
+
+    // CRITICAL: Mobile Back Button Guard
+    // Prevents the app from hanging if user navigates back mid-process
+    const handlePopState = () => {
+        if (viewMode !== 'dashboard') {
+            setViewMode('dashboard');
+            forceResetUI();
+        }
+    };
+    window.addEventListener('popstate', handlePopState);
 
     if (window.location.hash && window.location.hash.includes('type=recovery')) {
         setIsRecoveryMode(true);
@@ -103,8 +118,7 @@ const App: React.FC = () => {
           setMedications([]);
           loadedForUserId.current = null;
           setRoute('/login');
-          setIsLoading(false);
-          setIsSyncing(false);
+          forceResetUI();
           return;
       }
 
@@ -129,8 +143,9 @@ const App: React.FC = () => {
     return () => {
         isMounted = false;
         subscription.unsubscribe();
+        window.removeEventListener('popstate', handlePopState);
     };
-  }, [loadUserData]); // Remove familyMembers.length to break the loop
+  }, [loadUserData, viewMode, forceResetUI]);
 
   const handleLogout = async () => {
     setIsLoading(true);
@@ -146,7 +161,7 @@ const App: React.FC = () => {
         setMedications([]);
         loadedForUserId.current = null;
         setRoute('/login');
-        setIsLoading(false);
+        forceResetUI();
     }
   };
 
@@ -203,7 +218,7 @@ const App: React.FC = () => {
             onLogout={handleLogout} 
             user={currentUser} 
             initialSelectedMemberId={selectedMemberId}
-            onBackToDashboard={() => setViewMode('dashboard')}
+            onBackToDashboard={() => { setViewMode('dashboard'); forceResetUI(); }}
             familyMembers={familyMembers}
             timelineEntries={timelineEntries}
             onRefreshData={() => { loadedForUserId.current = null; loadUserData(currentUser.id); }}
@@ -221,7 +236,7 @@ const App: React.FC = () => {
         timelineEntries={timelineEntries}
         medications={medications}
         familyInfo={familyInfo}
-        onSelectMember={(id) => { setSelectedMemberId(id); setViewMode('timeline'); }}
+        onSelectMember={(id) => { setSelectedMemberId(id); setViewMode('timeline'); forceResetUI(); }}
         onRefreshData={() => { loadedForUserId.current = null; loadUserData(currentUser.id); }}
         onOpenGuide={() => setViewMode('guide')}
         isSyncing={isSyncing}
