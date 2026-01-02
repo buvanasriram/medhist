@@ -43,7 +43,8 @@ const App: React.FC = () => {
   }, []);
 
   const loadUserData = useCallback(async (userId: string) => {
-      if (loadedForUserId.current === userId && familyMembers.length > 0) return;
+      // Prevent redundant loading if already loaded for this user
+      if (loadedForUserId.current === userId) return;
       
       setIsSyncing(true);
       setDataLoadError(null);
@@ -61,20 +62,25 @@ const App: React.FC = () => {
       } finally {
           setIsSyncing(false);
       }
-  }, [familyMembers.length]);
+  }, []); // Dependencies are now empty to keep the function stable
 
+  // Effect 1: Navigation & Popstate (Back Button)
   useEffect(() => {
-    let isMounted = true;
-
     const handlePopState = () => {
-        if (viewMode !== 'dashboard') {
-            setViewMode('dashboard');
-            forceResetUI();
-        }
+        // If we're not on the dashboard, the back button should return us there
+        setViewMode(prev => {
+            if (prev !== 'dashboard') return 'dashboard';
+            return prev;
+        });
         setShowPublicGuide(false);
     };
+    
     window.addEventListener('popstate', handlePopState);
+    return () => window.removeEventListener('popstate', handlePopState);
+  }, []);
 
+  // Effect 2: Initial Session Check
+  useEffect(() => {
     if (window.location.hash && window.location.hash.includes('type=recovery')) {
         setIsRecoveryMode(true);
     }
@@ -82,8 +88,6 @@ const App: React.FC = () => {
     const checkSession = async () => {
       try {
         const currentSession = await supabaseService.getSession();
-        if (!isMounted) return;
-
         if (currentSession?.user) {
           const user = { 
             id: currentSession.user.id, 
@@ -100,15 +104,16 @@ const App: React.FC = () => {
       } catch (e) {
         console.error("Auth init error", e);
       } finally {
-        if (isMounted) setIsLoading(false);
+        setIsLoading(false);
       }
     };
     
     checkSession();
-    
+  }, [loadUserData]);
+
+  // Effect 3: Auth State Listener
+  useEffect(() => {
     const { data: { subscription } } = supabaseService.onAuthStateChange(async (event, currentSession) => {
-      if (!isMounted) return;
-      
       if (event === 'SIGNED_OUT' && !currentSession) {
           setSession(null);
           setCurrentUser(null);
@@ -139,12 +144,8 @@ const App: React.FC = () => {
       }
     });
 
-    return () => {
-        isMounted = false;
-        subscription.unsubscribe();
-        window.removeEventListener('popstate', handlePopState);
-    };
-  }, [loadUserData, viewMode, forceResetUI]);
+    return () => subscription.unsubscribe();
+  }, [loadUserData, forceResetUI]);
 
   const handleLogout = async () => {
     setIsLoading(true);
