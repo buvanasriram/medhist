@@ -171,7 +171,7 @@ export const getUserData = async (userId: string) => {
 
     let profile = null;
     let retries = 0;
-    const MAX_RETRIES = 12; // Cap polling at 6 seconds
+    const MAX_RETRIES = 6; // Cap polling at 3 seconds for faster error recovery
     
     while (!profile && retries < MAX_RETRIES) {
         const { data, error } = await supabase!
@@ -184,42 +184,51 @@ export const getUserData = async (userId: string) => {
             profile = data;
         } else {
             retries++;
+            // Rapid polling for 3 seconds then fail
             await new Promise(resolve => setTimeout(resolve, 500));
         }
     }
     
-    if (!profile) throw new Error("Synchronization Timeout: Your medical profile is still being provisioned. Please try again in a moment.");
+    if (!profile) throw new Error("Synchronization Pending: Your profile is taking longer than expected to initialize. Please refresh the page.");
 
     const familyId = profile.family_id;
 
+    // Fetch core family info
     const { data: familyInfo } = await supabase!
         .from('families')
         .select('name, join_code')
         .eq('id', familyId)
         .single();
 
+    // Fetch family members
     const { data: familyMembers } = await supabase!
         .from('family_members')
         .select('*')
         .eq('family_id', familyId);
 
-    const memberIds = familyMembers?.map(m => m.id) || [];
+    if (!familyMembers || familyMembers.length === 0) {
+        return { familyMembers: [], timelineEntries: [], medications: [], familyInfo: familyInfo ? { name: familyInfo.name, joinCode: familyInfo.join_code } : null };
+    }
 
-    const { data: timelineEntries } = await supabase!
-        .from('timeline_entries')
-        .select('*, files(*)')
-        .in('family_member_id', memberIds)
-        .order('date', { ascending: false });
+    const memberIds = familyMembers.map(m => m.id);
 
-    const { data: medications } = await supabase!
-        .from('medications')
-        .select('*')
-        .in('family_member_id', memberIds)
-        .order('created_at', { ascending: false });
+    // Concurrent fetches for performance
+    const [timelineRes, medsRes] = await Promise.all([
+        supabase!
+            .from('timeline_entries')
+            .select('*, files(*)')
+            .in('family_member_id', memberIds)
+            .order('date', { ascending: false }),
+        supabase!
+            .from('medications')
+            .select('*')
+            .in('family_member_id', memberIds)
+            .order('created_at', { ascending: false })
+    ]);
 
     return {
-        familyMembers: familyMembers || [],
-        timelineEntries: (timelineEntries || []).map(e => ({
+        familyMembers: familyMembers,
+        timelineEntries: (timelineRes.data || []).map(e => ({
             ...e,
             file: e.files?.[0] ? {
                 id: e.files[0].id,
@@ -227,7 +236,7 @@ export const getUserData = async (userId: string) => {
                 type: e.files[0].type
             } : undefined
         })),
-        medications: medications || [],
+        medications: medsRes.data || [],
         familyInfo: familyInfo ? { name: familyInfo.name, joinCode: familyInfo.join_code } : null
     };
 };
