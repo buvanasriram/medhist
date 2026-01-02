@@ -34,9 +34,10 @@ const App: React.FC = () => {
   const [medications, setMedications] = useState<Medication[]>([]);
   const [familyInfo, setFamilyInfo] = useState<{name: string, joinCode: string} | null>(null);
 
-  // Ref locks to prevent infinite parallel fetch loops
+  // Critical Ref Locks
   const loadedForUserId = useRef<string | null>(null);
   const isFetchingRef = useRef<boolean>(false);
+  const mountedRef = useRef<boolean>(true);
   
   const forceResetUI = useCallback(() => {
     setIsSyncing(false);
@@ -45,59 +46,83 @@ const App: React.FC = () => {
   }, []);
 
   const loadUserData = useCallback(async (userId: string) => {
-      // 1. Atomic Lock: If already loading or already loaded, abort.
-      if (isFetchingRef.current || loadedForUserId.current === userId) return;
+      if (!mountedRef.current) return;
+      // 1. Hard Lock: Prevent any overlapping fetches
+      if (isFetchingRef.current || loadedForUserId.current === userId) {
+          console.log("[medHist] Load skipped: Already active or loaded.");
+          return;
+      }
       
       isFetchingRef.current = true;
       setIsSyncing(true);
       setDataLoadError(null);
       
       try {
-          console.log(`[medHist] Syncing data for user: ${userId}`);
+          console.log(`[medHist] Fetching clinical data for: ${userId}`);
           const data = await supabaseService.getUserData(userId);
           
+          if (!mountedRef.current) return;
+
           setFamilyMembers(data.familyMembers || []);
           setTimelineEntries(data.timelineEntries || []);
           setMedications(data.medications || []);
           setFamilyInfo(data.familyInfo || null);
           
-          // 2. Mark as successfully loaded
           loadedForUserId.current = userId;
       } catch (e: any) {
           console.error("[App] Data Load Error:", e);
-          setDataLoadError(e.message || "Connection error. Please try refreshing.");
+          if (mountedRef.current) {
+              setDataLoadError(e.message || "Connection timed out. Please try again.");
+          }
       } finally {
-          setIsSyncing(false);
-          isFetchingRef.current = false;
+          if (mountedRef.current) {
+              setIsSyncing(false);
+              isFetchingRef.current = false;
+          }
       }
   }, []);
 
-  // Combined Navigation & Auth Effect
+  // Effect: Application Lifecycle & Auth Logic (Circuit Breaker)
   useEffect(() => {
-    // A. Handle URL/Navigation State
+    mountedRef.current = true;
+
+    // 1. Safety Timeout: Don't spin forever if Supabase is unresponsive
+    const bootTimeout = setTimeout(() => {
+      if (isLoading && mountedRef.current) {
+        console.warn("[medHist] Auth timeout reached. Checking state...");
+        setIsLoading(false);
+      }
+    }, 8000);
+
+    // 2. Navigation / Hash Handling
     if (window.location.hash && window.location.hash.includes('type=recovery')) {
         setIsRecoveryMode(true);
     }
 
     const handlePopState = () => {
+        if (!mountedRef.current) return;
         setViewMode(prev => (prev !== 'dashboard' ? 'dashboard' : prev));
         setShowPublicGuide(false);
     };
     window.addEventListener('popstate', handlePopState);
 
-    // B. Unified Auth Listener (Handles initial session + changes)
+    // 3. Unified Auth Listener (Attached ONCE)
     const { data: { subscription } } = supabaseService.onAuthStateChange(async (event, currentSession) => {
-      console.log(`[medHist] Auth Event: ${event}`);
+      if (!mountedRef.current) return;
+      
+      console.log(`[medHist] Auth Event Handled: ${event}`);
 
       if (!currentSession?.user) {
-          if (event === 'SIGNED_OUT') {
+          if (event === 'SIGNED_OUT' || event === 'INITIAL_SESSION') {
               setSession(null);
               setCurrentUser(null);
               loadedForUserId.current = null;
-              setRoute('/login');
-              forceResetUI();
+              if (mountedRef.current) {
+                  setRoute('/login');
+                  setIsLoading(false);
+                  forceResetUI();
+              }
           }
-          setIsLoading(false);
           return;
       }
 
@@ -105,7 +130,7 @@ const App: React.FC = () => {
           setIsRecoveryMode(true);
       }
 
-      // Initialize User State
+      // Initialize User Session
       const user = { 
         id: currentSession.user.id, 
         name: currentSession.user.user_metadata?.full_name || currentSession.user.email, 
@@ -115,21 +140,28 @@ const App: React.FC = () => {
       setSession(currentSession);
       setCurrentUser(user);
       
-      // Navigate away from login if session is active
+      // Update route if necessary
       if (window.location.pathname === '/login' || window.location.pathname === '/') {
           setRoute('/');
       }
 
-      // Trigger data sync
-      await loadUserData(user.id);
-      setIsLoading(false);
+      // Trigger data sync if not already loaded
+      if (loadedForUserId.current !== user.id) {
+          await loadUserData(user.id);
+      }
+      
+      if (mountedRef.current) {
+          setIsLoading(false);
+      }
     });
 
     return () => {
+      mountedRef.current = false;
+      clearTimeout(bootTimeout);
       window.removeEventListener('popstate', handlePopState);
       subscription.unsubscribe();
     };
-  }, [loadUserData, forceResetUI]);
+  }, []); // Truly empty dependency array - ensures one-time setup
 
   const handleLogout = async () => {
     setIsLoading(true);
@@ -138,7 +170,10 @@ const App: React.FC = () => {
     } catch (e) {
         console.warn("Signout issue:", e);
     } finally {
+        // Clear local state immediately for responsiveness
         loadedForUserId.current = null;
+        setSession(null);
+        setCurrentUser(null);
         forceResetUI();
     }
   };
@@ -163,15 +198,17 @@ const App: React.FC = () => {
     return <MockupPreview onApprove={() => setIsMockupMode(false)} />;
   }
 
+  // Initial Boot/Verification Spinner
   if (isLoading) {
       return (
         <div className="min-h-screen bg-slate-50 flex flex-col items-center justify-center text-slate-600">
              <SpinnerIcon className="w-10 h-10 text-rose-700 animate-spin mb-4" />
-             <p className="text-slate-400 font-black uppercase tracking-widest text-[10px]">Verifying Secure Session...</p>
+             <p className="text-slate-400 font-black uppercase tracking-widest text-[10px]">Secure Identity Check...</p>
         </div>
       );
   }
 
+  // Guest Views
   if (!session || !currentUser) {
     if (route === '/signup') return (
         <SignupPage 
@@ -191,16 +228,17 @@ const App: React.FC = () => {
     );
   }
   
+  // Error View (Loop Breaker)
   if (dataLoadError) {
       return (
         <div className="min-h-screen bg-slate-50 flex flex-col items-center justify-center p-6 text-center">
              <div className="bg-white p-8 rounded-[3rem] shadow-2xl max-w-sm w-full border border-slate-100">
-                 <div className="bg-red-50 w-16 h-16 rounded-3xl flex items-center justify-center mx-auto mb-6 text-2xl">📡</div>
-                 <h2 className="text-xl font-black text-slate-900 mb-2 tracking-tight">Sync Error</h2>
+                 <div className="bg-rose-50 w-16 h-16 rounded-3xl flex items-center justify-center mx-auto mb-6 text-2xl">📡</div>
+                 <h2 className="text-xl font-black text-slate-900 mb-2 tracking-tight">Sync Delayed</h2>
                  <p className="text-[11px] text-slate-500 mb-8 leading-relaxed font-bold">{dataLoadError}</p>
                  <div className="flex flex-col gap-3">
-                     <button onClick={() => { loadedForUserId.current = null; loadUserData(currentUser.id); }} className="w-full bg-slate-900 text-white font-black py-4 rounded-2xl shadow-xl active:scale-95 transition text-[10px] uppercase tracking-widest">Retry Connection</button>
-                     <button onClick={handleLogout} className="w-full bg-slate-100 text-slate-600 font-black py-4 rounded-2xl active:bg-slate-200 transition text-[10px] uppercase tracking-widest">Log Out</button>
+                     <button onClick={() => { loadedForUserId.current = null; loadUserData(currentUser.id); }} className="w-full bg-slate-900 text-white font-black py-4 rounded-2xl shadow-xl active:scale-95 transition text-[10px] uppercase tracking-widest">Reconnect Registry</button>
+                     <button onClick={handleLogout} className="w-full bg-slate-100 text-slate-600 font-black py-4 rounded-2xl active:bg-slate-200 transition text-[10px] uppercase tracking-widest">Force Logout</button>
                  </div>
              </div>
         </div>
