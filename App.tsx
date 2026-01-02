@@ -34,7 +34,7 @@ const App: React.FC = () => {
   const [medications, setMedications] = useState<Medication[]>([]);
   const [familyInfo, setFamilyInfo] = useState<{name: string, joinCode: string} | null>(null);
 
-  // Persistence Refs
+  // Persistence & Locking Refs
   const mountedRef = useRef<boolean>(true);
   const loadedForUserId = useRef<string | null>(null);
   const syncLock = useRef<boolean>(false);
@@ -48,10 +48,9 @@ const App: React.FC = () => {
   const loadUserData = useCallback(async (userId: string) => {
       if (!mountedRef.current) return;
       
-      // If a sync is already in progress or data is already cached for this user, don't restart.
-      if (syncLock.current) return;
-      if (loadedForUserId.current === userId && familyMembers.length > 0) {
-          setIsSyncing(false); // Ensure UI reflects that we are not syncing
+      // Prevent parallel syncs or redundant loads for the same user
+      if (syncLock.current || loadedForUserId.current === userId) {
+          setIsSyncing(false);
           return;
       }
       
@@ -59,17 +58,8 @@ const App: React.FC = () => {
       setIsSyncing(true);
       setDataLoadError(null);
       
-      // Safety timeout: If Supabase hangs, don't spin forever
-      const safetyTimeout = setTimeout(() => {
-          if (mountedRef.current && syncLock.current) {
-              console.warn("[medHist] Data sync exceeded timeout threshold.");
-              setIsSyncing(false);
-              syncLock.current = false;
-          }
-      }, 10000);
-      
       try {
-          console.debug(`[medHist] Loading registry data for: ${userId}`);
+          console.debug(`[medHist] Synchronizing clinical records for: ${userId}`);
           const data = await supabaseService.getUserData(userId);
           
           if (mountedRef.current) {
@@ -80,38 +70,73 @@ const App: React.FC = () => {
               loadedForUserId.current = userId;
           }
       } catch (e: any) {
-          console.error("[medHist] Registry Sync Failed:", e);
-          if (mountedRef.current) {
-              setDataLoadError(e.message || "Connection to medical registry lost.");
+          console.error("[medHist] Registry Sync Warning:", e);
+          // If it's a new user or network hiccup, we don't necessarily want to block the whole UI
+          if (mountedRef.current && !loadedForUserId.current) {
+              setDataLoadError(e.message || "Medical registry unreachable.");
           }
       } finally {
-          clearTimeout(safetyTimeout);
           if (mountedRef.current) {
               setIsSyncing(false);
               syncLock.current = false;
           }
       }
-  }, [familyMembers.length]);
+  }, []);
 
+  // Application Lifecycle: Guaranteed Resolution Pattern
   useEffect(() => {
     mountedRef.current = true;
 
-    // Handle back button on mobile specifically
-    const handlePopState = (e: PopStateEvent) => {
+    // Safety fallback: if everything hangs, release the UI after 5s
+    const safetyTimer = setTimeout(() => {
+        if (mountedRef.current && isLoading) {
+            console.warn("[medHist] Boot sequence timed out. Releasing UI.");
+            setIsLoading(false);
+        }
+    }, 5000);
+
+    const handlePopState = () => {
         if (!mountedRef.current) return;
         setViewMode(prev => (prev !== 'dashboard' ? 'dashboard' : prev));
         setShowPublicGuide(false);
     };
     window.addEventListener('popstate', handlePopState);
 
-    // UNIFIED AUTH LISTENER (Single Source of Truth)
-    // This handles: Boot (Initial Session), Login, Token Refresh, and Signout
+    // PRIORITY 1: Explicit Initial Session Check
+    const startBoot = async () => {
+        try {
+            const initialSession = await supabaseService.getSession();
+            if (!mountedRef.current) return;
+
+            if (initialSession?.user) {
+                const user = { 
+                    id: initialSession.user.id, 
+                    name: initialSession.user.user_metadata?.full_name || initialSession.user.email,
+                    email: initialSession.user.email || ''
+                };
+                setSession(initialSession);
+                setCurrentUser(user);
+                await loadUserData(user.id);
+            }
+        } catch (e) {
+            console.error("[medHist] Boot error:", e);
+        } finally {
+            if (mountedRef.current) {
+                setIsLoading(false);
+                clearTimeout(safetyTimer);
+            }
+        }
+    };
+
+    startBoot();
+
+    // PRIORITY 2: Persistent Listener for future events
     const { data: { subscription } } = supabaseService.onAuthStateChange(async (event, currentSession) => {
       if (!mountedRef.current) return;
       
-      console.debug(`[medHist] Lifecycle Event: ${event}`);
+      console.debug(`[medHist] Auth Event: ${event}`);
 
-      if (event === 'SIGNED_OUT' || (!currentSession && (event === 'INITIAL_SESSION' || event === 'TOKEN_REFRESHED'))) {
+      if (event === 'SIGNED_OUT') {
           setSession(null);
           setCurrentUser(null);
           loadedForUserId.current = null;
@@ -127,7 +152,7 @@ const App: React.FC = () => {
           setIsRecoveryMode(true);
       }
 
-      if (currentSession?.user) {
+      if (currentSession?.user && event === 'SIGNED_IN') {
         const user = { 
           id: currentSession.user.id, 
           name: currentSession.user.user_metadata?.full_name || currentSession.user.email, 
@@ -136,13 +161,10 @@ const App: React.FC = () => {
         
         setSession(currentSession);
         setCurrentUser(user);
-        
-        // Load data if needed
         await loadUserData(user.id);
         
         if (mountedRef.current) {
             setIsLoading(false);
-            // Auto-navigate to home if on login
             if (window.location.pathname === '/login' || window.location.pathname === '/') {
                 setRoute('/');
             }
@@ -153,16 +175,17 @@ const App: React.FC = () => {
     return () => {
       mountedRef.current = false;
       window.removeEventListener('popstate', handlePopState);
+      clearTimeout(safetyTimer);
       subscription.unsubscribe();
     };
-  }, [loadUserData, forceResetUI]);
+  }, []); // Explicitly empty to act as a singleton controller
 
   const handleLogout = async () => {
     setIsLoading(true);
     try {
         await supabaseService.signOut();
     } catch (e) {
-        console.warn("Signout session clean failed:", e);
+        console.warn("Signout aborted:", e);
     } finally {
         setSession(null);
         setCurrentUser(null);
@@ -179,6 +202,7 @@ const App: React.FC = () => {
         setIsLoading(false);
         return error;
     }
+    // Session state will be picked up by the listener
     return null;
   };
 
@@ -206,13 +230,24 @@ const App: React.FC = () => {
     return <MockupPreview onApprove={() => setIsMockupMode(false)} />;
   }
 
+  // --- RENDERING STATES ---
+
   if (isLoading) {
       return (
         <div className="min-h-screen bg-white flex flex-col items-center justify-center text-slate-600">
-             <SpinnerIcon className="w-12 h-12 text-rose-700 animate-spin mb-6" />
+             <div className="relative mb-10">
+                <SpinnerIcon className="w-14 h-14 text-rose-700 animate-spin" />
+                <div className="absolute inset-0 flex items-center justify-center">
+                    <div className="w-2 h-2 bg-rose-700 rounded-full"></div>
+                </div>
+             </div>
              <div className="flex flex-col items-center">
-                <p className="text-slate-900 font-black uppercase tracking-[0.3em] text-[11px] mb-1">Securing Connection</p>
-                <p className="text-slate-400 font-bold uppercase tracking-[0.2em] text-[9px]">Identity Vault • medHist</p>
+                <p className="text-slate-900 font-black uppercase tracking-[0.4em] text-[10px] mb-2">Securing Connection</p>
+                <div className="flex items-center gap-2 opacity-30">
+                    <span className="w-1.5 h-1.5 rounded-full bg-slate-400"></span>
+                    <p className="text-slate-400 font-bold uppercase tracking-[0.2em] text-[8px]">Identity Vault medHist</p>
+                    <span className="w-1.5 h-1.5 rounded-full bg-slate-400"></span>
+                </div>
              </div>
         </div>
       );
@@ -242,11 +277,11 @@ const App: React.FC = () => {
         <div className="min-h-screen bg-slate-50 flex flex-col items-center justify-center p-6 text-center">
              <div className="bg-white p-10 rounded-[3rem] shadow-2xl max-w-sm w-full border border-slate-100">
                  <div className="bg-rose-50 w-20 h-20 rounded-3xl flex items-center justify-center mx-auto mb-8 text-3xl">📡</div>
-                 <h2 className="text-2xl font-black text-slate-900 mb-3 tracking-tight">Sync Conflict</h2>
+                 <h2 className="text-2xl font-black text-slate-900 mb-3 tracking-tight">Sync Delayed</h2>
                  <p className="text-xs text-slate-500 mb-10 leading-relaxed font-bold">{dataLoadError}</p>
                  <div className="flex flex-col gap-4">
                      <button onClick={() => { loadedForUserId.current = null; loadUserData(currentUser.id); }} className="w-full bg-slate-900 text-white font-black py-5 rounded-2xl shadow-xl active:scale-95 transition text-[11px] uppercase tracking-widest">Retry Connection</button>
-                     <button onClick={handleLogout} className="w-full bg-slate-100 text-slate-600 font-black py-5 rounded-2xl active:bg-slate-200 transition text-[11px] uppercase tracking-widest">Logout & Reset</button>
+                     <button onClick={handleLogout} className="w-full bg-slate-100 text-slate-600 font-black py-5 rounded-2xl active:bg-slate-200 transition text-[11px] uppercase tracking-widest">Force Logout</button>
                  </div>
              </div>
         </div>
