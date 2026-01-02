@@ -85,7 +85,7 @@ export const HealthAssistant: React.FC<HealthAssistantProps> = ({ familyMembers,
                 <button
                     key={index}
                     onClick={() => handleLinkClick(id)}
-                    className="inline-flex items-center gap-1 mx-1 px-2 py-0.5 bg-white text-brand-blue-600 border border-brand-blue-200 rounded text-xs font-semibold hover:bg-brand-blue-50 transition shadow-sm pointer-events-auto"
+                    className="inline-flex items-center gap-1 mx-1 px-2 py-0.5 bg-white text-rose-700 border border-rose-200 rounded text-xs font-semibold hover:bg-rose-50 transition shadow-sm pointer-events-auto"
                 >
                     View {title} <ArrowRightIcon className="w-3 h-3" />
                 </button>
@@ -99,14 +99,14 @@ export const HealthAssistant: React.FC<HealthAssistantProps> = ({ familyMembers,
     <div className="fixed inset-0 pointer-events-none z-[500] flex flex-col justify-end items-end p-6">
       {isOpen && (
         <div className="w-full max-w-[360px] h-[500px] max-h-[70vh] bg-white rounded-3xl shadow-2xl flex flex-col border border-slate-200 overflow-hidden animate-fadeIn pointer-events-auto mb-4">
-          <div className="bg-brand-blue-600 p-4 text-white flex items-center justify-between">
+          <div className="bg-rose-700 p-4 text-white flex items-center justify-between">
             <div className="flex items-center gap-3">
                 <div className="bg-white/20 p-2 rounded-xl">
                     <StethoscopeIcon className="w-5 h-5" />
                 </div>
                 <div>
                     <h3 className="font-bold text-sm leading-tight text-left">Assistant</h3>
-                    <p className="text-[10px] text-blue-100 text-left">AI Medical Context</p>
+                    <p className="text-[10px] text-rose-100 text-left">AI Medical Context</p>
                 </div>
             </div>
             <button onClick={() => setIsOpen(false)} className="p-2 hover:bg-white/10 rounded-full transition">
@@ -119,7 +119,7 @@ export const HealthAssistant: React.FC<HealthAssistantProps> = ({ familyMembers,
               <div key={idx} className={`flex ${msg.role === 'user' ? 'justify-end' : 'justify-start'}`}>
                 <div className={`max-w-[85%] rounded-2xl px-3 py-2 text-sm shadow-sm text-left ${
                   msg.role === 'user' 
-                    ? 'bg-brand-blue-600 text-white rounded-br-none' 
+                    ? 'bg-rose-700 text-white rounded-br-none' 
                     : 'bg-white text-slate-700 border border-slate-200 rounded-bl-none'
                 }`}>
                   {renderMessageText(msg.text)}
@@ -129,7 +129,7 @@ export const HealthAssistant: React.FC<HealthAssistantProps> = ({ familyMembers,
             {isLoading && (
               <div className="flex justify-start">
                  <div className="bg-white p-3 rounded-2xl rounded-bl-none border border-slate-200 shadow-sm flex items-center gap-2">
-                    <SpinnerIcon className="w-4 h-4 text-brand-blue-600 animate-spin" />
+                    <SpinnerIcon className="w-4 h-4 text-rose-700 animate-spin" />
                     <span className="text-xs text-slate-500 font-bold uppercase tracking-widest">Thinking...</span>
                  </div>
               </div>
@@ -142,14 +142,14 @@ export const HealthAssistant: React.FC<HealthAssistantProps> = ({ familyMembers,
               <input
                 type="text"
                 placeholder="Ask your records..."
-                className="w-full pl-4 pr-12 py-3 bg-slate-100 border-none rounded-2xl text-sm focus:ring-2 focus:ring-brand-blue-500 focus:bg-white transition"
+                className="w-full pl-4 pr-12 py-3 bg-slate-100 border-none rounded-2xl text-sm focus:ring-2 focus:ring-rose-500 focus:bg-white transition"
                 value={input}
                 onChange={(e) => setInput(e.target.value)}
               />
               <button 
                 type="submit" 
                 disabled={!input.trim() || isLoading}
-                className="absolute right-2 p-2 bg-brand-blue-600 text-white rounded-xl hover:bg-brand-blue-700 disabled:opacity-50 transition"
+                className="absolute right-2 p-2 bg-rose-700 text-white rounded-xl hover:bg-rose-800 disabled:opacity-50 transition"
               >
                 <SendIcon className="w-4 h-4" />
               </button>
@@ -161,7 +161,7 @@ export const HealthAssistant: React.FC<HealthAssistantProps> = ({ familyMembers,
       <button
         onClick={() => setIsOpen(!isOpen)}
         className={`p-5 rounded-full shadow-2xl transition-all duration-300 pointer-events-auto active:scale-90 ${
-          isOpen ? 'bg-white text-slate-600' : 'bg-brand-blue-600 text-white hover:bg-brand-blue-700'
+          isOpen ? 'bg-white text-slate-600' : 'bg-rose-700 text-white hover:bg-rose-800'
         }`}
       >
         {isOpen ? <CloseIcon className="w-7 h-7" /> : <ChatIcon className="w-8 h-8" />}

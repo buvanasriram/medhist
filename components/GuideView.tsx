@@ -28,12 +28,12 @@ export const GuideView: React.FC<GuideViewProps> = ({ onBack, user, onLogout }) 
         </button>
 
         <div className="mb-16">
-            <h1 className="text-xl font-light text-slate-800 tracking-tight flex items-center gap-2 flex-wrap">
-              <span>med<span className="font-black text-rose-800">Hist</span></span>
-              <span className="h-4 w-px bg-slate-200 mx-2 hidden sm:block"></span>
-              <span className="text-slate-400 font-medium">AI Powered Clinical Intelligence Center</span>
+            <h1 className="text-xl font-light text-slate-800 tracking-tight leading-none">
+              med<span className="font-black text-rose-800">Hist</span>
             </h1>
-            <div className="h-1 w-12 bg-rose-700 rounded-full mt-4"></div>
+            <p className="text-[10px] font-black text-slate-400 uppercase tracking-[0.3em] mt-2 leading-none">
+              AI Powered Clinical Intelligence Center
+            </p>
         </div>
 
         <div className="grid grid-cols-1 md:grid-cols-2 gap-8 mb-20">
