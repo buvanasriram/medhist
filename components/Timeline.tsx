@@ -1,3 +1,4 @@
+
 import React from 'react';
 import { TimelineItem } from './TimelineItem';
 import type { TimelineEntry } from '../types';
@@ -11,31 +12,28 @@ interface TimelineProps {
   selectedMemberName?: string;
   isShared?: boolean;
   isReadOnly?: boolean;
+  themeColor?: string;
 }
 
-export const Timeline: React.FC<TimelineProps> = ({ entries, onViewReport, onDeleteReport, onIgnoreMismatch, selectedMemberName, isShared, isReadOnly = false }) => {
+export const Timeline: React.FC<TimelineProps> = ({ 
+    entries, onViewReport, onDeleteReport, onIgnoreMismatch, selectedMemberName, isShared, isReadOnly = false, themeColor 
+}) => {
   if (entries.length === 0) {
     return (
-      <div className="text-center py-16 px-6 border-2 border-dashed border-slate-200 rounded-lg">
-        <ClipboardIcon className="w-12 h-12 mx-auto text-slate-400" />
-        <h3 className="mt-4 text-lg font-semibold text-slate-600">No Reports Yet</h3>
-        <p className="mt-1 text-slate-500">
+      <div className="text-center py-24 px-6 border-2 border-dashed border-slate-100 rounded-[2.5rem] bg-slate-50/30">
+        <ClipboardIcon className="w-12 h-12 mx-auto text-slate-200 mb-6" />
+        <h3 className="text-xl font-black text-slate-400 uppercase tracking-widest">No Records Found</h3>
+        <p className="mt-2 text-[10px] font-bold text-slate-300 uppercase tracking-[0.3em]">
           {isShared 
-            ? "This shared timeline is currently empty. Ask the owner to upload reports." 
-            : "Upload a medical report to start building this timeline."
-          }
+            ? "Shared archive is currently empty" 
+            : "Upload clinical records to build this history"}
         </p>
-        {isShared && (
-            <div className="mt-4 inline-block px-3 py-1 bg-blue-50 text-blue-700 text-xs font-medium rounded-full border border-blue-100">
-                Shared View
-            </div>
-        )}
       </div>
     );
   }
 
   return (
-    <div className="relative border-l-2 border-slate-200 ml-4 pl-8 md:ml-6 md:pl-12 py-4">
+    <div className="space-y-4">
       {entries.map((entry) => (
         <TimelineItem 
           key={entry.id} 
@@ -45,6 +43,7 @@ export const Timeline: React.FC<TimelineProps> = ({ entries, onViewReport, onDel
           onIgnoreMismatch={onIgnoreMismatch}
           selectedMemberName={selectedMemberName}
           isReadOnly={isReadOnly}
+          themeColor={themeColor}
         />
       ))}
     </div>

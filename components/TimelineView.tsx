@@ -15,6 +15,8 @@ import { ArrowLeftIcon } from './icons/ArrowLeftIcon';
 import { StethoscopeIcon } from './icons/StethoscopeIcon';
 import { ClipboardIcon } from './icons/ClipboardIcon';
 import { DownloadIcon } from './icons/DownloadIcon'; 
+import { SearchIcon } from './icons/SearchIcon';
+import { ChevronDownIcon } from './icons/ChevronDownIcon';
 import { HealthAssistant } from './HealthAssistant';
 import { ReportViewerModal } from './ReportViewerModal';
 
@@ -29,6 +31,8 @@ interface TimelineViewProps {
   onRefreshData: () => void;
   onOpenGuide?: () => void;
 }
+
+const MEMBER_COLORS = ['#be123c', '#0369a1', '#15803d', '#c2410c', '#6d28d9', '#0d9488', '#334155'];
 
 export const TimelineView: React.FC<TimelineViewProps> = ({ 
     onLogout, user, initialSelectedMemberId, onBackToDashboard, familyMembers, timelineEntries, medications = [], onRefreshData, onOpenGuide 
@@ -45,10 +49,7 @@ export const TimelineView: React.FC<TimelineViewProps> = ({
   const [selectedMemberId, setSelectedMemberId] = useState<string>(defaultMemberId);
   const [activeTab, setActiveTab] = useState<'all' | 'visits'>('all');
   const [searchQuery, setSearchQuery] = useState<string>('');
-  const [filterReportType, setFilterReportType] = useState<string>('');
-  const [filterStartDate, setFilterStartDate] = useState<string>('');
-  const [filterEndDate, setFilterEndDate] = useState<string>('');
-
+  
   const [isUploadModalOpen, setUploadModalOpen] = useState<boolean>(false);
   const [isViewerOpen, setViewerOpen] = useState(false);
   const [reportToViewRaw, setReportToViewRaw] = useState<{ url: string, filePath?: string, file: ReportFile } | null>(null);
@@ -119,8 +120,8 @@ export const TimelineView: React.FC<TimelineViewProps> = ({
     } catch (err) {
       alert(`Deletion failed.`);
     } finally {
-      setConfirmModalOpen(false);
-      setEntryToDelete(null);
+        setConfirmModalOpen(false);
+        setEntryToDelete(null);
     }
   };
 
@@ -134,14 +135,16 @@ export const TimelineView: React.FC<TimelineViewProps> = ({
   const handleMemberSelectionChange = (e: React.ChangeEvent<HTMLSelectElement>) => {
     setSelectedMemberId(e.target.value);
     setSearchQuery('');
-    setFilterReportType('');
-    setFilterStartDate('');
-    setFilterEndDate('');
   };
   
   const selectedMember = useMemo(() => familyMembers.find(m => m.id === selectedMemberId), [familyMembers, selectedMemberId]);
   const memberEntries = useMemo(() => timelineEntries.filter(entry => entry.family_member_id === selectedMemberId), [timelineEntries, selectedMemberId]);
   
+  const themeColor = useMemo(() => {
+    const idx = familyMembers.findIndex(m => m.id === selectedMemberId);
+    return idx === -1 ? MEMBER_COLORS[0] : MEMBER_COLORS[idx % MEMBER_COLORS.length];
+  }, [selectedMemberId, familyMembers]);
+
   const handleDownloadBrief = async () => {
       if (!selectedMember) return;
       setIsGeneratingPdf(true);
@@ -149,8 +152,8 @@ export const TimelineView: React.FC<TimelineViewProps> = ({
         const memberMeds = medications.filter(m => m.family_member_id === selectedMemberId);
         await generateDoctorBrief(selectedMember, memberMeds, memberEntries);
       } catch (e) {
-        console.error("Brief generation error", e);
-        alert("Failed to generate PDF summary.");
+        console.error("History generation error", e);
+        alert("Failed to generate PDF history.");
       } finally {
         setIsGeneratingPdf(false);
       }
@@ -166,66 +169,105 @@ export const TimelineView: React.FC<TimelineViewProps> = ({
         const query = searchQuery.toLowerCase();
         if (!entry.report_type.toLowerCase().includes(query) && !entry.summary?.toLowerCase().includes(query) && !entry.doctor_name?.toLowerCase().includes(query) && !entry.facility_name?.toLowerCase().includes(query)) return false;
       }
-      if (filterReportType && entry.report_type !== filterReportType) return false;
-      const entryDate = new Date(entry.date);
-      if (filterStartDate && entryDate < new Date(filterStartDate)) return false;
-      if (filterEndDate && entryDate > new Date(filterEndDate)) return false;
       return true;
     });
-  }, [memberEntries, activeTab, searchQuery, filterReportType, filterStartDate, filterEndDate]);
+  }, [memberEntries, activeTab, searchQuery]);
 
   return (
-    <div className="min-h-screen bg-slate-50 text-slate-800 flex flex-col">
+    <div className="min-h-screen bg-white text-slate-800 flex flex-col text-left">
       <Header onLogout={onLogout} userName={user.name} onOpenGuide={onOpenGuide} />
-      <main className="container mx-auto p-4 md:p-8 max-w-5xl flex-grow pb-24">
-        <button onClick={onBackToDashboard} className="flex items-center gap-2 text-slate-500 hover:text-brand-blue-600 mb-6 transition font-medium text-sm">
-            <ArrowLeftIcon className="w-4 h-4" /> Back to Dashboard
+      <main className="container mx-auto p-4 sm:p-6 md:p-10 max-w-5xl flex-grow pb-24">
+        
+        <button 
+            onClick={onBackToDashboard} 
+            className="flex items-center gap-2 text-slate-900 hover:text-rose-700 mb-8 transition font-black text-[10px] uppercase tracking-[0.3em]"
+        >
+            <ArrowLeftIcon className="w-5 h-5" /> Back to Family Board
         </button>
 
-        <div className="bg-white rounded-xl shadow-sm p-6 border border-slate-200">
-          <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center mb-6 gap-4">
-            <div className="text-left">
-              <h2 className="text-2xl font-bold text-brand-blue-800">
-                {selectedMember ? `${selectedMember.name}'s Timeline` : 'Select a Member'}
-              </h2>
-              <p className="text-slate-500 mt-1">Medical history & reports.</p>
+        <div className="flex flex-col md:flex-row justify-between items-start md:items-end mb-10 gap-6">
+            <div className="min-w-0">
+              <p style={{ color: themeColor }} className="text-[10px] font-black uppercase tracking-[0.4em] mb-1.5 leading-none">
+                  Precision Medical History
+              </p>
+              <h1 className="text-3xl sm:text-4xl font-black text-slate-900 tracking-tighter leading-none truncate">
+                {selectedMember ? `${selectedMember.name}'s History` : 'Timeline'}
+              </h1>
             </div>
-             <div className="flex items-center gap-3 w-full sm:w-auto">
+             <div className="flex flex-wrap items-center gap-2 w-full md:w-auto">
                 <div className="relative flex-grow sm:flex-grow-0">
                     <select
                       value={selectedMemberId}
                       onChange={handleMemberSelectionChange}
-                      className="w-full sm:w-auto bg-slate-100 border border-slate-300 rounded-md py-2 pl-3 pr-8 text-slate-700 focus:outline-none focus:ring-2 focus:ring-brand-blue-500 transition appearance-none"
+                      className="w-full sm:w-auto bg-slate-50 border-2 border-slate-900 rounded-xl py-2.5 pl-4 pr-10 text-slate-900 font-black text-[10px] uppercase tracking-widest focus:outline-none transition appearance-none cursor-pointer shadow-lg"
                     >
                       {familyMembers.map(member => (
                             <option key={member.id} value={member.id}>
-                              {member.name} ({member.relationship})
+                              {member.name}
                             </option>
                       ))}
                     </select>
+                    <div className="absolute right-3 top-1/2 -translate-y-1/2 pointer-events-none text-slate-900">
+                         <ChevronDownIcon className="w-3.5 h-3.5" />
+                    </div>
                 </div>
-                <button onClick={handleDownloadBrief} disabled={isGeneratingPdf} className="flex-shrink-0 bg-white text-slate-700 border border-slate-300 font-semibold py-2 px-3 rounded-lg shadow-sm hover:bg-slate-50 transition flex items-center gap-2 disabled:opacity-50">
-                    {isGeneratingPdf ? <SpinnerIcon className="w-5 h-5 animate-spin" /> : <DownloadIcon className="w-5 h-5" />}
-                    <span className="hidden sm:inline">Brief</span>
+                <button 
+                    onClick={handleDownloadBrief} 
+                    disabled={isGeneratingPdf} 
+                    className="flex-1 sm:flex-none flex items-center justify-center gap-2 bg-slate-100 text-slate-900 border-2 border-slate-900 font-black py-2.5 px-5 rounded-xl shadow-md hover:bg-slate-200 transition disabled:opacity-50 text-[9px] uppercase tracking-widest"
+                >
+                    {isGeneratingPdf ? <SpinnerIcon className="w-3.5 h-3.5 animate-spin" /> : <DownloadIcon className="w-3.5 h-3.5" />}
+                    Download History
                 </button>
-                <button onClick={() => setUploadModalOpen(true)} className="flex-shrink-0 bg-brand-blue-600 text-white font-semibold py-2 px-4 rounded-lg shadow-md hover:bg-brand-blue-700 transition flex items-center gap-2">
-                    <PlusIcon className="w-5 h-5" />
-                    <span className="hidden sm:inline">Upload</span>
+                <button 
+                    onClick={() => setUploadModalOpen(true)} 
+                    className="flex-1 sm:flex-none flex items-center justify-center gap-2 bg-slate-900 text-white font-black py-2.5 px-6 rounded-xl shadow-xl hover:bg-rose-900 transition active:scale-95 text-[9px] uppercase tracking-widest"
+                >
+                    <PlusIcon className="w-3.5 h-3.5" />
+                    Upload Report
                 </button>
              </div>
-          </div>
-          
-          <div className="flex space-x-1 bg-slate-100 p-1 rounded-lg mb-6 w-fit">
-              <button onClick={() => setActiveTab('all')} className={`flex items-center gap-2 px-4 py-2 text-sm font-medium rounded-md transition ${activeTab === 'all' ? 'bg-white text-brand-blue-600 shadow-sm' : 'text-slate-500 hover:text-slate-700'}`}>
-                  <ClipboardIcon className="w-4 h-4" /> All Records
-              </button>
-              <button onClick={() => setActiveTab('visits')} className={`flex items-center gap-2 px-4 py-2 text-sm font-medium rounded-md transition ${activeTab === 'visits' ? 'bg-white text-brand-blue-600 shadow-sm' : 'text-slate-500 hover:text-slate-700'}`}>
-                  <StethoscopeIcon className="w-4 h-4" /> Doctor Visits
-              </button>
-          </div>
-
-          <Timeline entries={displayedEntries} onViewReport={handleViewReport} onDeleteReport={handleDeleteReport} onIgnoreMismatch={handleIgnoreMismatch} selectedMemberName={selectedMember?.name} />
         </div>
+
+        {/* Search & Tabs */}
+        <div className="flex flex-col md:flex-row gap-4 mb-8 items-center justify-between">
+            <div className="flex space-x-1 bg-slate-100 p-1.5 rounded-2xl w-full md:w-fit border border-slate-200">
+                <button 
+                    onClick={() => setActiveTab('all')} 
+                    className={`flex-1 md:flex-none flex items-center justify-center gap-2 px-6 py-2.5 text-[9px] font-black uppercase tracking-[0.2em] rounded-xl transition shadow-sm ${activeTab === 'all' ? 'bg-slate-900 text-white shadow-xl' : 'text-slate-500 hover:text-slate-900 hover:bg-slate-200'}`}
+                >
+                    <ClipboardIcon className="w-3.5 h-3.5" /> All History
+                </button>
+                <button 
+                    onClick={() => setActiveTab('visits')} 
+                    className={`flex-1 md:flex-none flex items-center justify-center gap-2 px-6 py-2.5 text-[9px] font-black uppercase tracking-[0.2em] rounded-xl transition shadow-sm ${activeTab === 'visits' ? 'bg-slate-900 text-white shadow-xl' : 'text-slate-500 hover:text-slate-900 hover:bg-slate-200'}`}
+                >
+                    <StethoscopeIcon className="w-3.5 h-3.5" /> Visits
+                </button>
+            </div>
+
+            <div className="relative w-full md:max-w-xs">
+                <div className="absolute inset-y-0 left-3.5 flex items-center pointer-events-none">
+                    <SearchIcon className="w-4 h-4 text-slate-900" />
+                </div>
+                <input 
+                    type="text" 
+                    placeholder="Search clinical keywords..." 
+                    className="w-full pl-10 pr-4 py-2.5 bg-white border-2 border-slate-200 rounded-xl text-xs font-black focus:ring-4 focus:ring-rose-500/5 focus:border-slate-900 transition shadow-sm outline-none placeholder-slate-400"
+                    value={searchQuery}
+                    onChange={(e) => setSearchQuery(e.target.value)}
+                />
+            </div>
+        </div>
+
+        <Timeline 
+            entries={displayedEntries} 
+            onViewReport={handleViewReport} 
+            onDeleteReport={handleDeleteReport} 
+            onIgnoreMismatch={handleIgnoreMismatch} 
+            selectedMemberName={selectedMember?.name} 
+            themeColor={themeColor}
+        />
       </main>
       
       <HealthAssistant familyMembers={familyMembers} timelineEntries={timelineEntries} medications={medications} userName={user.name} onViewReport={handleViewReport} />
@@ -240,7 +282,11 @@ export const TimelineView: React.FC<TimelineViewProps> = ({
         />
       )}
       
-      {isConfirmModalOpen && <ConfirmationModal isOpen={isConfirmModalOpen} onClose={() => { setConfirmModalOpen(false); setEntryToDelete(null); }} onConfirm={handleConfirmDelete} title="Delete Report?" message="This will permanently delete this report." />}
+      {isConfirmModalOpen && <ConfirmationModal isOpen={isConfirmModalOpen} onClose={() => { setConfirmModalOpen(false); setEntryToDelete(null); }} onConfirm={handleConfirmDelete} title="Purge Record?" message="This will permanently delete this clinical record from the secure timeline." />}
+      
+      <footer className="py-16 text-center text-slate-400 text-[10px] font-black uppercase tracking-[0.5em] mt-auto">
+          medHist Precision • v0.9.9
+      </footer>
     </div>
   );
 };

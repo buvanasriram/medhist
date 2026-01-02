@@ -19,16 +19,19 @@ interface TimelineItemProps {
   onIgnoreMismatch: (entry: TimelineEntry) => void;
   selectedMemberName?: string;
   isReadOnly?: boolean;
+  themeColor?: string;
 }
 
-export const TimelineItem: React.FC<TimelineItemProps> = ({ entry, onViewReport, onDeleteReport, onIgnoreMismatch, selectedMemberName, isReadOnly = false }) => {
+export const TimelineItem: React.FC<TimelineItemProps> = ({ 
+    entry, onViewReport, onDeleteReport, onIgnoreMismatch, selectedMemberName, isReadOnly = false, themeColor = '#be123c' 
+}) => {
   const [showSummary, setShowSummary] = useState(false);
   const [isSharing, setIsSharing] = useState(false);
   const [shareFeedback, setShareFeedback] = useState<string | null>(null);
 
   const formattedDate = new Date(entry.date).toLocaleDateString('en-US', {
     year: 'numeric',
-    month: 'long',
+    month: 'short',
     day: 'numeric',
   });
   
@@ -41,8 +44,6 @@ export const TimelineItem: React.FC<TimelineItemProps> = ({ entry, onViewReport,
                        selectedMemberName && 
                        entry.patient_name.trim().toLowerCase() !== selectedMemberName.trim().toLowerCase();
 
-  const summaryText = entry.summary || "No summary available for this report.";
-
   const handleShare = async () => {
     setIsSharing(true);
     setShareFeedback(null);
@@ -50,11 +51,7 @@ export const TimelineItem: React.FC<TimelineItemProps> = ({ entry, onViewReport,
         const link = await supabaseService.createShareLink(entry.id);
         if (link) {
             await navigator.clipboard.writeText(link);
-            setShareFeedback("Secure link copied to clipboard! Paste it in a message to share.");
-            // Clear message after 4 seconds
-            setTimeout(() => setShareFeedback(null), 4000);
-        } else {
-            setShareFeedback("Failed to generate link.");
+            setShareFeedback("Secure link copied!");
             setTimeout(() => setShareFeedback(null), 3000);
         }
     } catch (error) {
@@ -67,131 +64,126 @@ export const TimelineItem: React.FC<TimelineItemProps> = ({ entry, onViewReport,
   };
 
   return (
-    <div className="mb-10">
-      <div className="absolute -left-5 bg-brand-blue-600 h-9 w-9 rounded-full flex items-center justify-center ring-8 ring-white">
-        <DocumentIcon className="w-5 h-5 text-white" />
-      </div>
-      <div className="pl-4">
-        <div className="mb-2 flex flex-wrap items-baseline gap-3">
-          <h3 className="text-lg font-bold text-slate-800">{entry.report_type}</h3>
-          <span className="text-sm font-bold text-slate-800">{formattedDate}</span>
-        </div>
-        
-        {/* Next Appointment Badge */}
-        {formattedFollowUp && (
-            <div className="mb-3 inline-flex items-center gap-2 px-3 py-1 bg-brand-green-50 text-brand-green-700 rounded-full border border-brand-green-100 text-xs font-semibold">
-                <CalendarIcon className="w-3.5 h-3.5" />
-                Next Visit: {formattedFollowUp}
+    <div className="mb-4 animate-fadeIn text-left">
+      <div 
+        className="bg-white border border-slate-100 rounded-2xl p-4 shadow-xl shadow-slate-200/40 flex flex-col sm:flex-row justify-between items-start sm:items-center group cursor-pointer hover:border-slate-300 transition-all border-l-8 relative"
+        style={{ borderLeftColor: themeColor }}
+        onClick={() => onViewReport(entry)}
+      >
+        <div className="flex items-center gap-4 w-full">
+            {/* Folder Icon - Harmony v1.0 Dual Hover */}
+            <div 
+                className="p-3 rounded-xl shadow-lg flex-shrink-0 transition-all duration-200 bg-slate-50 text-rose-700 group-hover:bg-rose-900 group-hover:text-white"
+            >
+                <DocumentIcon className="w-5 h-5" />
             </div>
-        )}
+            
+            <div className="min-w-0 flex-grow">
+                <div className="flex flex-wrap items-center gap-2 mb-0.5">
+                    <h4 className="text-sm sm:text-base font-black text-slate-900 tracking-tight leading-tight truncate">
+                        {entry.report_type}
+                    </h4>
+                    {formattedFollowUp && (
+                        <span className="text-[7px] font-black uppercase px-1.5 py-0.5 rounded bg-rose-700 text-white tracking-[0.1em] shadow-sm">
+                           Follow-up
+                        </span>
+                    )}
+                </div>
+                <div className="flex flex-wrap items-center gap-x-3 gap-y-1 text-[8px] font-black text-slate-400 uppercase tracking-widest">
+                    <span className="text-slate-900 font-black">{formattedDate}</span>
+                    {entry.doctor_name && <span className="flex items-center gap-1"><UserIcon className="w-3.5 h-3.5 text-slate-900"/> DR. {entry.doctor_name}</span>}
+                    {entry.facility_name && <span className="flex items-center gap-1"><BuildingIcon className="w-3.5 h-3.5 text-slate-900"/> {entry.facility_name}</span>}
+                </div>
+            </div>
+        </div>
 
-        {isMismatched && (
-            <div className="mb-3 p-3 bg-yellow-50 border-l-4 border-yellow-400 rounded-r-md flex items-start gap-3">
-                <WarningIcon className="w-5 h-5 text-yellow-500 flex-shrink-0 mt-0.5" />
-                <div className="flex-grow">
-                    <p className="font-semibold text-yellow-800">Potential Mismatch Detected</p>
-                    <p className="text-sm text-yellow-700">
-                        This report lists the patient as <span className="font-bold">{entry.patient_name}</span>, but it was uploaded to <span className="font-bold">{selectedMemberName}'s</span> timeline.
+        {/* Action Tray - Rose High Contrast */}
+        <div className="flex items-center gap-3 mt-4 sm:mt-0 ml-auto sm:ml-4 flex-shrink-0">
+            <button
+                onClick={(e) => { e.stopPropagation(); setShowSummary(!showSummary); }}
+                className="p-2.5 bg-slate-50 text-slate-900 rounded-xl shadow-sm hover:bg-rose-900 hover:text-white transition-all duration-200 active:scale-90"
+                title="Toggle Summary"
+            >
+                {showSummary ? <ChevronUpIcon className="w-4 h-4" /> : <ChevronDownIcon className="w-4 h-4" />}
+            </button>
+            
+            <div className="relative">
+                <button
+                    onClick={(e) => { e.stopPropagation(); handleShare(); }}
+                    disabled={isSharing}
+                    className="p-2.5 bg-slate-50 text-slate-900 rounded-xl shadow-sm hover:bg-rose-900 hover:text-white transition-all duration-200 active:scale-90 disabled:opacity-50"
+                    title="Share Record"
+                >
+                    <ShareIcon className="w-4 h-4" />
+                </button>
+                {shareFeedback && (
+                    <div className="absolute right-0 bottom-full mb-2 bg-slate-900 text-white text-[7px] font-black uppercase tracking-widest px-2 py-1 rounded shadow-xl whitespace-nowrap z-30">
+                        {shareFeedback}
+                    </div>
+                )}
+            </div>
+
+            {!isReadOnly && (
+                <button
+                    onClick={(e) => { e.stopPropagation(); onDeleteReport(entry); }}
+                    className="p-2.5 bg-slate-50 text-slate-900 rounded-xl shadow-sm hover:bg-red-700 hover:text-white transition-all duration-200 active:scale-90"
+                    title="Delete Record"
+                >
+                    <TrashIcon className="w-4 h-4" />
+                </button>
+            )}
+        </div>
+      </div>
+
+      {/* Expanded Pastel Area */}
+      {(showSummary || isMismatched) && (
+          <div className="mt-2 mx-3 space-y-2">
+            {isMismatched && (
+                <div className="p-3 bg-amber-50 border border-amber-200 rounded-xl flex items-start gap-3 shadow-sm">
+                    <WarningIcon className="w-4 h-4 text-amber-600 flex-shrink-0 mt-0.5" />
+                    <div>
+                        <p className="text-[9px] font-black text-amber-700 uppercase tracking-widest mb-0.5 leading-none">Identity Check</p>
+                        <p className="text-[10px] font-black text-slate-900 leading-tight">
+                            Patient <span className="underline">{entry.patient_name}</span> mismatch detected.
+                        </p>
+                        {!isReadOnly && (
+                            <button 
+                                onClick={() => onIgnoreMismatch(entry)} 
+                                className="mt-1.5 text-[8px] font-black uppercase tracking-widest text-amber-900 hover:text-rose-700 underline underline-offset-2"
+                            >
+                                Validate
+                            </button>
+                        )}
+                    </div>
+                </div>
+            )}
+            
+            {showSummary && (
+                <div 
+                    className="p-5 rounded-2xl text-[10px] sm:text-[11px] leading-relaxed shadow-lg border-2"
+                    style={{ 
+                        backgroundColor: themeColor + '10', 
+                        borderColor: themeColor + '30' 
+                    }}
+                >
+                    <p className="text-[8px] font-black uppercase tracking-[0.2em] mb-2 leading-none" style={{ color: themeColor }}>
+                        AI Synthesis History
                     </p>
-                    {!isReadOnly && (
-                        <div className="mt-2">
-                        <button 
-                            onClick={() => onIgnoreMismatch(entry)} 
-                            className="text-sm font-semibold text-yellow-800 hover:text-yellow-900 underline focus:outline-none"
-                        >
-                            Ignore (name is correct)
-                        </button>
+                    <div className="text-slate-900 font-bold">
+                        {entry.summary || "No clinical brief available."}
+                    </div>
+                    {formattedFollowUp && (
+                        <div className="mt-4 pt-3 border-t border-slate-200 flex items-center gap-2">
+                            <CalendarIcon className="w-3.5 h-3.5" style={{ color: themeColor }} />
+                            <span className="text-[9px] font-black uppercase tracking-widest" style={{ color: themeColor }}>
+                                Scheduled Follow-up: {formattedFollowUp}
+                            </span>
                         </div>
                     )}
                 </div>
-            </div>
-        )}
-
-        <div className="flex flex-wrap items-center gap-x-6 gap-y-2 text-sm text-slate-500 mb-3">
-          {entry.patient_name && (
-            <div className="flex items-center gap-2">
-              <UserIcon className="w-4 h-4 text-slate-400" />
-              <span className="font-medium">{entry.patient_name}</span>
-            </div>
-          )}
-          {entry.doctor_name && (
-            <div className="flex items-center gap-2">
-              <UserIcon className="w-4 h-4 text-slate-400" />
-              <span className="font-medium">Dr. {entry.doctor_name}</span>
-            </div>
-          )}
-          {entry.facility_name && (
-            <div className="flex items-center gap-2">
-              <BuildingIcon className="w-4 h-4 text-slate-400" />
-              <span className="font-medium">{entry.facility_name}</span>
-            </div>
-          )}
-
-          <button
-            onClick={() => setShowSummary(!showSummary)}
-            className="flex items-center gap-1 font-medium text-brand-blue-600 hover:text-brand-blue-800 focus:outline-none transition-colors"
-          >
-            {showSummary ? (
-                <>
-                    Hide Summary <ChevronUpIcon className="w-4 h-4" />
-                </>
-            ) : (
-                <>
-                    Show Summary <ChevronDownIcon className="w-4 h-4" />
-                </>
-            )}
-          </button>
-        </div>
-
-        {showSummary && (
-             <div className="mb-4 p-3 bg-slate-50 rounded-md border border-slate-100 text-slate-600 text-sm leading-relaxed animate-fadeIn">
-                 {summaryText}
-             </div>
-        )}
-        
-        <div className="flex items-center gap-4">
-          <button
-            onClick={() => onViewReport(entry)}
-            className="inline-flex items-center px-4 py-2 border border-slate-300 text-sm font-medium rounded-md text-slate-700 bg-white hover:bg-slate-50 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-brand-blue-500 transition"
-          >
-            View Report
-          </button>
-          
-          <div className="relative">
-            <button
-                onClick={handleShare}
-                disabled={isSharing}
-                className={`inline-flex items-center gap-2 px-4 py-2 border text-sm font-medium rounded-md focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-brand-blue-500 transition disabled:opacity-50 ${
-                    shareFeedback 
-                    ? 'border-green-500 text-green-700 bg-green-50' 
-                    : 'border-slate-300 text-brand-blue-700 bg-white hover:bg-brand-blue-50'
-                }`}
-                title="Create a 24-hour secure link for your doctor"
-            >
-                <ShareIcon className="w-4 h-4" />
-                {isSharing ? "Link..." : shareFeedback ? "Copied!" : "Share"}
-            </button>
-            
-            {shareFeedback && (
-                <div className="absolute left-1/2 transform -translate-x-1/2 bottom-full mb-2 w-56 p-2 bg-slate-800 text-white text-xs text-center rounded shadow-lg z-10 animate-fadeIn">
-                    {shareFeedback}
-                    <div className="absolute top-full left-1/2 transform -translate-x-1/2 border-4 border-transparent border-t-slate-800"></div>
-                </div>
             )}
           </div>
-
-          {!isReadOnly && (
-              <button
-                onClick={() => onDeleteReport(entry)}
-                className="inline-flex items-center gap-2 px-4 py-2 border border-transparent text-sm font-medium rounded-md text-red-600 hover:bg-red-50 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-red-500 transition"
-                aria-label="Delete report"
-              >
-                <TrashIcon className="w-4 h-4" />
-                Delete
-              </button>
-          )}
-        </div>
-      </div>
+      )}
     </div>
   );
 };

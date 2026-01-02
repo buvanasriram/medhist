@@ -20,84 +20,88 @@ interface MemberCardProps {
   onManageMeds: () => void;
   onDownloadBrief: () => void;
   onEdit: () => void;
+  backgroundColor?: string;
+  borderColor?: string;
 }
 
 export const MemberCard: React.FC<MemberCardProps> = ({ 
     member, age, lastCheckupDate, medications, isMe, isGeneratingPdf, 
-    onSelect, onManageMeds, onDownloadBrief, onEdit
+    onSelect, onManageMeds, onDownloadBrief, onEdit,
+    backgroundColor = '#f8fafc',
+    borderColor = '#e2e8f0'
 }) => {
   return (
-    <div className="bg-white rounded-xl shadow-sm border border-slate-200 hover:shadow-md transition duration-200 flex flex-col h-full relative group">
-      
-      {/* Edit Button - Visible on Hover (or always on touch devices) */}
+    <div 
+      style={{ backgroundColor, borderColor }}
+      className="rounded-[2rem] border-2 shadow-sm hover:shadow-xl hover:-translate-y-1 transition-all duration-300 flex flex-col h-full relative group cursor-pointer overflow-hidden text-left"
+      onClick={onSelect}
+    >
+      {/* Edit Profile (Pencil) - Persistent & High Contrast */}
       <button
         onClick={(e) => { e.stopPropagation(); onEdit(); }}
-        className="absolute top-4 right-4 p-2 text-slate-400 hover:text-brand-blue-600 hover:bg-slate-100 rounded-full transition opacity-100 sm:opacity-0 sm:group-hover:opacity-100"
-        title="Edit Details"
+        className="absolute top-4 right-4 p-2 text-rose-700 bg-white border border-rose-100 rounded-xl transition-all shadow-md z-20 hover:bg-rose-900 hover:text-white hover:scale-110 active:scale-95"
+        title="Edit Profile"
       >
         <PencilIcon className="w-4 h-4" />
       </button>
 
-      <div className="p-5 flex-grow cursor-pointer" onClick={onSelect}>
-        <div className="flex justify-between items-start mb-4">
-          <div className="flex items-center gap-3">
-             <div className={`p-3 rounded-full ${isMe ? 'bg-brand-blue-100 text-brand-blue-600' : 'bg-slate-100 text-slate-500'}`}>
-                <UserIcon className="w-6 h-6" />
-             </div>
-             <div>
-                <h3 className="font-bold text-slate-800 text-lg leading-tight">{member.name}</h3>
-                <p className="text-sm text-slate-500 font-medium">
-                    {isMe ? "Me" : member.relationship} {age !== null && `• ${age} yrs`}
-                </p>
-             </div>
-          </div>
+      <div className="p-4 flex-grow">
+        <div className="flex items-start gap-3 mb-4">
+           {/* Scaled Icon Box */}
+           <div className="p-3 rounded-xl bg-white text-rose-700 shadow-sm group-hover:bg-rose-900 group-hover:text-white transition-all duration-300 border border-white flex-shrink-0">
+              <UserIcon className="w-6 h-6" />
+           </div>
+           <div className="min-w-0 pt-0.5">
+              <p className="text-[8px] font-black uppercase tracking-[0.2em] text-rose-700/60 mb-0.5 leading-none">
+                  {isMe ? "Owner" : member.relationship} {age !== null && `• ${age} YRS`}
+              </p>
+              <h3 className="font-black text-rose-900 text-lg tracking-tighter leading-tight truncate">
+                  {member.name}
+              </h3>
+           </div>
         </div>
         
-        <div className="space-y-3">
-            <div className="flex items-center gap-2 text-sm text-slate-600">
-                <CalendarIcon className="w-4 h-4 text-slate-400" />
-                <span>
+        {/* Compact Stats */}
+        <div className="space-y-2 mb-1">
+            <div className="flex items-center gap-2.5 text-rose-900/40">
+                <CalendarIcon className="w-4 h-4 flex-shrink-0" />
+                <span className="text-[10px] font-bold tracking-tight truncate">
                     {lastCheckupDate 
-                        ? `Last Update: ${new Date(lastCheckupDate).toLocaleDateString()}` 
-                        : "No reports yet"}
+                        ? `Last Record: ${new Date(lastCheckupDate).toLocaleDateString()}` 
+                        : "No reports uploaded"}
                 </span>
             </div>
             
-            <div className="flex items-start gap-2 text-sm text-slate-600">
-                <PillIcon className="w-4 h-4 text-slate-400 mt-0.5" />
-                <span className="line-clamp-2">
-                    {medications.length > 0 
-                        ? `${medications.length} Active Meds: ${medications.map(m => m.name).join(', ')}`
-                        : "No active medications"}
+            <div className="flex items-center gap-2.5 text-rose-900/40">
+                <PillIcon className="w-4 h-4 flex-shrink-0" />
+                <span className="text-[10px] font-bold tracking-tight">
+                    {medications.length} Active Meds
                 </span>
             </div>
         </div>
       </div>
 
-      <div className="border-t border-slate-100 p-3 bg-slate-50 rounded-b-xl flex justify-between items-center gap-2">
-         <div className="flex gap-2">
+      {/* Action Footer - High Visibility */}
+      <div className="px-5 py-3.5 bg-white/40 border-t border-rose-900/5 flex justify-between items-center mt-auto">
+         <div className="flex gap-5">
              <button 
-                onClick={onManageMeds}
-                className="text-xs font-semibold text-slate-500 hover:text-brand-blue-600 px-2 py-1 rounded transition"
+                onClick={(e) => { e.stopPropagation(); onManageMeds(); }}
+                className="text-[9px] font-black uppercase tracking-widest text-rose-700 hover:text-rose-900 transition-colors py-1 underline decoration-rose-200 underline-offset-4"
              >
                 Meds
              </button>
              <button 
-                onClick={onDownloadBrief}
+                onClick={(e) => { e.stopPropagation(); onDownloadBrief(); }}
                 disabled={isGeneratingPdf}
-                className="text-xs font-semibold text-slate-500 hover:text-brand-blue-600 px-2 py-1 rounded transition flex items-center gap-1 disabled:opacity-50"
-                title="Download Doctor's Brief"
+                className="text-[9px] font-black uppercase tracking-widest text-rose-700 hover:text-rose-900 transition-colors flex items-center gap-2 py-1 underline decoration-rose-200 underline-offset-4 disabled:opacity-50"
              >
-                {isGeneratingPdf ? <SpinnerIcon className="w-3 h-3 animate-spin"/> : <DownloadIcon className="w-3 h-3" />}
-                Brief
+                {isGeneratingPdf ? <SpinnerIcon className="w-3.5 h-3.5 animate-spin"/> : <DownloadIcon className="w-3.5 h-3.5" />}
+                History
              </button>
          </div>
-         <button 
-            onClick={onSelect}
-            className="text-xs font-bold text-brand-blue-600 hover:text-brand-blue-800 flex items-center gap-1 px-2 py-1 rounded transition"
-         >
-            Timeline <ArrowRightIcon className="w-3 h-3" />
-         </button>
+         <div className="p-2 bg-white rounded-full shadow-sm border border-rose-50 group-hover:bg-rose-900 group-hover:text-white transition-all duration-300">
+            <ArrowRightIcon className="w-4 h-4 text-rose-700 group-hover:text-white transition" />
+         </div>
       </div>
     </div>
   );

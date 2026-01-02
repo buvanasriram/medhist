@@ -7,6 +7,7 @@ import { ForgotPasswordPage } from './components/auth/ForgotPasswordPage';
 import { TimelineView } from './components/TimelineView';
 import { DashboardView } from './components/DashboardView';
 import { GuideView } from './components/GuideView';
+import { MockupPreview } from './components/MockupPreview';
 import type { User, FamilyMember, TimelineEntry, Medication } from './types';
 import * as supabaseService from './services/supabaseService';
 import { SpinnerIcon } from './components/icons/SpinnerIcon';
@@ -18,6 +19,9 @@ const App: React.FC = () => {
     window.location.pathname === '/signup' ? '/signup' : '/login'
   );
   
+  // Harmony v1.0 Live - Mockup deactivated
+  const [isMockupMode, setIsMockupMode] = useState<boolean>(false);
+
   const [isLoading, setIsLoading] = useState<boolean>(true);
   const [isSyncing, setIsSyncing] = useState<boolean>(false);
   const [dataLoadError, setDataLoadError] = useState<string | null>(null);
@@ -32,7 +36,6 @@ const App: React.FC = () => {
 
   const loadedForUserId = useRef<string | null>(null);
   
-  // Reset navigation state helper to prevent "Hangs"
   const forceResetUI = useCallback(() => {
     setIsSyncing(false);
     setIsLoading(false);
@@ -42,7 +45,6 @@ const App: React.FC = () => {
   const loadUserData = useCallback(async (userId: string) => {
       if (loadedForUserId.current === userId && familyMembers.length > 0) return;
       
-      console.log(`[App] loadUserData for: ${userId}`);
       setIsSyncing(true);
       setDataLoadError(null);
       
@@ -64,8 +66,6 @@ const App: React.FC = () => {
   useEffect(() => {
     let isMounted = true;
 
-    // CRITICAL: Mobile Back Button Guard
-    // Prevents the app from hanging if user navigates back mid-process
     const handlePopState = () => {
         if (viewMode !== 'dashboard') {
             setViewMode('dashboard');
@@ -108,8 +108,6 @@ const App: React.FC = () => {
     const { data: { subscription } } = supabaseService.onAuthStateChange(async (event, currentSession) => {
       if (!isMounted) return;
       
-      console.log(`[App] Auth Event: ${event}`);
-
       if (event === 'SIGNED_OUT' && !currentSession) {
           setSession(null);
           setCurrentUser(null);
@@ -177,10 +175,16 @@ const App: React.FC = () => {
     }
   };
 
+  if (isMockupMode) {
+    return <MockupPreview onApprove={(logoIdx) => {
+        setIsMockupMode(false);
+    }} />;
+  }
+
   if (isLoading) {
       return (
         <div className="min-h-screen bg-slate-50 flex flex-col items-center justify-center text-slate-600">
-             <SpinnerIcon className="w-10 h-10 text-brand-blue-600 animate-spin mb-4" />
+             <SpinnerIcon className="w-10 h-10 text-rose-700 animate-spin mb-4" />
              <p className="text-slate-400 font-bold uppercase tracking-widest text-[10px]">Verifying Secure Session...</p>
         </div>
       );
@@ -200,7 +204,7 @@ const App: React.FC = () => {
                  <h2 className="text-xl font-bold text-slate-800 mb-2">Sync Error</h2>
                  <p className="text-sm text-slate-500 mb-8 leading-relaxed">{dataLoadError}</p>
                  <div className="flex flex-col gap-3">
-                     <button onClick={() => { loadedForUserId.current = null; loadUserData(currentUser.id); }} className="w-full bg-brand-blue-600 text-white font-bold py-4 rounded-xl shadow-md active:scale-95 transition">Retry Connection</button>
+                     <button onClick={() => { loadedForUserId.current = null; loadUserData(currentUser.id); }} className="w-full bg-slate-900 text-white font-bold py-4 rounded-xl shadow-md active:scale-95 transition">Retry Connection</button>
                      <button onClick={handleLogout} className="w-full bg-slate-100 text-slate-600 font-bold py-4 rounded-xl active:bg-slate-200 transition">Log Out</button>
                  </div>
              </div>

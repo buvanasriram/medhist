@@ -51,60 +51,70 @@ export const AddMemberModal: React.FC<AddMemberModalProps> = ({ isOpen, onClose,
   if (!isOpen) return null;
 
   return (
-    <div className="fixed inset-0 bg-black bg-opacity-60 z-50 flex items-center justify-center p-4">
-      <div className="bg-white rounded-lg shadow-2xl w-full max-w-md relative">
-        <div className="p-6">
+    <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-sm z-50 flex items-center justify-center p-4">
+      <div className="bg-white rounded-3xl shadow-2xl w-full max-w-md relative overflow-hidden border border-slate-100">
+        <div className="p-6 border-b border-slate-50 text-left">
           <div className="flex items-start justify-between">
             <div>
-              <h2 className="text-xl font-bold text-slate-800">Add Family Member</h2>
-              <p className="text-sm text-slate-500 mt-1">Create a profile folder (e.g., Child, Grandparent).</p>
+              <h2 className="text-xl font-bold text-slate-800">New Family Member</h2>
+              <p className="text-sm text-slate-500 mt-1">Add a folder for a child, parent, or spouse.</p>
             </div>
-            <button onClick={handleClose} className="text-slate-400 hover:text-slate-600 transition" disabled={isLoading}>
+            <button onClick={handleClose} className="p-2 text-slate-400 hover:text-slate-600 transition" disabled={isLoading}>
               <CloseIcon className="w-6 h-6" />
             </button>
           </div>
         </div>
 
-        <form onSubmit={handleSubmit} className="px-6 pb-6">
-          <div className="space-y-4">
+        <form onSubmit={handleSubmit} className="p-6 text-left">
+          <div className="space-y-5">
             <div>
-              <label htmlFor="memberName" className="block text-sm font-medium text-slate-700">Full Name</label>
-              <div className="mt-1 relative rounded-md shadow-sm">
-                 <div className="pointer-events-none absolute inset-y-0 left-0 flex items-center pl-3">
-                   <UserIcon className="h-5 w-5 text-slate-400" />
+              <label htmlFor="memberName" className="block text-xs font-bold text-slate-400 uppercase tracking-widest mb-2">Legal Name</label>
+              <div className="relative rounded-xl shadow-sm">
+                 <div className="pointer-events-none absolute inset-y-0 left-0 flex items-center pl-4">
+                   <UserIcon className="h-5 w-5 text-rose-700" />
                 </div>
-                <input type="text" id="memberName" value={name} onChange={(e) => setName(e.target.value)} className="block w-full rounded-md border border-slate-300 py-2 pl-10 sm:text-sm" placeholder="e.g., John Doe" required disabled={isLoading} />
+                <input type="text" id="memberName" value={name} onChange={(e) => setName(e.target.value)} className="block w-full rounded-xl border border-slate-200 py-3 pl-12 text-slate-700 font-medium focus:border-rose-500 focus:ring-rose-500" placeholder="Full name as on records" required disabled={isLoading} />
               </div>
             </div>
 
             <div>
-              <label htmlFor="relationship" className="block text-sm font-medium text-slate-700">Relationship (Label)</label>
-              <div className="mt-1 relative rounded-md shadow-sm">
-                 <div className="pointer-events-none absolute inset-y-0 left-0 flex items-center pl-3">
-                   <UsersIcon className="h-5 w-5 text-slate-400" />
+              <label htmlFor="relationship" className="block text-xs font-bold text-slate-400 uppercase tracking-widest mb-2">Relationship</label>
+              <div className="relative rounded-xl shadow-sm">
+                 <div className="pointer-events-none absolute inset-y-0 left-0 flex items-center pl-4">
+                   <UsersIcon className="h-5 w-5 text-rose-700" />
                 </div>
-                <input type="text" id="relationship" value={relationship} onChange={(e) => setRelationship(e.target.value)} className="block w-full rounded-md border border-slate-300 py-2 pl-10 sm:text-sm" placeholder="e.g., Daughter" required disabled={isLoading} />
+                <input type="text" id="relationship" value={relationship} onChange={(e) => setRelationship(e.target.value)} className="block w-full rounded-xl border border-slate-200 py-3 pl-12 text-slate-700 font-medium focus:border-rose-500 focus:ring-rose-500" placeholder="e.g., Daughter, Spouse" required disabled={isLoading} />
               </div>
             </div>
 
             <div>
-              <label htmlFor="dob" className="block text-sm font-medium text-slate-700">Date of Birth</label>
-              <div className="mt-1 relative rounded-md shadow-sm">
-                 <div className="pointer-events-none absolute inset-y-0 left-0 flex items-center pl-3">
-                   <CalendarIcon className="h-5 w-5 text-slate-400" />
+              <div className="flex items-center justify-between mb-2">
+                <label htmlFor="dob" className="block text-xs font-bold text-slate-400 uppercase tracking-widest">Date of Birth</label>
+              </div>
+              <div className="relative rounded-xl shadow-sm">
+                 <div className="pointer-events-none absolute inset-y-0 left-0 flex items-center pl-4">
+                   <CalendarIcon className="h-5 w-5 text-rose-700" />
                 </div>
-                <input type="date" id="dob" value={dob} onChange={(e) => setDob(e.target.value)} className="block w-full rounded-md border border-slate-300 py-2 pl-10 sm:text-sm" disabled={isLoading} />
+                <input 
+                    type="date" 
+                    id="dob" 
+                    value={dob} 
+                    onChange={(e) => setDob(e.target.value)} 
+                    max={new Date().toISOString().split('T')[0]}
+                    className="block w-full rounded-xl border border-slate-200 py-3 pl-12 text-slate-700 font-medium focus:border-rose-500 focus:ring-rose-500" 
+                    disabled={isLoading} 
+                />
               </div>
             </div>
             
-            {error && <p className="text-sm text-red-600">{error}</p>}
+            {error && <p className="text-sm font-bold text-red-600 bg-red-50 p-3 rounded-xl border border-red-100">{error}</p>}
           </div>
 
-          <div className="mt-6 flex justify-end gap-3">
-            <button type="button" onClick={handleClose} disabled={isLoading} className="px-4 py-2 text-sm font-semibold text-slate-700 bg-slate-100 hover:bg-slate-200 rounded-lg transition">Cancel</button>
-            <button type="submit" disabled={isLoading} className="bg-brand-blue-600 text-white font-semibold py-2 px-4 rounded-lg shadow-md hover:bg-brand-blue-700 transition flex items-center gap-2 disabled:bg-brand-blue-300">
-              {isLoading ? <><SpinnerIcon className="w-4 h-4 animate-spin" /> Saving...</> : 'Add Member'}
+          <div className="mt-8 flex flex-col gap-3">
+            <button type="submit" disabled={isLoading} className="w-full bg-slate-900 text-white font-bold py-4 rounded-2xl shadow-lg hover:bg-rose-900 transition active:scale-95 flex items-center justify-center gap-2">
+              {isLoading ? <><SpinnerIcon className="w-5 h-5 animate-spin" /> Saving...</> : 'Add New Member'}
             </button>
+            <button type="button" onClick={handleClose} disabled={isLoading} className="w-full py-3 text-sm font-bold text-slate-500 hover:text-slate-800 transition">Cancel</button>
           </div>
         </form>
       </div>

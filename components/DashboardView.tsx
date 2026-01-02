@@ -6,19 +6,16 @@ import { MedicationManager } from './MedicationManager';
 import { AddMemberModal } from './AddMemberModal';
 import { EditMemberModal } from './EditMemberModal';
 import { InviteSuccessModal } from './InviteSuccessModal';
-import { PlusIcon } from './icons/PlusIcon';
-import { KeyIcon } from './icons/KeyIcon';
 import { UsersIcon } from './icons/UsersIcon';
-import { UserIcon } from './icons/UserIcon';
 import { BellIcon } from './icons/BellIcon';
 import { ArrowRightIcon } from './icons/ArrowRightIcon';
 import { SpinnerIcon } from './icons/SpinnerIcon';
-import { HelpCircleIcon } from './icons/HelpCircleIcon';
 import { HealthAssistant } from './HealthAssistant';
 import { ReportViewerModal } from './ReportViewerModal';
 import { generateDoctorBrief } from '../utils/pdfGenerator';
 import type { User, FamilyMember, TimelineEntry, Medication, ReportFile } from '../types';
 import * as supabaseService from '../services/supabaseService';
+import { getDaysUntil, calculateAge } from '../utils/dateUtils';
 
 interface DashboardViewProps {
     user: User;
@@ -33,32 +30,18 @@ interface DashboardViewProps {
     isSyncing?: boolean;
 }
 
-const calculateAge = (dobString: string | undefined | null): number | null => {
-    if (!dobString) return null;
-    const dob = new Date(dobString);
-    const today = new Date();
-    let age = today.getFullYear() - dob.getFullYear();
-    const m = today.getMonth() - dob.getMonth();
-    if (m < 0 || (m === 0 && today.getDate() < dob.getDate())) {
-        age--;
-    }
-    return age;
-};
-
-const getDaysUntil = (dateString: string): string => {
-    const today = new Date();
-    today.setHours(0, 0, 0, 0);
-    const target = new Date(dateString);
-    target.setHours(0, 0, 0, 0);
-    
-    const diffTime = target.getTime() - today.getTime();
-    const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24));
-    
-    if (diffDays === 0) return "Today";
-    if (diffDays === 1) return "Tomorrow";
-    if (diffDays < 0) return `${Math.abs(diffDays)} days ago`;
-    return `In ${diffDays} days`;
-};
+const CLINICAL_PALETTE = [
+    { bg: '#fff1f2', border: '#fda4af' }, // 0. Soft Rose
+    { bg: '#f0f9ff', border: '#93c5fd' }, // 1. Soft Sky
+    { bg: '#f0fdf4', border: '#86efac' }, // 2. Soft Sage
+    { bg: '#fff7ed', border: '#fdba74' }, // 3. Soft Amber
+    { bg: '#faf5ff', border: '#d8b4fe' }, // 4. Soft Violet
+    { bg: '#f0fdfa', border: '#99f6e4' }, // 5. Soft Mint
+    { bg: '#f8fafc', border: '#cbd5e1' }, // 6. Soft Slate
+    { bg: '#fefce8', border: '#fde047' }, // 7. Soft Lemon
+    { bg: '#f5f3ff', border: '#c4b5fd' }, // 8. Soft Indigo
+    { bg: '#fafaf9', border: '#d6d3d1' }, // 9. Soft Stone
+];
 
 export const DashboardView: React.FC<DashboardViewProps> = ({ 
     user, onLogout, familyMembers, timelineEntries, medications, familyInfo, onSelectMember, onRefreshData, onOpenGuide, isSyncing = false
@@ -162,124 +145,88 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
     };
 
     return (
-        <div className="min-h-screen bg-slate-50 text-slate-800 flex flex-col relative">
+        <div className="min-h-screen bg-white text-slate-800 flex flex-col relative text-left">
             <Header onLogout={onLogout} userName={user.name} onOpenGuide={onOpenGuide} />
             
-            <main className="container mx-auto p-4 md:p-8 max-w-6xl flex-grow pb-24 z-10">
+            <main className="container mx-auto p-4 sm:p-6 md:p-10 max-w-6xl flex-grow pb-24 z-10">
                 
+                {/* UPCOMING MILESTONES - Compact Directive */}
                 {upcomingAppointments.length > 0 && (
-                    <div className="mb-8 bg-white rounded-xl shadow-sm border border-brand-blue-100 overflow-hidden text-left">
-                        <div className="bg-brand-blue-50 px-6 py-3 border-b border-brand-blue-100 flex items-center gap-2">
-                            <BellIcon className="w-5 h-5 text-brand-blue-600" />
-                            <h2 className="font-bold text-brand-blue-800">Upcoming Appointments</h2>
+                    <div className="mb-8 bg-white rounded-2xl shadow-lg shadow-slate-200/50 border border-slate-100 flex items-center justify-between p-5 border-l-4 border-l-amber-400">
+                        <div className="flex items-center gap-4">
+                            <div className="bg-amber-50 p-2.5 rounded-xl shadow-inner">
+                                <BellIcon className="w-5 h-5 text-amber-500" />
+                            </div>
+                            <div>
+                                <p className="text-[9px] font-black text-amber-600 uppercase tracking-[0.2em] leading-none mb-1">Priority Directive</p>
+                                <h2 className="text-base font-black text-slate-900 tracking-tight leading-tight">
+                                    Book follow-up with {upcomingAppointments[0].doctor_name || "Specialist"}
+                                </h2>
+                                <p className="text-[9px] text-slate-400 font-bold uppercase tracking-widest mt-0.5">
+                                    Member: {upcomingAppointments[0].memberName} • {getDaysUntil(upcomingAppointments[0].follow_up_date!)}
+                                </p>
+                            </div>
                         </div>
-                        <div className="divide-y divide-slate-100">
-                            {upcomingAppointments.map(appt => (
-                                <div key={appt.id} className="p-4 hover:bg-slate-50 transition flex items-center justify-between group">
-                                    <div className="flex items-start gap-4">
-                                        <div className="flex-shrink-0 bg-brand-blue-100 text-brand-blue-700 w-16 h-16 rounded-lg flex flex-col items-center justify-center border border-brand-blue-200">
-                                            <span className="text-xs font-bold uppercase">{new Date(appt.follow_up_date!).toLocaleString('default', { month: 'short' })}</span>
-                                            <span className="text-2xl font-bold leading-none">{new Date(appt.follow_up_date!).getDate()}</span>
-                                        </div>
-                                        <div className="min-w-0">
-                                            <div className="flex items-center gap-2 mb-1">
-                                                <span className="inline-flex items-center px-2 py-0.5 rounded text-xs font-medium bg-green-100 text-green-800 whitespace-nowrap">
-                                                    {getDaysUntil(appt.follow_up_date!)}
-                                                </span>
-                                                <h3 className="font-bold text-slate-800 truncate">{appt.memberName}</h3>
-                                            </div>
-                                            <p className="text-sm text-slate-600 font-medium truncate">
-                                                {appt.doctor_name ? `Dr. ${appt.doctor_name}` : appt.report_type}
-                                            </p>
-                                        </div>
-                                    </div>
-                                    {appt.memberId && (
-                                        <button 
-                                            onClick={() => onSelectMember(appt.memberId!)}
-                                            className="p-3 text-brand-blue-600 active:bg-brand-blue-50 rounded-full transition"
-                                        >
-                                            <ArrowRightIcon className="w-6 h-6" />
-                                        </button>
-                                    )}
-                                </div>
-                            ))}
-                        </div>
+                        <button 
+                            onClick={() => upcomingAppointments[0].memberId && onSelectMember(upcomingAppointments[0].memberId)}
+                            className="bg-slate-50 p-2 rounded-full text-slate-300 hover:text-rose-700 hover:bg-rose-50 transition-all shadow-sm"
+                        >
+                            <ArrowRightIcon className="w-4 h-4" />
+                        </button>
                     </div>
                 )}
 
-                <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center mb-8 gap-4 text-left">
-                    <div className="z-10">
-                        <h1 className="text-2xl font-bold text-slate-900">Family Health Board</h1>
-                        <p className="text-slate-500 flex items-center gap-2 mt-1">
-                            <UsersIcon className="w-4 h-4" /> {familyInfo?.name || "My Family"}
+                <div className="flex flex-col sm:flex-row justify-between items-start sm:items-end mb-10 gap-6">
+                    <div>
+                        <h1 className="text-4xl sm:text-5xl font-black text-slate-900 tracking-tighter leading-none mb-3">Family Board</h1>
+                        <p className="text-rose-700/40 font-black text-[9px] flex items-center gap-2 uppercase tracking-[0.3em]">
+                            <UsersIcon className="w-4 h-4 text-rose-700" /> {familyInfo?.name || "Family Hub"}
                         </p>
                     </div>
-                    <div className="flex gap-3 w-full sm:w-auto z-20">
+                    <div className="flex gap-3 w-full sm:w-auto">
                         <button 
                             onClick={() => setShowInviteModal(true)}
-                            className="flex-1 sm:flex-none flex items-center justify-center gap-2 text-sm font-bold text-brand-blue-600 bg-white border border-brand-blue-200 hover:bg-brand-blue-50 px-5 py-3.5 rounded-xl transition shadow-sm active:scale-95 pointer-events-auto"
+                            className="flex-1 sm:flex-none flex items-center justify-center gap-2 text-[9px] font-black uppercase tracking-[0.1em] text-slate-400 bg-white border border-slate-100 px-6 py-3.5 rounded-xl transition hover:bg-slate-50 hover:text-rose-700 shadow-sm"
                         >
-                            <KeyIcon className="w-4 h-4" /> Invite
+                            Invite
                         </button>
                         <button 
                             onClick={() => setShowAddMemberModal(true)}
-                            className="flex-1 sm:flex-none flex items-center justify-center gap-2 text-sm font-bold text-white bg-brand-blue-600 hover:bg-brand-blue-700 px-5 py-3.5 rounded-xl transition shadow-md active:scale-95 pointer-events-auto"
+                            className="flex-1 sm:flex-none flex items-center justify-center gap-2 text-[9px] font-black uppercase tracking-[0.1em] text-white bg-slate-900 px-8 py-3.5 rounded-xl transition shadow-xl hover:bg-rose-900 active:scale-95"
                         >
-                            <PlusIcon className="w-4 h-4" /> Add
+                            + New Member
                         </button>
                     </div>
                 </div>
 
                 {isSyncing ? (
-                    <div className="text-center py-20 bg-white rounded-2xl shadow-lg border border-slate-100 flex flex-col items-center">
-                        <SpinnerIcon className="w-12 h-12 text-brand-blue-600 animate-spin mb-4" />
-                        <h3 className="text-lg font-bold text-slate-800">Syncing Records...</h3>
-                        <p className="text-slate-500 text-sm">Ensuring your medical timeline is up to date.</p>
-                    </div>
-                ) : familyMembers.length === 0 ? (
-                    <div className="text-center py-12 md:py-20 bg-white rounded-2xl shadow-lg border border-slate-100 p-8 flex flex-col items-center z-30 relative">
-                        <div className="bg-slate-50 p-6 rounded-full mb-6">
-                           <UserIcon className="w-16 h-16 text-slate-300" />
-                        </div>
-                        <h3 className="text-xl font-bold text-slate-800">Your Dashboard is Empty</h3>
-                        <p className="text-slate-500 mb-8 max-w-sm mx-auto leading-relaxed">
-                            No family members found. Add your first member to start tracking health records.
-                        </p>
-                        
-                        <div className="flex flex-col gap-4 w-full max-w-xs relative z-40">
-                             <button 
-                                onClick={() => setShowAddMemberModal(true)}
-                                className="w-full inline-flex items-center justify-center gap-3 bg-brand-blue-600 text-white font-bold px-6 py-4.5 rounded-2xl hover:bg-brand-blue-700 transition active:scale-95 pointer-events-auto shadow-lg touch-manipulation"
-                            >
-                                <PlusIcon className="w-6 h-6" />
-                                Add Family Member
-                            </button>
-
-                            <button 
-                                onClick={onRefreshData}
-                                className="inline-flex items-center justify-center gap-2 text-slate-400 font-bold px-5 py-3 hover:text-brand-blue-600 transition text-xs pointer-events-auto"
-                            >
-                                <HelpCircleIcon className="w-4 h-4" /> Refresh Data
-                            </button>
-                        </div>
+                    <div className="py-24 flex flex-col items-center justify-center bg-slate-50/50 rounded-[2.5rem] border border-dashed border-slate-200">
+                        <SpinnerIcon className="w-10 h-10 text-rose-700 animate-spin mb-6" />
+                        <h3 className="text-xl font-black text-slate-900 tracking-tighter uppercase tracking-[0.1em]">Syncing Precision Records...</h3>
+                        <p className="text-rose-700/30 text-[9px] font-black uppercase tracking-[0.4em] mt-2 italic">Clinical Environment Secure</p>
                     </div>
                 ) : (
-                    <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-6 text-left relative z-10">
-                        {familyMembers.map(member => (
-                            <MemberCard 
-                                key={member.id}
-                                member={member}
-                                age={calculateAge(member.dob)}
-                                lastCheckupDate={getLastCheckup(member.id)}
-                                medications={getActiveMemberMeds(member.id)}
-                                isMe={member.linked_user_id === user.id}
-                                isGeneratingPdf={generatingPdfMemberId === member.id}
-                                onSelect={() => onSelectMember(member.id)}
-                                onManageMeds={() => setManagingMedsMemberId(member.id)}
-                                onDownloadBrief={() => handleDownloadBrief(member.id)}
-                                onEdit={() => setEditingMemberId(member.id)}
-                            />
-                        ))}
+                    <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-6 sm:gap-8 relative z-10">
+                        {familyMembers.map((member, index) => {
+                            const color = CLINICAL_PALETTE[index % CLINICAL_PALETTE.length];
+                            return (
+                                <MemberCard 
+                                    key={member.id}
+                                    member={member}
+                                    age={calculateAge(member.dob)}
+                                    lastCheckupDate={getLastCheckup(member.id)}
+                                    medications={getActiveMemberMeds(member.id)}
+                                    isMe={member.linked_user_id === user.id}
+                                    isGeneratingPdf={generatingPdfMemberId === member.id}
+                                    onSelect={() => onSelectMember(member.id)}
+                                    onManageMeds={() => setManagingMedsMemberId(member.id)}
+                                    onDownloadBrief={() => handleDownloadBrief(member.id)}
+                                    onEdit={() => setEditingMemberId(member.id)}
+                                    backgroundColor={color.bg}
+                                    borderColor={color.border}
+                                />
+                            );
+                        })}
                     </div>
                 )}
             </main>
@@ -341,8 +288,8 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
                 />
             )}
 
-            <footer className="py-8 text-center text-slate-400 text-[10px] font-bold border-t border-slate-100 mt-auto bg-white uppercase tracking-widest relative z-0">
-                <p>© {new Date().getFullYear()} medHist. v0.7.2</p>
+            <footer className="py-16 text-center text-slate-300 text-[9px] font-black uppercase tracking-[0.5em] mt-auto">
+                medHist Precision • v0.9.9
             </footer>
         </div>
     );
