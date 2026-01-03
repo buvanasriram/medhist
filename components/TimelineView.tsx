@@ -57,6 +57,7 @@ export const TimelineView: React.FC<TimelineViewProps> = ({
   const [entryToDelete, setEntryToDelete] = useState<TimelineEntry | null>(null);
   
   const [isLoading, setIsLoading] = useState<boolean>(false);
+  const [isDeleting, setIsDeleting] = useState<boolean>(false);
   const [isGeneratingPdf, setIsGeneratingPdf] = useState<boolean>(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -82,15 +83,7 @@ export const TimelineView: React.FC<TimelineViewProps> = ({
       setUploadModalOpen(false);
     } catch (err: any) {
       console.error("[medHist] Upload failed:", err);
-      // Detailed error formatting
-      let errorMsg = "Registry Sync Failed.";
-      if (err instanceof Error) {
-        errorMsg = err.message;
-      } else if (typeof err === 'object' && err !== null) {
-        errorMsg = err.message || JSON.stringify(err);
-      } else if (typeof err === 'string') {
-        errorMsg = err;
-      }
+      let errorMsg = err?.message || "Registry Sync Failed.";
       setError(errorMsg);
     } finally {
       setIsLoading(false);
@@ -98,6 +91,7 @@ export const TimelineView: React.FC<TimelineViewProps> = ({
   }, [onRefreshData]);
 
   const handleViewReport = useCallback(async (entryToView: TimelineEntry) => {
+    if (isDeleting) return;
     try {
         const result = await supabaseService.getFileForEntry(entryToView.id);
         if (!result) {
@@ -114,27 +108,36 @@ export const TimelineView: React.FC<TimelineViewProps> = ({
         console.error('Error viewing report', error);
         alert('Could not open record viewer.');
     }
-  }, []);
+  }, [isDeleting]);
   
-  const handleDeleteReport = (entry: TimelineEntry) => {
+  const handleDeleteReport = useCallback((entry: TimelineEntry) => {
+    if (isDeleting) return;
     setEntryToDelete(entry);
     setConfirmModalOpen(true);
-  };
+  }, [isDeleting]);
 
   const handleConfirmDelete = async () => {
-    if (!entryToDelete) return;
+    if (!entryToDelete || isDeleting) return;
+    
+    const targetId = entryToDelete.id;
+    
+    // UI LOCKDOWN: Close modal and target state immediately to prevent stale references
+    setConfirmModalOpen(false);
+    setEntryToDelete(null);
+    setIsDeleting(true);
+
     try {
-      await supabaseService.deleteTimelineEntry(entryToDelete.id);
+      await supabaseService.deleteTimelineEntry(targetId);
       onRefreshData();
     } catch (err) {
-      alert(`Deletion failed.`);
+      alert(`Critical Deletion Error: Could not remove record.`);
     } finally {
-        setConfirmModalOpen(false);
-        setEntryToDelete(null);
+      setIsDeleting(false);
     }
   };
 
   const handleIgnoreMismatch = async (entryToUpdate: TimelineEntry) => {
+      if (isDeleting) return;
       try {
         await supabaseService.ignoreMismatch(entryToUpdate.id);
         onRefreshData();
@@ -155,7 +158,7 @@ export const TimelineView: React.FC<TimelineViewProps> = ({
   }, [selectedMemberId, familyMembers]);
 
   const handleDownloadBrief = async () => {
-      if (!selectedMember) return;
+      if (!selectedMember || isDeleting) return;
       setIsGeneratingPdf(true);
       try {
         const memberMeds = medications.filter(m => m.family_member_id === selectedMemberId);
@@ -189,7 +192,8 @@ export const TimelineView: React.FC<TimelineViewProps> = ({
         
         <button 
             onClick={onBackToDashboard} 
-            className="flex items-center gap-2 text-slate-900 hover:text-rose-700 mb-8 transition font-black text-[10px] uppercase tracking-[0.3em]"
+            disabled={isDeleting}
+            className="flex items-center gap-2 text-slate-900 hover:text-rose-700 mb-8 transition font-black text-[10px] uppercase tracking-[0.3em] disabled:opacity-30"
         >
             <ArrowLeftIcon className="w-5 h-5" /> Back to Family Board
         </button>
@@ -208,7 +212,8 @@ export const TimelineView: React.FC<TimelineViewProps> = ({
                     <select
                       value={selectedMemberId}
                       onChange={handleMemberSelectionChange}
-                      className="w-full sm:w-auto bg-slate-50 border-2 border-slate-900 rounded-xl py-2.5 pl-4 pr-10 text-slate-900 font-black text-[10px] uppercase tracking-widest focus:outline-none transition appearance-none cursor-pointer shadow-lg"
+                      disabled={isDeleting}
+                      className="w-full sm:w-auto bg-slate-50 border-2 border-slate-900 rounded-xl py-2.5 pl-4 pr-10 text-slate-900 font-black text-[10px] uppercase tracking-widest focus:outline-none transition appearance-none cursor-pointer shadow-lg disabled:opacity-50"
                     >
                       {familyMembers.map(member => (
                             <option key={member.id} value={member.id}>
@@ -222,7 +227,7 @@ export const TimelineView: React.FC<TimelineViewProps> = ({
                 </div>
                 <button 
                     onClick={handleDownloadBrief} 
-                    disabled={isGeneratingPdf} 
+                    disabled={isGeneratingPdf || isDeleting} 
                     className="flex-1 sm:flex-none flex items-center justify-center gap-2 bg-slate-100 text-slate-900 border-2 border-slate-900 font-black py-2.5 px-5 rounded-xl shadow-md hover:bg-slate-200 transition disabled:opacity-50 text-[9px] uppercase tracking-widest"
                 >
                     {isGeneratingPdf ? <SpinnerIcon className="w-3.5 h-3.5 animate-spin" /> : <DownloadIcon className="w-3.5 h-3.5" />}
@@ -230,7 +235,8 @@ export const TimelineView: React.FC<TimelineViewProps> = ({
                 </button>
                 <button 
                     onClick={() => setUploadModalOpen(true)} 
-                    className="flex-1 sm:flex-none flex items-center justify-center gap-2 bg-slate-900 text-white font-black py-2.5 px-6 rounded-xl shadow-xl hover:bg-rose-900 transition active:scale-95 text-[9px] uppercase tracking-widest"
+                    disabled={isDeleting}
+                    className="flex-1 sm:flex-none flex items-center justify-center gap-2 bg-slate-900 text-white font-black py-2.5 px-6 rounded-xl shadow-xl hover:bg-rose-900 transition active:scale-95 text-[9px] uppercase tracking-widest disabled:opacity-50"
                 >
                     <PlusIcon className="w-3.5 h-3.5" />
                     Upload Report
@@ -243,13 +249,15 @@ export const TimelineView: React.FC<TimelineViewProps> = ({
             <div className="flex space-x-1 bg-slate-100 p-1.5 rounded-2xl w-full md:w-fit border border-slate-200">
                 <button 
                     onClick={() => setActiveTab('all')} 
-                    className={`flex-1 md:flex-none flex items-center justify-center gap-2 px-6 py-2.5 text-[9px] font-black uppercase tracking-[0.2em] rounded-xl transition shadow-sm ${activeTab === 'all' ? 'bg-slate-900 text-white shadow-xl' : 'text-slate-500 hover:text-slate-900 hover:bg-slate-200'}`}
+                    disabled={isDeleting}
+                    className={`flex-1 md:flex-none flex items-center justify-center gap-2 px-6 py-2.5 text-[9px] font-black uppercase tracking-[0.2em] rounded-xl transition shadow-sm disabled:opacity-50 ${activeTab === 'all' ? 'bg-slate-900 text-white shadow-xl' : 'text-slate-500 hover:text-slate-900 hover:bg-slate-200'}`}
                 >
                     <ClipboardIcon className="w-3.5 h-3.5" /> All History
                 </button>
                 <button 
                     onClick={() => setActiveTab('visits')} 
-                    className={`flex-1 md:flex-none flex items-center justify-center gap-2 px-6 py-2.5 text-[9px] font-black uppercase tracking-[0.2em] rounded-xl transition shadow-sm ${activeTab === 'visits' ? 'bg-slate-900 text-white shadow-xl' : 'text-slate-500 hover:text-slate-900 hover:bg-slate-200'}`}
+                    disabled={isDeleting}
+                    className={`flex-1 md:flex-none flex items-center justify-center gap-2 px-6 py-2.5 text-[9px] font-black uppercase tracking-[0.2em] rounded-xl transition shadow-sm disabled:opacity-50 ${activeTab === 'visits' ? 'bg-slate-900 text-white shadow-xl' : 'text-slate-500 hover:text-slate-900 hover:bg-slate-200'}`}
                 >
                     <StethoscopeIcon className="w-3.5 h-3.5" /> Visits
                 </button>
@@ -262,12 +270,20 @@ export const TimelineView: React.FC<TimelineViewProps> = ({
                 <input 
                     type="text" 
                     placeholder="Search clinical keywords..." 
-                    className="w-full pl-10 pr-4 py-2.5 bg-white border-2 border-slate-200 rounded-xl text-xs font-black focus:ring-4 focus:ring-rose-500/5 focus:border-slate-900 transition shadow-sm outline-none placeholder-slate-400"
+                    disabled={isDeleting}
+                    className="w-full pl-10 pr-4 py-2.5 bg-white border-2 border-slate-200 rounded-xl text-xs font-black focus:ring-4 focus:ring-rose-500/5 focus:border-slate-900 transition shadow-sm outline-none placeholder-slate-400 disabled:opacity-50"
                     value={searchQuery}
                     onChange={(e) => setSearchQuery(e.target.value)}
                 />
             </div>
         </div>
+
+        {isDeleting && (
+            <div className="mb-6 p-4 bg-red-50 border border-red-100 rounded-2xl animate-pulse flex items-center justify-center gap-3">
+                <SpinnerIcon className="w-4 h-4 text-red-700 animate-spin" />
+                <span className="text-[10px] font-black uppercase tracking-widest text-red-700">Purging registry entry... Please wait.</span>
+            </div>
+        )}
 
         <Timeline 
             entries={displayedEntries} 
@@ -276,6 +292,7 @@ export const TimelineView: React.FC<TimelineViewProps> = ({
             onIgnoreMismatch={handleIgnoreMismatch} 
             selectedMemberName={selectedMember?.name} 
             themeColor={themeColor}
+            isReadOnly={isDeleting}
         />
       </main>
       
