@@ -37,7 +37,7 @@ export const HealthAssistant: React.FC<HealthAssistantProps> = ({ familyMembers,
 
   useEffect(() => {
     scrollToBottom();
-  }, [messages, isOpen]);
+  }, [messages, isOpen, isLoading]);
 
   const handleSend = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -57,9 +57,12 @@ export const HealthAssistant: React.FC<HealthAssistantProps> = ({ familyMembers,
       const response = await chatWithHealthAssistant(userMessage, history, { familyMembers, timelineEntries, medications });
       
       setMessages(prev => [...prev, { role: 'model', text: response }]);
-    } catch (error) {
+    } catch (error: any) {
       console.error("Chat Error:", error);
-      setMessages(prev => [...prev, { role: 'model', text: "Sorry, I had trouble checking that. Please try again." }]);
+      const errorMsg = error?.message?.includes("overloaded") 
+        ? "The AI is a bit busy right now. I'll be ready in just a few seconds!" 
+        : "Sorry, I had trouble checking that. Please try again.";
+      setMessages(prev => [...prev, { role: 'model', text: errorMsg }]);
     } finally {
       setIsLoading(false);
     }
@@ -130,7 +133,7 @@ export const HealthAssistant: React.FC<HealthAssistantProps> = ({ familyMembers,
               <div className="flex justify-start">
                  <div className="bg-white p-3 rounded-2xl rounded-bl-none border border-slate-200 shadow-sm flex items-center gap-2">
                     <SpinnerIcon className="w-4 h-4 text-rose-700 animate-spin" />
-                    <span className="text-xs text-slate-500 font-bold uppercase tracking-widest">Thinking...</span>
+                    <span className="text-xs text-slate-500 font-black uppercase tracking-widest">Thinking...</span>
                  </div>
               </div>
             )}

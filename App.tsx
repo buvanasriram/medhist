@@ -21,16 +21,22 @@ const App: React.FC = () => {
   
   const [isMockupMode, setIsMockupMode] = useState<boolean>(false);
   const [showPublicGuide, setShowPublicGuide] = useState<boolean>(false);
+  
+  // Fix: Added missing state for password recovery mode
+  const [isRecoveryMode, setIsRecoveryMode] = useState<boolean>(false);
 
   // Loading States
   const [isLoadingAuth, setIsLoadingAuth] = useState<boolean>(true);
   const [isSyncingData, setIsSyncingData] = useState<boolean>(false);
   const [dataLoadError, setDataLoadError] = useState<string | null>(null);
   
-  // UI State
-  const [isRecoveryMode, setIsRecoveryMode] = useState<boolean>(false);
-  const [viewMode, setViewMode] = useState<'dashboard' | 'timeline' | 'guide'>('dashboard');
-  const [selectedMemberId, setSelectedMemberId] = useState<string | undefined>(undefined);
+  // UI State - Hydrate from history if possible
+  const [viewMode, setViewMode] = useState<'dashboard' | 'timeline' | 'guide'>(
+      (window.history.state && window.history.state.view) || 'dashboard'
+  );
+  const [selectedMemberId, setSelectedMemberId] = useState<string | undefined>(
+      (window.history.state && window.history.state.memberId) || undefined
+  );
   
   // Data State
   const [familyMembers, setFamilyMembers] = useState<FamilyMember[]>([]);
@@ -62,7 +68,7 @@ const App: React.FC = () => {
       setDataLoadError(null);
       
       try {
-          console.debug(`[medHist] Parallel Sync initiated for: ${userId}`);
+          console.debug(`[medHist] Registry Sync: ${userId}`);
           const data = await supabaseService.getUserData(userId);
           
           if (mountedRef.current && syncLock.current === userId) {
@@ -72,7 +78,7 @@ const App: React.FC = () => {
               setFamilyInfo(data.familyInfo || null);
           }
       } catch (e: any) {
-          console.error("[medHist] Registry Sync Error:", e);
+          console.error("[medHist] Sync Failed:", e);
           if (mountedRef.current && syncLock.current === userId) {
               setDataLoadError(e.message || "Could not synchronize medical registry.");
           }
@@ -100,7 +106,7 @@ const App: React.FC = () => {
                 setCurrentUser(user);
             }
         } catch (e) {
-            console.error("[medHist] Session restoration failed", e);
+            console.error("[medHist] Boot Error:", e);
         } finally {
             if (mountedRef.current) {
                 setIsLoadingAuth(false);
@@ -133,6 +139,7 @@ const App: React.FC = () => {
         
         if (event === 'PASSWORD_REFRESHED' || event === 'SIGNED_IN') {
             setIsLoadingAuth(false);
+            setRoute('/');
         }
 
         if (event === 'PASSWORD_RECOVERY') {
@@ -154,23 +161,18 @@ const App: React.FC = () => {
       }
   }, [currentUser?.id, loadUserData]);
 
-  // EFFECT 3: BROWSER HISTORY SYNC (Refined Router)
+  // EFFECT 3: BROWSER HISTORY SYNC
   useEffect(() => {
       const handlePopState = (e: PopStateEvent) => {
           if (!mountedRef.current) return;
           
           const state = e.state;
-          
-          // CRITICAL FIX: Only change views if the state explicitly tells us to.
-          // This prevents "Modal Back" events from accidentally triggering a View reset.
           if (state && state.view) {
               setViewMode(state.view);
               if (state.memberId) setSelectedMemberId(state.memberId);
           } else if (state && state.modalOpen) {
-              // Stay exactly where we are, the modal's own listener will handle closing itself
               return;
           } else if (!state) {
-              // Only default to dashboard if there is absolutely no history state (True Home)
               setViewMode('dashboard');
               setShowPublicGuide(false);
           }
@@ -185,7 +187,7 @@ const App: React.FC = () => {
     try {
         await supabaseService.signOut();
     } catch (e) {
-        console.warn("Signout aborted:", e);
+        console.warn("Signout session aborted:", e);
     } finally {
         setSession(null);
         setCurrentUser(null);
@@ -220,7 +222,6 @@ const App: React.FC = () => {
   const handleSelectMember = (id: string) => {
       setSelectedMemberId(id);
       setViewMode('timeline');
-      // Set current view in state so "Back" returns here
       window.history.pushState({ view: 'timeline', memberId: id }, '');
   };
 
@@ -273,7 +274,7 @@ const App: React.FC = () => {
         <div className="min-h-screen bg-slate-50 flex flex-col items-center justify-center p-6 text-center">
              <div className="bg-white p-10 rounded-[3rem] shadow-2xl max-w-sm w-full border border-slate-100">
                  <div className="bg-rose-50 w-20 h-20 rounded-3xl flex items-center justify-center mx-auto mb-8 text-3xl">📡</div>
-                 <h2 className="text-2xl font-black text-slate-900 mb-3 tracking-tight">Sync Delayed</h2>
+                 <h2 className="text-2xl font-black text-slate-900 mb-3 tracking-tight">Registry Offset</h2>
                  <p className="text-xs text-slate-500 mb-10 leading-relaxed font-bold">{dataLoadError}</p>
                  <div className="flex flex-col gap-4">
                      <button onClick={() => { syncLock.current = null; loadUserData(currentUser.id); }} className="w-full bg-slate-900 text-white font-black py-5 rounded-2xl shadow-xl active:scale-95 transition text-[11px] uppercase tracking-widest">Reconnect Registry</button>

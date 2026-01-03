@@ -83,6 +83,8 @@ export const UploadModal: React.FC<UploadModalProps> = ({ isOpen, onClose, onUpl
 
   if (!isOpen) return null;
 
+  const isRetrying = error?.toLowerCase().includes("retrying") || error?.toLowerCase().includes("busy");
+
   return (
     <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-sm z-[100] flex items-center justify-center p-4">
       <div className="bg-white rounded-[2.5rem] shadow-2xl w-full max-w-lg relative overflow-hidden border border-slate-100 flex flex-col max-h-[90vh]">
@@ -187,7 +189,14 @@ export const UploadModal: React.FC<UploadModalProps> = ({ isOpen, onClose, onUpl
               </div>
             )}
             
-            {error && <div className="bg-red-50 border border-red-100 text-red-700 p-4 rounded-xl text-[10px] font-black uppercase tracking-widest">{error}</div>}
+            {error && (
+                <div className={`p-4 rounded-xl text-[10px] font-black uppercase tracking-widest text-left border ${
+                    isRetrying ? 'bg-amber-50 border-amber-100 text-amber-700' : 'bg-red-50 border-red-100 text-red-700'
+                }`}>
+                    {isRetrying && <SpinnerIcon className="inline w-3 h-3 animate-spin mr-2" />}
+                    {error}
+                </div>
+            )}
           </form>
         </div>
 
@@ -202,7 +211,7 @@ export const UploadModal: React.FC<UploadModalProps> = ({ isOpen, onClose, onUpl
               {isLoading ? (
                 <>
                   <SpinnerIcon className="w-5 h-5 animate-spin" />
-                  Analyzing Report...
+                  {isRetrying ? 'System Busy, Retrying...' : 'Analyzing Report...'}
                 </>
               ) : (
                 'Generate History Entry'
