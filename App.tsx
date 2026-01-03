@@ -136,13 +136,12 @@ const App: React.FC = () => {
         setSession(currentSession);
         setCurrentUser(user);
         
-        if (event === 'PASSWORD_RECOVERY') {
-            setIsRecoveryMode(true);
+        if (event === 'PASSWORD_REFRESHED' || event === 'SIGNED_IN') {
+            setIsLoadingAuth(false);
         }
 
-        if (event === 'SIGNED_IN') {
-            setRoute('/');
-            setIsLoadingAuth(false);
+        if (event === 'PASSWORD_RECOVERY') {
+            setIsRecoveryMode(true);
         }
       }
     });
@@ -162,11 +161,22 @@ const App: React.FC = () => {
 
   // EFFECT 3: BROWSER HISTORY SYNC
   useEffect(() => {
-      const handlePopState = () => {
+      const handlePopState = (e: PopStateEvent) => {
           if (!mountedRef.current) return;
-          setViewMode(prev => (prev !== 'dashboard' ? 'dashboard' : prev));
-          setShowPublicGuide(false);
+          
+          const state = e.state;
+          // Only change the view if the popped state explicitly indicates a view transition
+          // This prevents modal closures (which push empty or modal-specific state) from resetting the view
+          if (state && state.view) {
+              setViewMode(state.view);
+              if (state.memberId) setSelectedMemberId(state.memberId);
+          } else if (!state || !state.modalOpen) {
+              // If we go back to the base state (no state or no modal), default to dashboard
+              setViewMode('dashboard');
+              setShowPublicGuide(false);
+          }
       };
+      
       window.addEventListener('popstate', handlePopState);
       return () => window.removeEventListener('popstate', handlePopState);
   }, []);
@@ -193,6 +203,7 @@ const App: React.FC = () => {
         setIsLoadingAuth(false);
         return error;
     }
+    setRoute('/');
     return null;
   };
 
@@ -203,13 +214,20 @@ const App: React.FC = () => {
         setIsLoadingAuth(false);
         return error;
     }
+    setRoute('/');
     return null;
   };
 
   const handleSelectMember = (id: string) => {
       setSelectedMemberId(id);
       setViewMode('timeline');
+      // Push state so back button works for view transitions
       window.history.pushState({ view: 'timeline', memberId: id }, '');
+  };
+
+  const handleBackToDashboard = () => {
+      setViewMode('dashboard');
+      window.history.pushState({ view: 'dashboard' }, '');
   };
 
   if (showPublicGuide) {
@@ -272,7 +290,7 @@ const App: React.FC = () => {
 
   if (isRecoveryMode) return <UpdatePasswordPage onSuccess={() => { setIsRecoveryMode(false); setRoute('/'); }} />;
 
-  if (viewMode === 'guide') return <GuideView user={currentUser} onBack={() => setViewMode('dashboard')} onLogout={handleLogout} />;
+  if (viewMode === 'guide') return <GuideView user={currentUser} onBack={handleBackToDashboard} onLogout={handleLogout} />;
 
   if (viewMode === 'timeline') {
       return (
@@ -280,7 +298,7 @@ const App: React.FC = () => {
             onLogout={handleLogout} 
             user={currentUser} 
             initialSelectedMemberId={selectedMemberId}
-            onBackToDashboard={() => setViewMode('dashboard')}
+            onBackToDashboard={handleBackToDashboard}
             familyMembers={familyMembers}
             timelineEntries={timelineEntries}
             onRefreshData={() => { syncLock.current = null; loadUserData(currentUser.id); }}
