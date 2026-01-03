@@ -55,7 +55,6 @@ const App: React.FC = () => {
   const loadUserData = useCallback(async (userId: string) => {
       if (!mountedRef.current) return;
       
-      // Prevent redundant or overlapping syncs for the same user
       if (syncLock.current === userId) return;
       
       syncLock.current = userId;
@@ -88,7 +87,6 @@ const App: React.FC = () => {
   useEffect(() => {
     mountedRef.current = true;
 
-    // Handle initial session check
     const checkInitialSession = async () => {
         try {
             const currentSession = await supabaseService.getSession();
@@ -112,12 +110,9 @@ const App: React.FC = () => {
 
     checkInitialSession();
 
-    // Listen for future auth events
     const { data: { subscription } } = supabaseService.onAuthStateChange(async (event, currentSession) => {
       if (!mountedRef.current) return;
       
-      console.debug(`[medHist] Auth Event: ${event}`);
-
       if (event === 'SIGNED_OUT') {
           setSession(null);
           setCurrentUser(null);
@@ -159,19 +154,23 @@ const App: React.FC = () => {
       }
   }, [currentUser?.id, loadUserData]);
 
-  // EFFECT 3: BROWSER HISTORY SYNC
+  // EFFECT 3: BROWSER HISTORY SYNC (Refined Router)
   useEffect(() => {
       const handlePopState = (e: PopStateEvent) => {
           if (!mountedRef.current) return;
           
           const state = e.state;
-          // Only change the view if the popped state explicitly indicates a view transition
-          // This prevents modal closures (which push empty or modal-specific state) from resetting the view
+          
+          // CRITICAL FIX: Only change views if the state explicitly tells us to.
+          // This prevents "Modal Back" events from accidentally triggering a View reset.
           if (state && state.view) {
               setViewMode(state.view);
               if (state.memberId) setSelectedMemberId(state.memberId);
-          } else if (!state || !state.modalOpen) {
-              // If we go back to the base state (no state or no modal), default to dashboard
+          } else if (state && state.modalOpen) {
+              // Stay exactly where we are, the modal's own listener will handle closing itself
+              return;
+          } else if (!state) {
+              // Only default to dashboard if there is absolutely no history state (True Home)
               setViewMode('dashboard');
               setShowPublicGuide(false);
           }
@@ -221,7 +220,7 @@ const App: React.FC = () => {
   const handleSelectMember = (id: string) => {
       setSelectedMemberId(id);
       setViewMode('timeline');
-      // Push state so back button works for view transitions
+      // Set current view in state so "Back" returns here
       window.history.pushState({ view: 'timeline', memberId: id }, '');
   };
 
@@ -238,7 +237,6 @@ const App: React.FC = () => {
     return <MockupPreview onApprove={() => setIsMockupMode(false)} />;
   }
 
-  // Identity verification (Initial Boot)
   if (isLoadingAuth) {
       return (
         <div className="min-h-screen bg-white flex flex-col items-center justify-center">
@@ -251,7 +249,6 @@ const App: React.FC = () => {
       );
   }
 
-  // Not Logged In
   if (!session || !currentUser) {
     if (route === '/signup') return (
         <SignupPage 
@@ -271,7 +268,6 @@ const App: React.FC = () => {
     );
   }
   
-  // Logged In + Global Data Error (Registry Hang)
   if (dataLoadError) {
       return (
         <div className="min-h-screen bg-slate-50 flex flex-col items-center justify-center p-6 text-center">

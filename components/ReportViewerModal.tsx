@@ -27,7 +27,6 @@ export const ReportViewerModal: React.FC<ReportViewerModalProps> = ({ isOpen, on
   const containerRef = useRef<HTMLDivElement>(null);
   const loadingTimeoutRef = useRef<number | null>(null);
 
-  // Detect mobile for resolution throttling
   const isTouchDevice = useMemo(() => {
     return (('ontouchstart' in window) || (navigator.maxTouchPoints > 0));
   }, []);
@@ -40,11 +39,14 @@ export const ReportViewerModal: React.FC<ReportViewerModalProps> = ({ isOpen, on
       setPageNumber(1);
 
       // Mobile Back-Button Integration:
+      // Push a new state so the hardware back button closes the modal
       window.history.pushState({ modalOpen: true }, '');
 
-      const handlePopState = () => {
-        onClose();
+      const handlePopState = (e: PopStateEvent) => {
+          // If we are popping back from the modalOpen state, close the modal
+          onClose();
       };
+      
       window.addEventListener('popstate', handlePopState);
 
       // Defensive timeout
@@ -58,12 +60,9 @@ export const ReportViewerModal: React.FC<ReportViewerModalProps> = ({ isOpen, on
       return () => {
         window.removeEventListener('popstate', handlePopState);
         if (loadingTimeoutRef.current) window.clearTimeout(loadingTimeoutRef.current);
-        if (isTouchDevice) {
-            try { (pdfjs as any)._workerProxy?.destroy(); } catch(e) {}
-        }
       };
     }
-  }, [isOpen, report.url, onClose, isTouchDevice]);
+  }, [isOpen, report.url, onClose]);
 
   if (!isOpen) return null;
 
@@ -91,7 +90,8 @@ export const ReportViewerModal: React.FC<ReportViewerModalProps> = ({ isOpen, on
   };
 
   const handleClose = () => {
-    if (window.history.state?.modalOpen) {
+    // If we're closing via the button, trigger a history back to keep the stack clean
+    if (window.history.state && window.history.state.modalOpen) {
         window.history.back();
     } else {
         onClose();
