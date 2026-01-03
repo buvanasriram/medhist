@@ -147,12 +147,20 @@ export const TimelineItem: React.FC<TimelineItemProps> = ({
                             Patient <span className="underline">{entry.patient_name}</span> mismatch detected.
                         </p>
                         {!isReadOnly && (
-                            <button 
-                                onClick={() => onIgnoreMismatch(entry)} 
-                                className="mt-1.5 text-[8px] font-black uppercase tracking-widest text-amber-900 hover:text-rose-700 underline underline-offset-2"
-                            >
-                                Validate
-                            </button>
+                            <div className="flex gap-4 mt-1.5">
+                                <button 
+                                    onClick={(e) => { e.stopPropagation(); onIgnoreMismatch(entry); }} 
+                                    className="text-[8px] font-black uppercase tracking-widest text-amber-900 hover:text-slate-900 underline underline-offset-2"
+                                >
+                                    Confirm Patient
+                                </button>
+                                <button 
+                                    onClick={(e) => { e.stopPropagation(); onDeleteReport(entry); }} 
+                                    className="text-[8px] font-black uppercase tracking-widest text-red-700 hover:text-red-900 underline underline-offset-2"
+                                >
+                                    Purge Entry
+                                </button>
+                            </div>
                         )}
                     </div>
                 </div>
