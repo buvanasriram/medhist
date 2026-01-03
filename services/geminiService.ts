@@ -27,7 +27,6 @@ const getAIClient = () => {
 
 /**
  * High-Resilience Exponential Backoff
- * Designed for mobile networks and server overload (503/429/504)
  */
 async function withRetry<T>(fn: () => Promise<T>, retries = 8, delay = 2000): Promise<T> {
     try {
@@ -43,12 +42,10 @@ async function withRetry<T>(fn: () => Promise<T>, retries = 8, delay = 2000): Pr
                            errorMsg.includes("fetch");
 
         if (isTransient && retries > 0) {
-            // Jittered backoff: wait longer as retries decrease
             const jitter = Math.random() * 800;
             const waitTime = delay + jitter;
             console.warn(`[medHist AI] Server busy/Network lag. Retrying in ${Math.round(waitTime)}ms... (${retries} left)`);
             await new Promise(resolve => setTimeout(resolve, waitTime));
-            // Slow down the exponential growth to give servers more time to breathe on mobile
             return withRetry(fn, retries - 1, delay * 1.5);
         }
         throw error;
@@ -58,13 +55,13 @@ async function withRetry<T>(fn: () => Promise<T>, retries = 8, delay = 2000): Pr
 const responseSchema = {
     type: Type.OBJECT,
     properties: {
-        date: { type: Type.STRING, description: "YYYY-MM-DD" },
-        reportType: { type: Type.STRING, description: "Title" },
+        date: { type: Type.STRING, description: "YYYY-MM-DD format only" },
+        reportType: { type: Type.STRING, description: "Title of report" },
         summary: { type: Type.STRING, description: "Clinical Brief" },
         doctorName: { type: Type.STRING },
         facilityName: { type: Type.STRING },
         patientName: { type: Type.STRING },
-        followUpDate: { type: Type.STRING },
+        followUpDate: { type: Type.STRING, description: "YYYY-MM-DD format only" },
         medications: {
             type: Type.ARRAY,
             items: {
@@ -74,7 +71,7 @@ const responseSchema = {
                     dosage: { type: Type.STRING },
                     frequency: { type: Type.STRING },
                     purpose: { type: Type.STRING },
-                    startDate: { type: Type.STRING }
+                    startDate: { type: Type.STRING, description: "YYYY-MM-DD format only" }
                 }
             }
         }
@@ -101,7 +98,7 @@ const extractTextFromPdf = async (base64Data: string, password?: string): Promis
 
         const pdf = await loadingTask.promise;
         let fullText = '';
-        const pageCount = Math.min(pdf.numPages, 8); // Reduced to 8 pages for mobile memory
+        const pageCount = Math.min(pdf.numPages, 8); 
 
         for (let i = 1; i <= pageCount; i++) {
             const page = await pdf.getPage(i);
@@ -110,7 +107,7 @@ const extractTextFromPdf = async (base64Data: string, password?: string): Promis
                 .map((item: any) => item.str)
                 .join(' ');
             fullText += pageText + '\n';
-            if (fullText.length > 8000) break; // Hard cap for mobile
+            if (fullText.length > 8000) break;
         }
         
         if (fullText.trim().length < 5) throw new Error("SCANNED_PDF_DETECTED");
@@ -124,16 +121,18 @@ const extractTextFromPdf = async (base64Data: string, password?: string): Promis
 };
 
 /**
- * Scrubs string "null" values from an object recursively.
- * AI models often return "null" instead of a literal null.
+ * Advanced Scrubbing Utility
+ * Eliminates "Not specified" and other non-clinical strings that crash SQL DATE columns.
  */
 const scrubNullStrings = (obj: any): any => {
+    const placeholders = ['null', 'not specified', 'unknown', 'n/a', 'none', 'undefined', 'pending', 'tbd'];
+    
     if (Array.isArray(obj)) {
         return obj.map(scrubNullStrings);
     } else if (obj !== null && typeof obj === 'object') {
         return Object.fromEntries(
             Object.entries(obj).map(([k, v]) => {
-                if (typeof v === 'string' && v.trim().toLowerCase() === 'null') {
+                if (typeof v === 'string' && placeholders.includes(v.trim().toLowerCase())) {
                     return [k, null];
                 }
                 return [k, scrubNullStrings(v)];
@@ -145,7 +144,10 @@ const scrubNullStrings = (obj: any): any => {
 
 export const extractReportInfo = async (fileBase64: string, mimeType: string, password?: string): Promise<ExtractedReportData> => {
     const client = getAIClient();
-    const prompt = `Analyze medical report. Return JSON for: Date (YYYY-MM-DD), Patient Name, Title, Clinical Summary, Doctor, Facility, Follow-up, Medications. IMPORTANT: If a field is unknown, omit it or set to null, DO NOT use the string "null".`;
+    const prompt = `Analyze medical report. Return JSON for: Date (YYYY-MM-DD), Patient Name, Title, Clinical Summary, Doctor, Facility, Follow-up, Medications. 
+    IMPORTANT: Use YYYY-MM-DD for dates. If a date is missing or unknown, set it to null. 
+    DO NOT use strings like "Not specified", "Unknown", or "N/A" for date fields. 
+    If you find no date, set the field to null.`;
     
     try {
         let contentPart;
@@ -169,7 +171,6 @@ export const extractReportInfo = async (fileBase64: string, mimeType: string, pa
             config: {
                 responseMimeType: 'application/json',
                 responseSchema: responseSchema,
-                // Disable thinking to minimize latency and server load
                 thinkingConfig: { thinkingBudget: 0 },
                 safetySettings: [
                     { category: HarmCategory.HARM_CATEGORY_HARASSMENT, threshold: HarmBlockThreshold.BLOCK_ONLY_HIGH },
@@ -191,9 +192,10 @@ export const extractReportInfo = async (fileBase64: string, mimeType: string, pa
         const sanitizedJson = jsonText.replace(/^```json\s*/i, '').replace(/\s*```$/i, '');
         const rawParsed = JSON.parse(sanitizedJson.trim());
         
-        // Scrub the "null" string hallucinations
+        // Comprehensive cleanup of "Not specified" style hallucinations
         const parsedData = scrubNullStrings(rawParsed);
 
+        // Registry integrity fallbacks
         parsedData.date = parsedData.date || new Date().toISOString().split('T')[0];
         parsedData.patientName = parsedData.patientName || "Unknown";
         parsedData.reportType = parsedData.reportType || "Medical Record";
@@ -202,9 +204,6 @@ export const extractReportInfo = async (fileBase64: string, mimeType: string, pa
 
     } catch (error: any) {
         console.error("AI Sync Failure:", error);
-        if (error?.message?.includes("overloaded") || error?.message?.includes("503")) {
-            throw new Error("The AI network is congested. We are still attempting to reach the server...");
-        }
         throw error;
     }
 };
