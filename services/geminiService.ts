@@ -2,6 +2,7 @@
 import { GoogleGenAI, Type, GenerateContentResponse, HarmCategory, HarmBlockThreshold } from "@google/genai";
 import { pdfjs } from 'react-pdf';
 import type { ExtractedReportData, FamilyMember, TimelineEntry, Medication } from '../types';
+import { CREDENTIALS } from '../credentials';
 
 // Lazy initialization to prevent top-level crashes
 let ai: GoogleGenAI | null = null;
@@ -9,9 +10,10 @@ let ai: GoogleGenAI | null = null;
 const getAIClient = () => {
     if (ai) return ai;
     
-    const apiKey = process.env.API_KEY;
-    if (!apiKey) {
-        throw new Error("AI Registry Key is missing. Please check your configuration.");
+    // Prioritize credentials.ts for local development/easier setup
+    const apiKey = process.env.API_KEY || CREDENTIALS.GEMINI_API_KEY;
+    if (!apiKey || apiKey === "your_gemini_api_key_here") {
+        throw new Error("AI Registry Key is missing. Please check credentials.ts or environment variables.");
     }
     
     try {

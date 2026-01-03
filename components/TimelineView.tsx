@@ -81,8 +81,10 @@ export const TimelineView: React.FC<TimelineViewProps> = ({
       onRefreshData();
       setUploadModalOpen(false);
     } catch (err) {
-      console.error("Upload failed:", err);
-      setError(err instanceof Error ? err.message : "Upload failed.");
+      console.error("[medHist] Upload failed:", err);
+      // Display the specific error message to help diagnose the "Object" issue
+      const msg = err instanceof Error ? err.message : JSON.stringify(err);
+      setError(msg || "Upload failed due to a server error.");
     } finally {
       setIsLoading(false);
     }
