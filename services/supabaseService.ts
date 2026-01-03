@@ -130,14 +130,33 @@ export const signIn = async (email: string, password: string): Promise<string|nu
     return error ? error.message : null;
 };
 
+/**
+ * Aggressive Global Sign Out
+ * Ensures tokens are invalidated on the server AND cleared from local storage.
+ */
 export const signOut = async (): Promise<void> => {
     if (isMock) {
         mockSession = null;
+        localStorage.removeItem('medhist-mock-session');
     } else {
         try {
-            await supabase!.auth.signOut();
+            // Scope: global ensures all sessions for this user are invalidated on the server
+            await supabase!.auth.signOut({ scope: 'global' });
+            
+            // Explicitly clear any Supabase related keys as a fail-safe
+            Object.keys(localStorage).forEach(key => {
+                if (key.startsWith('sb-')) {
+                    localStorage.removeItem(key);
+                }
+            });
         } catch (e) {
             console.error("SignOut error", e);
+            // Fallback: forcefully clear storage anyway
+            Object.keys(localStorage).forEach(key => {
+                if (key.startsWith('sb-')) {
+                    localStorage.removeItem(key);
+                }
+            });
         }
     }
 };

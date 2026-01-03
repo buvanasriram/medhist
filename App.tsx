@@ -22,7 +22,6 @@ const App: React.FC = () => {
   const [isMockupMode, setIsMockupMode] = useState<boolean>(false);
   const [showPublicGuide, setShowPublicGuide] = useState<boolean>(false);
   
-  // Fix: Added missing state for password recovery mode
   const [isRecoveryMode, setIsRecoveryMode] = useState<boolean>(false);
 
   // Loading States
@@ -55,6 +54,8 @@ const App: React.FC = () => {
     setFamilyInfo(null);
     setDataLoadError(null);
     syncLock.current = null;
+    setSession(null);
+    setCurrentUser(null);
   }, []);
 
   // PRIMARY DATA LOADER
@@ -116,14 +117,26 @@ const App: React.FC = () => {
 
     checkInitialSession();
 
+    // Cross-tab logout listener
+    const handleStorageChange = (e: StorageEvent) => {
+        // If a Supabase auth key is removed from another tab, trigger logout here
+        if (e.key && e.key.startsWith('sb-') && !e.newValue) {
+            console.log("[medHist] Logout detected in another tab. Resetting...");
+            clearLocalData();
+            setRoute('/login');
+        }
+    };
+    window.addEventListener('storage', handleStorageChange);
+
     const { data: { subscription } } = supabaseService.onAuthStateChange(async (event, currentSession) => {
       if (!mountedRef.current) return;
       
+      console.debug(`[medHist] Auth Event: ${event}`);
+
       if (event === 'SIGNED_OUT') {
-          setSession(null);
-          setCurrentUser(null);
           clearLocalData();
           setRoute('/login');
+          setIsLoadingAuth(false);
           return;
       }
 
@@ -145,12 +158,18 @@ const App: React.FC = () => {
         if (event === 'PASSWORD_RECOVERY') {
             setIsRecoveryMode(true);
         }
+      } else if (!currentSession && event !== 'INITIAL_SESSION') {
+          // If session is lost unexpectedly
+          clearLocalData();
+          setRoute('/login');
+          setIsLoadingAuth(false);
       }
     });
 
     return () => {
       mountedRef.current = false;
       subscription.unsubscribe();
+      window.removeEventListener('storage', handleStorageChange);
     };
   }, [clearLocalData]);
 
@@ -186,11 +205,10 @@ const App: React.FC = () => {
     setIsLoadingAuth(true);
     try {
         await supabaseService.signOut();
+        // The onAuthStateChange SIGNED_OUT event will handle the rest
     } catch (e) {
         console.warn("Signout session aborted:", e);
-    } finally {
-        setSession(null);
-        setCurrentUser(null);
+        // Fallback for failed signout calls
         clearLocalData();
         setRoute('/login');
         setIsLoadingAuth(false);
