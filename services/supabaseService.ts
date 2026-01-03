@@ -171,8 +171,9 @@ export const getUserData = async (userId: string) => {
 
     let profile = null;
     let retries = 0;
-    const MAX_RETRIES = 6; // Cap polling at 3 seconds for faster error recovery
+    const MAX_RETRIES = 5; 
     
+    // Quick polling for profile existence (essential after signup)
     while (!profile && retries < MAX_RETRIES) {
         const { data, error } = await supabase!
             .from('profiles')
@@ -184,35 +185,37 @@ export const getUserData = async (userId: string) => {
             profile = data;
         } else {
             retries++;
-            // Rapid polling for 3 seconds then fail
-            await new Promise(resolve => setTimeout(resolve, 500));
+            if (retries < MAX_RETRIES) {
+                await new Promise(resolve => setTimeout(resolve, 800));
+            }
         }
     }
     
-    if (!profile) throw new Error("Synchronization Pending: Your profile is taking longer than expected to initialize. Please refresh the page.");
+    if (!profile) throw new Error("Registry Initialization Pending. If this persists, please try logging out and back in.");
 
     const familyId = profile.family_id;
 
-    // Fetch core family info
-    const { data: familyInfo } = await supabase!
-        .from('families')
-        .select('name, join_code')
-        .eq('id', familyId)
-        .single();
+    // Fetch core data in parallel
+    const [familyInfoRes, membersRes] = await Promise.all([
+        supabase!.from('families').select('name, join_code').eq('id', familyId).single(),
+        supabase!.from('family_members').select('*').eq('family_id', familyId)
+    ]);
 
-    // Fetch family members
-    const { data: familyMembers } = await supabase!
-        .from('family_members')
-        .select('*')
-        .eq('family_id', familyId);
+    if (membersRes.error) throw membersRes.error;
 
-    if (!familyMembers || familyMembers.length === 0) {
-        return { familyMembers: [], timelineEntries: [], medications: [], familyInfo: familyInfo ? { name: familyInfo.name, joinCode: familyInfo.join_code } : null };
+    const familyMembers = membersRes.data || [];
+    if (familyMembers.length === 0) {
+        return { 
+            familyMembers: [], 
+            timelineEntries: [], 
+            medications: [], 
+            familyInfo: familyInfoRes.data ? { name: familyInfoRes.data.name, joinCode: familyInfoRes.data.join_code } : null 
+        };
     }
 
     const memberIds = familyMembers.map(m => m.id);
 
-    // Concurrent fetches for performance
+    // Fetch medical records in parallel
     const [timelineRes, medsRes] = await Promise.all([
         supabase!
             .from('timeline_entries')
@@ -237,7 +240,7 @@ export const getUserData = async (userId: string) => {
             } : undefined
         })),
         medications: medsRes.data || [],
-        familyInfo: familyInfo ? { name: familyInfo.name, joinCode: familyInfo.join_code } : null
+        familyInfo: familyInfoRes.data ? { name: familyInfoRes.data.name, joinCode: familyInfoRes.data.join_code } : null
     };
 };
 

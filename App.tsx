@@ -22,115 +22,97 @@ const App: React.FC = () => {
   const [isMockupMode, setIsMockupMode] = useState<boolean>(false);
   const [showPublicGuide, setShowPublicGuide] = useState<boolean>(false);
 
-  const [isLoading, setIsLoading] = useState<boolean>(true);
-  const [isSyncing, setIsSyncing] = useState<boolean>(false);
+  // Loading States
+  const [isLoadingAuth, setIsLoadingAuth] = useState<boolean>(true);
+  const [isSyncingData, setIsSyncingData] = useState<boolean>(false);
   const [dataLoadError, setDataLoadError] = useState<string | null>(null);
+  
+  // UI State
   const [isRecoveryMode, setIsRecoveryMode] = useState<boolean>(false);
   const [viewMode, setViewMode] = useState<'dashboard' | 'timeline' | 'guide'>('dashboard');
   const [selectedMemberId, setSelectedMemberId] = useState<string | undefined>(undefined);
   
+  // Data State
   const [familyMembers, setFamilyMembers] = useState<FamilyMember[]>([]);
   const [timelineEntries, setTimelineEntries] = useState<TimelineEntry[]>([]);
   const [medications, setMedications] = useState<Medication[]>([]);
   const [familyInfo, setFamilyInfo] = useState<{name: string, joinCode: string} | null>(null);
 
-  // Persistence & Locking Refs
+  // Logic Refs
   const mountedRef = useRef<boolean>(true);
-  const loadedForUserId = useRef<string | null>(null);
-  const syncLock = useRef<boolean>(false);
+  const syncLock = useRef<string | null>(null);
   
-  const forceResetUI = useCallback(() => {
-    setIsSyncing(false);
-    setIsLoading(false);
+  const clearLocalData = useCallback(() => {
+    setFamilyMembers([]);
+    setTimelineEntries([]);
+    setMedications([]);
+    setFamilyInfo(null);
     setDataLoadError(null);
+    syncLock.current = null;
   }, []);
 
+  // PRIMARY DATA LOADER
   const loadUserData = useCallback(async (userId: string) => {
       if (!mountedRef.current) return;
       
-      // Prevent parallel syncs or redundant loads for the same user
-      if (syncLock.current || loadedForUserId.current === userId) {
-          setIsSyncing(false);
-          return;
-      }
+      // Prevent redundant or overlapping syncs for the same user
+      if (syncLock.current === userId) return;
       
-      syncLock.current = true;
-      setIsSyncing(true);
+      syncLock.current = userId;
+      setIsSyncingData(true);
       setDataLoadError(null);
       
       try {
-          console.debug(`[medHist] Synchronizing clinical records for: ${userId}`);
+          console.debug(`[medHist] Parallel Sync initiated for: ${userId}`);
           const data = await supabaseService.getUserData(userId);
           
-          if (mountedRef.current) {
+          if (mountedRef.current && syncLock.current === userId) {
               setFamilyMembers(data.familyMembers || []);
               setTimelineEntries(data.timelineEntries || []);
               setMedications(data.medications || []);
               setFamilyInfo(data.familyInfo || null);
-              loadedForUserId.current = userId;
           }
       } catch (e: any) {
-          console.error("[medHist] Registry Sync Warning:", e);
-          // If it's a new user or network hiccup, we don't necessarily want to block the whole UI
-          if (mountedRef.current && !loadedForUserId.current) {
-              setDataLoadError(e.message || "Medical registry unreachable.");
+          console.error("[medHist] Registry Sync Error:", e);
+          if (mountedRef.current && syncLock.current === userId) {
+              setDataLoadError(e.message || "Could not synchronize medical registry.");
           }
       } finally {
-          if (mountedRef.current) {
-              setIsSyncing(false);
-              syncLock.current = false;
+          if (mountedRef.current && syncLock.current === userId) {
+              setIsSyncingData(false);
           }
       }
   }, []);
 
-  // Application Lifecycle: Guaranteed Resolution Pattern
+  // EFFECT 1: AUTHENTICATION LIFECYCLE
   useEffect(() => {
     mountedRef.current = true;
 
-    // Safety fallback: if everything hangs, release the UI after 5s
-    const safetyTimer = setTimeout(() => {
-        if (mountedRef.current && isLoading) {
-            console.warn("[medHist] Boot sequence timed out. Releasing UI.");
-            setIsLoading(false);
-        }
-    }, 5000);
-
-    const handlePopState = () => {
-        if (!mountedRef.current) return;
-        setViewMode(prev => (prev !== 'dashboard' ? 'dashboard' : prev));
-        setShowPublicGuide(false);
-    };
-    window.addEventListener('popstate', handlePopState);
-
-    // PRIORITY 1: Explicit Initial Session Check
-    const startBoot = async () => {
+    // Handle initial session check
+    const checkInitialSession = async () => {
         try {
-            const initialSession = await supabaseService.getSession();
-            if (!mountedRef.current) return;
-
-            if (initialSession?.user) {
+            const currentSession = await supabaseService.getSession();
+            if (currentSession?.user && mountedRef.current) {
                 const user = { 
-                    id: initialSession.user.id, 
-                    name: initialSession.user.user_metadata?.full_name || initialSession.user.email,
-                    email: initialSession.user.email || ''
+                    id: currentSession.user.id, 
+                    name: currentSession.user.user_metadata?.full_name || currentSession.user.email,
+                    email: currentSession.user.email || ''
                 };
-                setSession(initialSession);
+                setSession(currentSession);
                 setCurrentUser(user);
-                await loadUserData(user.id);
             }
         } catch (e) {
-            console.error("[medHist] Boot error:", e);
+            console.error("[medHist] Session restoration failed", e);
         } finally {
             if (mountedRef.current) {
-                setIsLoading(false);
-                clearTimeout(safetyTimer);
+                setIsLoadingAuth(false);
             }
         }
     };
 
-    startBoot();
+    checkInitialSession();
 
-    // PRIORITY 2: Persistent Listener for future events
+    // Listen for future auth events
     const { data: { subscription } } = supabaseService.onAuthStateChange(async (event, currentSession) => {
       if (!mountedRef.current) return;
       
@@ -139,20 +121,12 @@ const App: React.FC = () => {
       if (event === 'SIGNED_OUT') {
           setSession(null);
           setCurrentUser(null);
-          loadedForUserId.current = null;
-          if (mountedRef.current) {
-              setRoute('/login');
-              forceResetUI();
-              setIsLoading(false);
-          }
+          clearLocalData();
+          setRoute('/login');
           return;
       }
 
-      if (event === 'PASSWORD_RECOVERY') {
-          setIsRecoveryMode(true);
-      }
-
-      if (currentSession?.user && event === 'SIGNED_IN') {
+      if (currentSession?.user) {
         const user = { 
           id: currentSession.user.id, 
           name: currentSession.user.user_metadata?.full_name || currentSession.user.email, 
@@ -161,27 +135,44 @@ const App: React.FC = () => {
         
         setSession(currentSession);
         setCurrentUser(user);
-        await loadUserData(user.id);
         
-        if (mountedRef.current) {
-            setIsLoading(false);
-            if (window.location.pathname === '/login' || window.location.pathname === '/') {
-                setRoute('/');
-            }
+        if (event === 'PASSWORD_RECOVERY') {
+            setIsRecoveryMode(true);
+        }
+
+        if (event === 'SIGNED_IN') {
+            setRoute('/');
+            setIsLoadingAuth(false);
         }
       }
     });
 
     return () => {
       mountedRef.current = false;
-      window.removeEventListener('popstate', handlePopState);
-      clearTimeout(safetyTimer);
       subscription.unsubscribe();
     };
-  }, []); // Explicitly empty to act as a singleton controller
+  }, [clearLocalData]);
+
+  // EFFECT 2: DATA SYNC TRIGGER
+  useEffect(() => {
+      if (currentUser?.id) {
+          loadUserData(currentUser.id);
+      }
+  }, [currentUser?.id, loadUserData]);
+
+  // EFFECT 3: BROWSER HISTORY SYNC
+  useEffect(() => {
+      const handlePopState = () => {
+          if (!mountedRef.current) return;
+          setViewMode(prev => (prev !== 'dashboard' ? 'dashboard' : prev));
+          setShowPublicGuide(false);
+      };
+      window.addEventListener('popstate', handlePopState);
+      return () => window.removeEventListener('popstate', handlePopState);
+  }, []);
 
   const handleLogout = async () => {
-    setIsLoading(true);
+    setIsLoadingAuth(true);
     try {
         await supabaseService.signOut();
     } catch (e) {
@@ -189,28 +180,27 @@ const App: React.FC = () => {
     } finally {
         setSession(null);
         setCurrentUser(null);
-        loadedForUserId.current = null;
+        clearLocalData();
         setRoute('/login');
-        forceResetUI();
+        setIsLoadingAuth(false);
     }
   };
 
   const handleLogin = async (email: string, password: string): Promise<string|null> => {
-    setIsLoading(true);
+    setIsLoadingAuth(true);
     const error = await supabaseService.signIn(email, password);
     if (error) {
-        setIsLoading(false);
+        setIsLoadingAuth(false);
         return error;
     }
-    // Session state will be picked up by the listener
     return null;
   };
 
   const handleSignup = async (name: string, email: string, password: string, familyInput: { isJoin: boolean, value: string }): Promise<string|null> => {
-    setIsLoading(true);
+    setIsLoadingAuth(true);
     const error = await supabaseService.signUp(name, email, password, familyInput);
     if (error) {
-        setIsLoading(false);
+        setIsLoadingAuth(false);
         return error;
     }
     return null;
@@ -230,29 +220,20 @@ const App: React.FC = () => {
     return <MockupPreview onApprove={() => setIsMockupMode(false)} />;
   }
 
-  // --- RENDERING STATES ---
-
-  if (isLoading) {
+  // Identity verification (Initial Boot)
+  if (isLoadingAuth) {
       return (
-        <div className="min-h-screen bg-white flex flex-col items-center justify-center text-slate-600">
-             <div className="relative mb-10">
-                <SpinnerIcon className="w-14 h-14 text-rose-700 animate-spin" />
-                <div className="absolute inset-0 flex items-center justify-center">
-                    <div className="w-2 h-2 bg-rose-700 rounded-full"></div>
-                </div>
+        <div className="min-h-screen bg-white flex flex-col items-center justify-center">
+             <div className="relative mb-8">
+                <SpinnerIcon className="w-12 h-12 text-rose-700 animate-spin" />
              </div>
-             <div className="flex flex-col items-center">
-                <p className="text-slate-900 font-black uppercase tracking-[0.4em] text-[10px] mb-2">Securing Connection</p>
-                <div className="flex items-center gap-2 opacity-30">
-                    <span className="w-1.5 h-1.5 rounded-full bg-slate-400"></span>
-                    <p className="text-slate-400 font-bold uppercase tracking-[0.2em] text-[8px]">Identity Vault medHist</p>
-                    <span className="w-1.5 h-1.5 rounded-full bg-slate-400"></span>
-                </div>
-             </div>
+             <p className="text-slate-900 font-black uppercase tracking-[0.4em] text-[10px]">Securing Vault</p>
+             <p className="text-slate-300 font-bold uppercase tracking-[0.2em] text-[8px] mt-1">medHist Clinical Registry</p>
         </div>
       );
   }
 
+  // Not Logged In
   if (!session || !currentUser) {
     if (route === '/signup') return (
         <SignupPage 
@@ -272,6 +253,7 @@ const App: React.FC = () => {
     );
   }
   
+  // Logged In + Global Data Error (Registry Hang)
   if (dataLoadError) {
       return (
         <div className="min-h-screen bg-slate-50 flex flex-col items-center justify-center p-6 text-center">
@@ -280,8 +262,8 @@ const App: React.FC = () => {
                  <h2 className="text-2xl font-black text-slate-900 mb-3 tracking-tight">Sync Delayed</h2>
                  <p className="text-xs text-slate-500 mb-10 leading-relaxed font-bold">{dataLoadError}</p>
                  <div className="flex flex-col gap-4">
-                     <button onClick={() => { loadedForUserId.current = null; loadUserData(currentUser.id); }} className="w-full bg-slate-900 text-white font-black py-5 rounded-2xl shadow-xl active:scale-95 transition text-[11px] uppercase tracking-widest">Retry Connection</button>
-                     <button onClick={handleLogout} className="w-full bg-slate-100 text-slate-600 font-black py-5 rounded-2xl active:bg-slate-200 transition text-[11px] uppercase tracking-widest">Force Logout</button>
+                     <button onClick={() => { syncLock.current = null; loadUserData(currentUser.id); }} className="w-full bg-slate-900 text-white font-black py-5 rounded-2xl shadow-xl active:scale-95 transition text-[11px] uppercase tracking-widest">Reconnect Registry</button>
+                     <button onClick={handleLogout} className="w-full bg-slate-100 text-slate-600 font-black py-5 rounded-2xl active:bg-slate-200 transition text-[11px] uppercase tracking-widest">Sign Out</button>
                  </div>
              </div>
         </div>
@@ -301,7 +283,7 @@ const App: React.FC = () => {
             onBackToDashboard={() => setViewMode('dashboard')}
             familyMembers={familyMembers}
             timelineEntries={timelineEntries}
-            onRefreshData={() => { loadedForUserId.current = null; loadUserData(currentUser.id); }}
+            onRefreshData={() => { syncLock.current = null; loadUserData(currentUser.id); }}
             onOpenGuide={() => setViewMode('guide')}
             medications={medications}
           />
@@ -317,9 +299,9 @@ const App: React.FC = () => {
         medications={medications}
         familyInfo={familyInfo}
         onSelectMember={handleSelectMember}
-        onRefreshData={() => { loadedForUserId.current = null; loadUserData(currentUser.id); }}
+        onRefreshData={() => { syncLock.current = null; loadUserData(currentUser.id); }}
         onOpenGuide={() => setViewMode('guide')}
-        isSyncing={isSyncing}
+        isSyncing={isSyncingData}
     />
   );
 };
