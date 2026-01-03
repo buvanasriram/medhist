@@ -9,9 +9,7 @@ let ai: GoogleGenAI | null = null;
 const getAIClient = () => {
     if (ai) return ai;
     
-    // Prioritize process.env.API_KEY as per SDK guidelines
     const apiKey = process.env.API_KEY;
-    
     if (!apiKey) {
         throw new Error("AI Registry Key is missing. Please check your configuration.");
     }
@@ -26,9 +24,10 @@ const getAIClient = () => {
 };
 
 /**
- * Enhanced Jittered Exponential Backoff
+ * High-Resilience Exponential Backoff
+ * Designed for mobile networks and server overload (503/429/504)
  */
-async function withRetry<T>(fn: () => Promise<T>, retries = 5, delay = 1500): Promise<T> {
+async function withRetry<T>(fn: () => Promise<T>, retries = 8, delay = 2000): Promise<T> {
     try {
         return await fn();
     } catch (error: any) {
@@ -37,14 +36,18 @@ async function withRetry<T>(fn: () => Promise<T>, retries = 5, delay = 1500): Pr
                            errorMsg.includes("overloaded") || 
                            errorMsg.includes("429") || 
                            errorMsg.includes("resource_exhausted") ||
-                           errorMsg.includes("deadline_exceeded");
+                           errorMsg.includes("deadline_exceeded") ||
+                           errorMsg.includes("504") ||
+                           errorMsg.includes("fetch");
 
         if (isTransient && retries > 0) {
-            // Add jitter to prevent thundering herd
-            const jitter = Math.random() * 500;
-            console.warn(`[medHist AI] System busy. Retrying in ${delay + jitter}ms... (${retries} attempts left)`);
-            await new Promise(resolve => setTimeout(resolve, delay + jitter));
-            return withRetry(fn, retries - 1, delay * 2);
+            // Jittered backoff: wait longer as retries decrease
+            const jitter = Math.random() * 800;
+            const waitTime = delay + jitter;
+            console.warn(`[medHist AI] Server busy/Network lag. Retrying in ${Math.round(waitTime)}ms... (${retries} left)`);
+            await new Promise(resolve => setTimeout(resolve, waitTime));
+            // Slow down the exponential growth to give servers more time to breathe on mobile
+            return withRetry(fn, retries - 1, delay * 1.5);
         }
         throw error;
     }
@@ -53,18 +56,9 @@ async function withRetry<T>(fn: () => Promise<T>, retries = 5, delay = 1500): Pr
 const responseSchema = {
     type: Type.OBJECT,
     properties: {
-        date: {
-            type: Type.STRING,
-            description: "YYYY-MM-DD format of report date.",
-        },
-        reportType: {
-            type: Type.STRING,
-            description: "Descriptive title (e.g. Blood Test).",
-        },
-        summary: {
-            type: Type.STRING,
-            description: "Concise clinical summary.",
-        },
+        date: { type: Type.STRING, description: "YYYY-MM-DD" },
+        reportType: { type: Type.STRING, description: "Title" },
+        summary: { type: Type.STRING, description: "Clinical Brief" },
         doctorName: { type: Type.STRING },
         facilityName: { type: Type.STRING },
         patientName: { type: Type.STRING },
@@ -86,9 +80,6 @@ const responseSchema = {
     required: ["date", "reportType", "summary"],
 };
 
-/**
- * Robust Base64 to Uint8Array for PDF.js
- */
 const base64ToUint8Array = (base64: string) => {
     const binaryString = atob(base64);
     const bytes = new Uint8Array(binaryString.length);
@@ -108,8 +99,7 @@ const extractTextFromPdf = async (base64Data: string, password?: string): Promis
 
         const pdf = await loadingTask.promise;
         let fullText = '';
-        // Limit extraction to first 10 pages to prevent memory crashes
-        const pageCount = Math.min(pdf.numPages, 10);
+        const pageCount = Math.min(pdf.numPages, 8); // Reduced to 8 pages for mobile memory
 
         for (let i = 1; i <= pageCount; i++) {
             const page = await pdf.getPage(i);
@@ -118,46 +108,28 @@ const extractTextFromPdf = async (base64Data: string, password?: string): Promis
                 .map((item: any) => item.str)
                 .join(' ');
             fullText += pageText + '\n';
-            
-            // Safety break: Don't send more than 10k characters to Gemini for extractions
-            if (fullText.length > 10000) break;
+            if (fullText.length > 8000) break; // Hard cap for mobile
         }
         
-        if (fullText.trim().length < 10) {
-            throw new Error("SCANNED_PDF_DETECTED");
-        }
-
-        return fullText.substring(0, 10000);
+        if (fullText.trim().length < 5) throw new Error("SCANNED_PDF_DETECTED");
+        return fullText.substring(0, 8000);
     } catch (error: any) {
         if (error.message === "SCANNED_PDF_DETECTED") {
-             throw new Error("This PDF appears to be a scanned image. Please upload a clear photo of the document instead.");
+             throw new Error("This PDF looks like an image. Please upload a photo instead.");
         }
-        if (error.name === 'PasswordException') {
-            throw new Error("This PDF is encrypted. Please provide the correct password.");
-        }
-        throw new Error("Registry was unable to read this PDF format. Try taking a photo of the document.");
+        throw new Error("Unable to read this specific PDF format. Try a photo.");
     }
 };
 
 export const extractReportInfo = async (fileBase64: string, mimeType: string, password?: string): Promise<ExtractedReportData> => {
     const client = getAIClient();
-
-    const prompt = `Analyze this medical report. Extract:
-    - Date (YYYY-MM-DD)
-    - Patient Full Name
-    - Report Title
-    - Concise Summary
-    - Doctor/Facility Name
-    - Follow-up dates
-    - Medications (with inferred purpose)
-    Return JSON. If not a medical report, return an error.`;
+    const prompt = `Analyze medical report. Return JSON for: Date (YYYY-MM-DD), Patient Name, Title, Clinical Summary, Doctor, Facility, Follow-up, Medications.`;
     
     try {
         let contentPart;
-
-        if (mimeType === 'application/pdf' && password !== undefined) {
+        if (mimeType === 'application/pdf') {
             const extractedText = await extractTextFromPdf(fileBase64, password);
-            contentPart = { text: `CONTENT:\n${extractedText}` };
+            contentPart = { text: `REPORT_CONTENT:\n${extractedText}` };
         } else {
             contentPart = {
                 inlineData: {
@@ -170,49 +142,43 @@ export const extractReportInfo = async (fileBase64: string, mimeType: string, pa
         const response: GenerateContentResponse = await withRetry(() => client.models.generateContent({
             model: 'gemini-3-flash-preview',
             contents: {
-                parts: [
-                    { text: prompt },
-                    contentPart
-                ],
+                parts: [{ text: prompt }, contentPart],
             },
             config: {
                 responseMimeType: 'application/json',
                 responseSchema: responseSchema,
-                // Adjust safety settings to be more permissive for medical analysis
-                // while still blocking harmful content
+                // Disable thinking to minimize latency and server load
+                thinkingConfig: { thinkingBudget: 0 },
                 safetySettings: [
                     { category: 'HARM_CATEGORY_HARASSMENT', threshold: 'BLOCK_ONLY_HIGH' },
                     { category: 'HARM_CATEGORY_HATE_SPEECH', threshold: 'BLOCK_ONLY_HIGH' },
                     { category: 'HARM_CATEGORY_SEXUALLY_EXPLICIT', threshold: 'BLOCK_ONLY_HIGH' },
-                    { category: 'HARM_CATEGORY_DANGEROUS_CONTENT', threshold: 'BLOCK_ONLY_HIGH' }
+                    { category: 'HARM_CATEGORY_DANGEROUS_CONTENT', threshold: 'BLOCK_ONLY_HIGH' },
+                    { category: 'HARM_CATEGORY_CIVIC_INTEGRITY', threshold: 'BLOCK_ONLY_HIGH' }
                 ]
             },
         }));
         
-        // Handle cases where safety filters might have triggered
         if (response.candidates?.[0]?.finishReason === 'SAFETY') {
-            throw new Error("The AI model blocked this document for safety reasons. This can happen with very graphic medical descriptions. Try a different photo or manual entry.");
+            throw new Error("AI flagged this report as sensitive. Try a different photo.");
         }
 
         const jsonText = response.text;
-        if (!jsonText) {
-            throw new Error("The AI server returned an empty analysis. Please try again.");
-        }
+        if (!jsonText) throw new Error("Empty analysis. Please retry.");
 
         const sanitizedJson = jsonText.replace(/^```json\s*/i, '').replace(/\s*```$/i, '');
         const parsedData = JSON.parse(sanitizedJson.trim());
 
-        // Normalization
         parsedData.date = parsedData.date || new Date().toISOString().split('T')[0];
         parsedData.patientName = parsedData.patientName || "Unknown";
-        parsedData.reportType = parsedData.reportType || "Clinical Record";
+        parsedData.reportType = parsedData.reportType || "Medical Record";
         
         return parsedData as ExtractedReportData;
 
     } catch (error: any) {
-        console.error("Gemini Extraction Error:", error);
-        if (error?.message?.includes("503") || error?.message?.includes("overloaded")) {
-            throw new Error("AI Medical servers are currently busy. We are retrying your analysis automatically...");
+        console.error("AI Sync Failure:", error);
+        if (error?.message?.includes("overloaded") || error?.message?.includes("503")) {
+            throw new Error("The AI network is congested. We are still attempting to reach the server...");
         }
         throw error;
     }
@@ -226,20 +192,15 @@ interface FamilyData {
 
 export const chatWithHealthAssistant = async (userMessage: string, history: any[], data: FamilyData): Promise<string> => {
     const client = getAIClient();
-
-    const contextSummary = `
-    MEMBERS: ${data.familyMembers.map(m => m.name).join(', ')}
-    MEDS: ${data.medications.filter(m => m.active).map(m => m.name).join(', ')}
-    `;
-
-    const systemPrompt = `You are "medHist Assistant". Help with family health history. Concise only. [VIEW:Title:ID] for links.
-    CONTEXT: ${contextSummary}`;
+    const contextSummary = `MEMBERS: ${data.familyMembers.map(m => m.name).join(', ')}. MEDS: ${data.medications.filter(m => m.active).map(m => m.name).join(', ')}`;
+    const systemPrompt = `You are "medHist Assistant". Concise health history support. Context: ${contextSummary}`;
 
     try {
         const chat = client.chats.create({
             model: 'gemini-3-flash-preview',
             config: {
                 systemInstruction: systemPrompt,
+                thinkingConfig: { thinkingBudget: 0 }
             },
             history: history
         });
@@ -247,7 +208,6 @@ export const chatWithHealthAssistant = async (userMessage: string, history: any[
         const result: GenerateContentResponse = await withRetry(() => chat.sendMessage({ message: userMessage }));
         return result.text || "I'm sorry, I couldn't generate a response.";
     } catch (error: any) {
-        console.error("Chat Error:", error);
-        return "The AI assistant is momentarily busy. Please try asking again in a few seconds.";
+        return "System busy. Please wait a moment.";
     }
 };
