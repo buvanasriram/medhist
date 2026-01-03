@@ -123,9 +123,29 @@ const extractTextFromPdf = async (base64Data: string, password?: string): Promis
     }
 };
 
+/**
+ * Scrubs string "null" values from an object recursively.
+ * AI models often return "null" instead of a literal null.
+ */
+const scrubNullStrings = (obj: any): any => {
+    if (Array.isArray(obj)) {
+        return obj.map(scrubNullStrings);
+    } else if (obj !== null && typeof obj === 'object') {
+        return Object.fromEntries(
+            Object.entries(obj).map(([k, v]) => {
+                if (typeof v === 'string' && v.trim().toLowerCase() === 'null') {
+                    return [k, null];
+                }
+                return [k, scrubNullStrings(v)];
+            })
+        );
+    }
+    return obj;
+};
+
 export const extractReportInfo = async (fileBase64: string, mimeType: string, password?: string): Promise<ExtractedReportData> => {
     const client = getAIClient();
-    const prompt = `Analyze medical report. Return JSON for: Date (YYYY-MM-DD), Patient Name, Title, Clinical Summary, Doctor, Facility, Follow-up, Medications.`;
+    const prompt = `Analyze medical report. Return JSON for: Date (YYYY-MM-DD), Patient Name, Title, Clinical Summary, Doctor, Facility, Follow-up, Medications. IMPORTANT: If a field is unknown, omit it or set to null, DO NOT use the string "null".`;
     
     try {
         let contentPart;
@@ -169,7 +189,10 @@ export const extractReportInfo = async (fileBase64: string, mimeType: string, pa
         if (!jsonText) throw new Error("Empty analysis. Please retry.");
 
         const sanitizedJson = jsonText.replace(/^```json\s*/i, '').replace(/\s*```$/i, '');
-        const parsedData = JSON.parse(sanitizedJson.trim());
+        const rawParsed = JSON.parse(sanitizedJson.trim());
+        
+        // Scrub the "null" string hallucinations
+        const parsedData = scrubNullStrings(rawParsed);
 
         parsedData.date = parsedData.date || new Date().toISOString().split('T')[0];
         parsedData.patientName = parsedData.patientName || "Unknown";

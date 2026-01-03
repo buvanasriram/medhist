@@ -50,6 +50,24 @@ let mockSession: Session | null = null;
 
 const STORAGE_BUCKET = 'medical-reports';
 
+/**
+ * Robust Date Sanitizer
+ * Ensures the value is a valid YYYY-MM-DD string or null.
+ * Specifically handles the string "null" which causes Postgres crashes.
+ */
+const sanitizeDate = (val: any): string | null => {
+    if (!val) return null;
+    const str = String(val).trim().toLowerCase();
+    if (str === "null" || str === "" || str === "undefined") return null;
+    
+    // Try to parse as date to verify validity
+    const d = new Date(val);
+    if (isNaN(d.getTime())) return null;
+    
+    // Ensure we only send the date part (YYYY-MM-DD)
+    return d.toISOString().split('T')[0];
+};
+
 // --- AUTH FUNCTIONS ---
 
 export const getSession = async (): Promise<Session | null> => {
@@ -301,7 +319,7 @@ export const addFamilyMember = async (details: { name: string; relationship: str
             family_id: profile.family_id,
             name: details.name,
             relationship: details.relationship,
-            dob: details.dob || null
+            dob: sanitizeDate(details.dob)
         });
 
     if (error) throw error;
@@ -314,7 +332,7 @@ export const updateFamilyMember = async (id: string, updates: { name: string; re
         .update({
             name: updates.name,
             relationship: updates.relationship,
-            dob: updates.dob || null
+            dob: sanitizeDate(updates.dob)
         })
         .eq('id', id);
     if (error) throw error;
@@ -331,7 +349,7 @@ export const addMedication = async (data: any) => {
             dosage: data.dosage,
             frequency: data.frequency,
             purpose: data.purpose,
-            start_date: data.start_date,
+            start_date: sanitizeDate(data.start_date),
             active: true
         });
     if (error) throw error;
@@ -365,30 +383,34 @@ const sanitizePath = (path: string): string => {
 export const addTimelineEntry = async (entryData: any, fileData: any, medications?: ExtractedMedication[]) => {
     if (isMock) return;
     
-    // Detailed verification
     const session = await getSession();
     if (!session) {
         throw new Error("Session expired or invalid. Please sign out and sign in again.");
     }
 
-    // Prepare payload without spreading to be safe
+    // CRITICAL: Sanitize dates. If 'date' is invalid, fallback to today.
+    // If 'follow_up_date' is invalid or "null", it MUST be literal null.
+    const cleanDate = sanitizeDate(entryData.date) || new Date().toISOString().split('T')[0];
+    const cleanFollowUp = sanitizeDate(entryData.follow_up_date);
+
     const insertPayload: any = {
         family_member_id: entryData.family_member_id,
         uploaded_by_user_id: session.user.id,
-        date: entryData.date,
-        report_type: entryData.report_type,
-        summary: entryData.summary,
-        doctor_name: entryData.doctor_name,
-        facility_name: entryData.facility_name,
-        patient_name: entryData.patient_name
+        date: cleanDate,
+        report_type: entryData.report_type || "Medical Record",
+        summary: entryData.summary || "",
+        doctor_name: entryData.doctor_name || null,
+        facility_name: entryData.facility_name || null,
+        patient_name: entryData.patient_name || null,
+        follow_up_date: cleanFollowUp // Explicitly null if invalid/missing
     };
 
-    // Only add follow_up_date if it exists in the incoming data
-    if (entryData.follow_up_date) {
-        insertPayload.follow_up_date = entryData.follow_up_date;
-    }
-
-    console.log("[medHist] Attempting DB Insert:", insertPayload);
+    console.log("[medHist] Defending Date Sync:", { 
+        originalDate: entryData.date, 
+        cleanDate, 
+        originalFollowUp: entryData.follow_up_date, 
+        cleanFollowUp 
+    });
 
     // 1. Insert Timeline Entry
     let { data: entry, error: entryError } = await supabase!
@@ -398,12 +420,12 @@ export const addTimelineEntry = async (entryData: any, fileData: any, medication
         .single();
 
     // FALLBACK: If column 'follow_up_date' doesn't exist, Supabase returns 400.
-    if (entryError && entryError.message?.includes('follow_up_date')) {
-        console.warn("[medHist] 'follow_up_date' column missing in DB. Retrying without it.");
-        delete insertPayload.follow_up_date;
+    if (entryError && (entryError.message?.includes('follow_up_date') || entryError.details?.includes('follow_up_date'))) {
+        console.warn("[medHist] Schema Mismatch: follow_up_date column missing. Retrying.");
+        const { follow_up_date, ...safePayload } = insertPayload;
         const retry = await supabase!
             .from('timeline_entries')
-            .insert(insertPayload)
+            .insert(safePayload)
             .select()
             .single();
         entry = retry.data;
@@ -412,9 +434,8 @@ export const addTimelineEntry = async (entryData: any, fileData: any, medication
 
     if (entryError || !entry) {
         const errorMsg = entryError?.message || "Unknown Database Error";
-        const errorDetails = entryError?.details || "";
         console.error("[medHist] DB Insert Failed:", entryError);
-        throw new Error(`Registry Insert Failed: ${errorMsg}. ${errorDetails}`);
+        throw new Error(`Registry Sync Error: ${errorMsg}`);
     }
 
     const { data: profile } = await supabase!.from('profiles').select('family_id').eq('id', session.user.id).single();
@@ -457,7 +478,7 @@ export const addTimelineEntry = async (entryData: any, fileData: any, medication
             dosage: m.dosage,
             frequency: m.frequency,
             purpose: m.purpose,
-            start_date: m.startDate,
+            start_date: sanitizeDate(m.startDate),
             active: true
         }));
         await supabase!.from('medications').insert(medsToInsert);
