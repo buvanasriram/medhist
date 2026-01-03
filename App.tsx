@@ -90,7 +90,6 @@ const App: React.FC = () => {
     mountedRef.current = true;
 
     const checkInitialSession = async () => {
-        // BLOCKS AUTO-LOGIN if the user intentionally logged out previously
         if (localStorage.getItem('medhist-explicit-logout') === 'true') {
             setIsLoadingAuth(false);
             return;
@@ -107,8 +106,10 @@ const App: React.FC = () => {
                 setSession(currentSession);
                 setCurrentUser(user);
             }
-        } catch (e) {
+        } catch (e: any) {
             console.error("[medHist] Boot Error:", e);
+            // On unrecoverable error, clear all local state to allow fresh login
+            clearLocalData();
         } finally {
             if (mountedRef.current) {
                 setIsLoadingAuth(false);
@@ -137,7 +138,6 @@ const App: React.FC = () => {
       }
 
       if (currentSession?.user) {
-        // Once we have a user, clear the explicit logout flag
         localStorage.removeItem('medhist-explicit-logout');
         
         const user = { 
@@ -258,7 +258,7 @@ const App: React.FC = () => {
         <div className="min-h-screen bg-slate-50 flex flex-col items-center justify-center p-6 text-center">
              <div className="bg-white p-10 rounded-[3rem] shadow-2xl max-w-sm w-full border border-slate-100">
                  <div className="bg-rose-50 w-20 h-20 rounded-3xl flex items-center justify-center mx-auto mb-8 text-3xl">📡</div>
-                 <h2 className="text-2xl font-black text-slate-900 mb-3 tracking-tight">Registry Offset</h2>
+                 <h2 className="text-2xl font-black text-slate-900 tracking-tight">Registry Offset</h2>
                  <p className="text-xs text-slate-500 mb-10 leading-relaxed font-bold">{dataLoadError}</p>
                  <div className="flex flex-col gap-4">
                      <button onClick={() => { syncLock.current = null; loadUserData(currentUser.id); }} className="w-full bg-slate-900 text-white font-black py-5 rounded-2xl shadow-xl active:scale-95 transition text-[11px] uppercase tracking-widest">Reconnect Registry</button>

@@ -51,18 +51,34 @@ const STORAGE_BUCKET = 'medical-reports';
 
 // --- AUTH FUNCTIONS ---
 
+/**
+ * Enhanced Get Session with Auth Recovery
+ * Detects stale refresh tokens and forces local purge to prevent Auth Loops.
+ */
 export const getSession = async (): Promise<Session | null> => {
-    // If we explicitly marked ourselves as logged out, don't even check the session
     if (localStorage.getItem('medhist-explicit-logout') === 'true') {
         return null;
     }
 
     if (isMock) return mockSession;
+    
     try {
         const { data, error } = await supabase!.auth.getSession();
-        if (error) return null;
+        
+        if (error) {
+            // If the refresh token is invalid/not found, the session is unrecoverable.
+            if (error.message?.includes("Refresh Token") || error.status === 400 || error.status === 401) {
+                console.warn("[medHist] Stale session detected. Forcing local purge.");
+                await signOut();
+                return null;
+            }
+            throw error;
+        }
+        
         return data.session;
     } catch (e) {
+        console.error("[medHist] Session Recovery Failed:", e);
+        // Fallback: if we can't even check the session, we shouldn't trust local state
         return null;
     }
 };
@@ -141,41 +157,34 @@ export const signIn = async (email: string, password: string): Promise<string|nu
 };
 
 /**
- * Total Session Annihilation
- * Clears LocalStorage, SessionStorage, and Cookies to prevent any auto-login.
+ * Resilient Sign Out
+ * Purges local state even if the server rejects the request (e.g. 403 Forbidden).
  */
 export const signOut = async (): Promise<void> => {
-    // Mark as explicitly logged out to block auto-login checks
     localStorage.setItem('medhist-explicit-logout', 'true');
 
     if (isMock) {
         mockSession = null;
-    } else {
+    } else if (supabase) {
         try {
-            // Attempt global server-side signout
-            await supabase!.auth.signOut({ scope: 'global' });
-        } catch (e) {
-            console.warn("Server-side signout failed, proceeding with local purge.");
+            // Attempt server-side signout. 
+            // We use a timeout to prevent hanging if the network is distressed.
+            const timeout = new Promise((_, reject) => setTimeout(() => reject(new Error("Timeout")), 2000));
+            await Promise.race([supabase.auth.signOut({ scope: 'global' }), timeout]);
+        } catch (e: any) {
+            // 403 is expected if the token is already invalid; we just proceed with local purge.
+            console.debug("[medHist] Server-side logout rejected (expected if session stale). Purging local state.");
         }
     }
 
-    // 1. Purge Local Storage
-    Object.keys(localStorage).forEach(key => {
-        if (key.startsWith('sb-') || key.startsWith('medhist-')) {
-            if (key !== 'medhist-explicit-logout') {
-                localStorage.removeItem(key);
-            }
-        }
+    // LOCAL PURGE - This is the most important part for fixing the login loop
+    const keysToPurge = Object.keys(localStorage).filter(k => k.startsWith('sb-') || k.startsWith('medhist-') && k !== 'medhist-explicit-logout');
+    keysToPurge.forEach(k => localStorage.removeItem(k));
+    
+    Object.keys(sessionStorage).forEach(k => {
+        if (k.startsWith('sb-') || k.startsWith('medhist-')) sessionStorage.removeItem(k);
     });
 
-    // 2. Purge Session Storage
-    Object.keys(sessionStorage).forEach(key => {
-        if (key.startsWith('sb-') || key.startsWith('medhist-')) {
-            sessionStorage.removeItem(key);
-        }
-    });
-
-    // 3. Purge Auth Cookies (Best Effort)
     const cookies = document.cookie.split(";");
     for (let i = 0; i < cookies.length; i++) {
         const cookie = cookies[i];
@@ -289,7 +298,7 @@ export const getUserData = async (userId: string) => {
 export const addFamilyMember = async (details: { name: string; relationship: string; dob: string; }) => {
     if (isMock) return;
     const session = await getSession();
-    if (!session) throw new Error("No session");
+    if (!session) throw new Error("Authentication Required: Please log in again.");
 
     const { data: profile } = await supabase!
         .from('profiles')
@@ -369,9 +378,10 @@ const sanitizePath = (path: string): string => {
 export const addTimelineEntry = async (entryData: any, fileData: any, medications?: ExtractedMedication[]) => {
     if (isMock) return;
     const session = await getSession();
-    if (!session) throw new Error("No session");
+    if (!session) throw new Error("Session expired. Please sign out and sign in again.");
 
-    const response = await supabase!
+    // 1. Insert Timeline Entry
+    const { data: entry, error: entryError } = await supabase!
         .from('timeline_entries')
         .insert({
             ...entryData,
@@ -380,20 +390,29 @@ export const addTimelineEntry = async (entryData: any, fileData: any, medication
         .select()
         .single();
 
-    if (response.error || !response.data) throw response.error || new Error("Failed to create timeline entry.");
-    const entry = response.data;
+    if (entryError || !entry) {
+        console.error("[medHist] DB Insert Error:", entryError);
+        throw new Error(entryError?.message || "Failed to create timeline entry. Your session may be invalid.");
+    }
 
     const { data: profile } = await supabase!.from('profiles').select('family_id').eq('id', session.user.id).single();
     const familyId = profile?.family_id || entry.family_member_id;
     const filePath = `${familyId}/${entry.id}/${fileData.name}`;
     
     const fileBlob = base64ToBlob(fileData.data, fileData.type);
+    
+    // 2. Upload to Storage
     const { error: uploadError } = await supabase!.storage
         .from(STORAGE_BUCKET)
         .upload(filePath, fileBlob, { contentType: fileData.type, upsert: true });
 
-    if (uploadError) throw uploadError;
+    if (uploadError) {
+        // Cleanup the record if upload fails
+        await supabase!.from('timeline_entries').delete().eq('id', entry.id);
+        throw new Error("File upload failed: " + uploadError.message);
+    }
 
+    // 3. Link File in DB
     const { error: fileError } = await supabase!
         .from('files')
         .insert({
@@ -406,6 +425,7 @@ export const addTimelineEntry = async (entryData: any, fileData: any, medication
 
     if (fileError) throw fileError;
 
+    // 4. Handle Medications
     if (medications && medications.length > 0) {
         const medsToInsert = medications.map(m => ({
             family_member_id: entry.family_member_id,
