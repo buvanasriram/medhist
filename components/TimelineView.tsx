@@ -80,11 +80,18 @@ export const TimelineView: React.FC<TimelineViewProps> = ({
       await supabaseService.addTimelineEntry(newEntryData, fileData, extractedData.medications);
       onRefreshData();
       setUploadModalOpen(false);
-    } catch (err) {
+    } catch (err: any) {
       console.error("[medHist] Upload failed:", err);
-      // Display the specific error message to help diagnose the "Object" issue
-      const msg = err instanceof Error ? err.message : JSON.stringify(err);
-      setError(msg || "Upload failed due to a server error.");
+      // Detailed error formatting
+      let errorMsg = "Registry Sync Failed.";
+      if (err instanceof Error) {
+        errorMsg = err.message;
+      } else if (typeof err === 'object' && err !== null) {
+        errorMsg = err.message || JSON.stringify(err);
+      } else if (typeof err === 'string') {
+        errorMsg = err;
+      }
+      setError(errorMsg);
     } finally {
       setIsLoading(false);
     }

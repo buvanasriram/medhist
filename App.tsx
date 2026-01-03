@@ -108,8 +108,9 @@ const App: React.FC = () => {
             }
         } catch (e: any) {
             console.error("[medHist] Boot Error:", e);
-            // On unrecoverable error, clear all local state to allow fresh login
+            // Critical: If auth is broken on boot, force local purge to avoid infinite "Securing Vault"
             clearLocalData();
+            await supabaseService.signOut();
         } finally {
             if (mountedRef.current) {
                 setIsLoadingAuth(false);

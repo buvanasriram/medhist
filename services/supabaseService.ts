@@ -52,7 +52,7 @@ const STORAGE_BUCKET = 'medical-reports';
 
 /**
  * Robust Date Sanitizer
- * Ensures the value is a valid YYYY-MM-DD string or null.
+ * Ensures the value is a valid YYYY-MM-DD string or literal null.
  * Specifically handles the string "null" which causes Postgres crashes.
  */
 const sanitizeDate = (val: any): string | null => {
@@ -388,8 +388,8 @@ export const addTimelineEntry = async (entryData: any, fileData: any, medication
         throw new Error("Session expired or invalid. Please sign out and sign in again.");
     }
 
-    // CRITICAL: Sanitize dates. If 'date' is invalid, fallback to today.
-    // If 'follow_up_date' is invalid or "null", it MUST be literal null.
+    // CRITICAL: Robust sanitization for date and follow_up_date.
+    // Specifically converts string "null" to literal null.
     const cleanDate = sanitizeDate(entryData.date) || new Date().toISOString().split('T')[0];
     const cleanFollowUp = sanitizeDate(entryData.follow_up_date);
 
@@ -402,15 +402,10 @@ export const addTimelineEntry = async (entryData: any, fileData: any, medication
         doctor_name: entryData.doctor_name || null,
         facility_name: entryData.facility_name || null,
         patient_name: entryData.patient_name || null,
-        follow_up_date: cleanFollowUp // Explicitly null if invalid/missing
+        follow_up_date: cleanFollowUp 
     };
 
-    console.log("[medHist] Defending Date Sync:", { 
-        originalDate: entryData.date, 
-        cleanDate, 
-        originalFollowUp: entryData.follow_up_date, 
-        cleanFollowUp 
-    });
+    console.log("[medHist] DB Payload Prepared:", insertPayload);
 
     // 1. Insert Timeline Entry
     let { data: entry, error: entryError } = await supabase!
@@ -421,7 +416,7 @@ export const addTimelineEntry = async (entryData: any, fileData: any, medication
 
     // FALLBACK: If column 'follow_up_date' doesn't exist, Supabase returns 400.
     if (entryError && (entryError.message?.includes('follow_up_date') || entryError.details?.includes('follow_up_date'))) {
-        console.warn("[medHist] Schema Mismatch: follow_up_date column missing. Retrying.");
+        console.warn("[medHist] 'follow_up_date' column missing. Retrying without it.");
         const { follow_up_date, ...safePayload } = insertPayload;
         const retry = await supabase!
             .from('timeline_entries')
@@ -434,8 +429,9 @@ export const addTimelineEntry = async (entryData: any, fileData: any, medication
 
     if (entryError || !entry) {
         const errorMsg = entryError?.message || "Unknown Database Error";
+        const errorDetails = entryError?.details || "";
         console.error("[medHist] DB Insert Failed:", entryError);
-        throw new Error(`Registry Sync Error: ${errorMsg}`);
+        throw new Error(`Registry Sync Error: ${errorMsg}. ${errorDetails}`);
     }
 
     const { data: profile } = await supabase!.from('profiles').select('family_id').eq('id', session.user.id).single();
