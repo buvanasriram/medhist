@@ -29,7 +29,7 @@ const App: React.FC = () => {
   const [isSyncingData, setIsSyncingData] = useState<boolean>(false);
   const [dataLoadError, setDataLoadError] = useState<string | null>(null);
   
-  // UI State - Hydrate from history if possible
+  // UI State
   const [viewMode, setViewMode] = useState<'dashboard' | 'timeline' | 'guide'>(
       (window.history.state && window.history.state.view) || 'dashboard'
   );
@@ -58,10 +58,8 @@ const App: React.FC = () => {
     setCurrentUser(null);
   }, []);
 
-  // PRIMARY DATA LOADER
   const loadUserData = useCallback(async (userId: string) => {
       if (!mountedRef.current) return;
-      
       if (syncLock.current === userId) return;
       
       syncLock.current = userId;
@@ -69,9 +67,7 @@ const App: React.FC = () => {
       setDataLoadError(null);
       
       try {
-          console.debug(`[medHist] Registry Sync: ${userId}`);
           const data = await supabaseService.getUserData(userId);
-          
           if (mountedRef.current && syncLock.current === userId) {
               setFamilyMembers(data.familyMembers || []);
               setTimelineEntries(data.timelineEntries || []);
@@ -90,11 +86,16 @@ const App: React.FC = () => {
       }
   }, []);
 
-  // EFFECT 1: AUTHENTICATION LIFECYCLE
   useEffect(() => {
     mountedRef.current = true;
 
     const checkInitialSession = async () => {
+        // BLOCKS AUTO-LOGIN if the user intentionally logged out previously
+        if (localStorage.getItem('medhist-explicit-logout') === 'true') {
+            setIsLoadingAuth(false);
+            return;
+        }
+
         try {
             const currentSession = await supabaseService.getSession();
             if (currentSession?.user && mountedRef.current) {
@@ -117,11 +118,8 @@ const App: React.FC = () => {
 
     checkInitialSession();
 
-    // Cross-tab logout listener
     const handleStorageChange = (e: StorageEvent) => {
-        // If a Supabase auth key is removed from another tab, trigger logout here
-        if (e.key && e.key.startsWith('sb-') && !e.newValue) {
-            console.log("[medHist] Logout detected in another tab. Resetting...");
+        if ((e.key && e.key.startsWith('sb-') && !e.newValue) || e.key === 'medhist-explicit-logout') {
             clearLocalData();
             setRoute('/login');
         }
@@ -131,8 +129,6 @@ const App: React.FC = () => {
     const { data: { subscription } } = supabaseService.onAuthStateChange(async (event, currentSession) => {
       if (!mountedRef.current) return;
       
-      console.debug(`[medHist] Auth Event: ${event}`);
-
       if (event === 'SIGNED_OUT') {
           clearLocalData();
           setRoute('/login');
@@ -141,6 +137,9 @@ const App: React.FC = () => {
       }
 
       if (currentSession?.user) {
+        // Once we have a user, clear the explicit logout flag
+        localStorage.removeItem('medhist-explicit-logout');
+        
         const user = { 
           id: currentSession.user.id, 
           name: currentSession.user.user_metadata?.full_name || currentSession.user.email, 
@@ -150,7 +149,7 @@ const App: React.FC = () => {
         setSession(currentSession);
         setCurrentUser(user);
         
-        if (event === 'PASSWORD_REFRESHED' || event === 'SIGNED_IN') {
+        if (event === 'SIGNED_IN' || event === 'PASSWORD_REFRESHED') {
             setIsLoadingAuth(false);
             setRoute('/');
         }
@@ -158,11 +157,6 @@ const App: React.FC = () => {
         if (event === 'PASSWORD_RECOVERY') {
             setIsRecoveryMode(true);
         }
-      } else if (!currentSession && event !== 'INITIAL_SESSION') {
-          // If session is lost unexpectedly
-          clearLocalData();
-          setRoute('/login');
-          setIsLoadingAuth(false);
       }
     });
 
@@ -173,46 +167,18 @@ const App: React.FC = () => {
     };
   }, [clearLocalData]);
 
-  // EFFECT 2: DATA SYNC TRIGGER
   useEffect(() => {
       if (currentUser?.id) {
           loadUserData(currentUser.id);
       }
   }, [currentUser?.id, loadUserData]);
 
-  // EFFECT 3: BROWSER HISTORY SYNC
-  useEffect(() => {
-      const handlePopState = (e: PopStateEvent) => {
-          if (!mountedRef.current) return;
-          
-          const state = e.state;
-          if (state && state.view) {
-              setViewMode(state.view);
-              if (state.memberId) setSelectedMemberId(state.memberId);
-          } else if (state && state.modalOpen) {
-              return;
-          } else if (!state) {
-              setViewMode('dashboard');
-              setShowPublicGuide(false);
-          }
-      };
-      
-      window.addEventListener('popstate', handlePopState);
-      return () => window.removeEventListener('popstate', handlePopState);
-  }, []);
-
   const handleLogout = async () => {
     setIsLoadingAuth(true);
-    try {
-        await supabaseService.signOut();
-        // The onAuthStateChange SIGNED_OUT event will handle the rest
-    } catch (e) {
-        console.warn("Signout session aborted:", e);
-        // Fallback for failed signout calls
-        clearLocalData();
-        setRoute('/login');
-        setIsLoadingAuth(false);
-    }
+    await supabaseService.signOut();
+    clearLocalData();
+    setRoute('/login');
+    setIsLoadingAuth(false);
   };
 
   const handleLogin = async (email: string, password: string): Promise<string|null> => {
@@ -304,9 +270,7 @@ const App: React.FC = () => {
   }
 
   if (isRecoveryMode) return <UpdatePasswordPage onSuccess={() => { setIsRecoveryMode(false); setRoute('/'); }} />;
-
   if (viewMode === 'guide') return <GuideView user={currentUser} onBack={handleBackToDashboard} onLogout={handleLogout} />;
-
   if (viewMode === 'timeline') {
       return (
           <TimelineView 

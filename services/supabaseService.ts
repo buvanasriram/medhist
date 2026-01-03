@@ -31,7 +31,6 @@ try {
     if (supabaseUrl && supabaseAnonKey && supabaseUrl !== 'your_supabase_url_here') {
         supabaseClient = createClient(supabaseUrl, supabaseAnonKey);
         isMockMode = false;
-        console.log("[medHist] Supabase Client Initialized");
     } else {
         isMockMode = true;
     }
@@ -53,6 +52,11 @@ const STORAGE_BUCKET = 'medical-reports';
 // --- AUTH FUNCTIONS ---
 
 export const getSession = async (): Promise<Session | null> => {
+    // If we explicitly marked ourselves as logged out, don't even check the session
+    if (localStorage.getItem('medhist-explicit-logout') === 'true') {
+        return null;
+    }
+
     if (isMock) return mockSession;
     try {
         const { data, error } = await supabase!.auth.getSession();
@@ -70,6 +74,7 @@ export const onAuthStateChange = (callback: (event: string, session: Session | n
 
 export const signUp = async (name: string, email: string, password: string, familyInput: { isJoin: boolean, value: string }): Promise<string|null> => {
     if (isMock) {
+        localStorage.removeItem('medhist-explicit-logout');
         mockSession = { user: { id: MOCK_USER_ID, email, user_metadata: { full_name: name } } } as any;
         return null;
     }
@@ -114,6 +119,7 @@ export const signUp = async (name: string, email: string, password: string, fami
             linked_user_id: user.id 
         });
 
+        localStorage.removeItem('medhist-explicit-logout');
         return null;
     } catch (err: any) {
         await signOut();
@@ -123,40 +129,60 @@ export const signUp = async (name: string, email: string, password: string, fami
 
 export const signIn = async (email: string, password: string): Promise<string|null> => {
     if (isMock) {
+        localStorage.removeItem('medhist-explicit-logout');
         mockSession = { user: { id: MOCK_USER_ID, email, user_metadata: { full_name: 'Demo User' } } } as any;
         return null;
     }
     const { error } = await supabase!.auth.signInWithPassword({ email, password });
+    if (!error) {
+        localStorage.removeItem('medhist-explicit-logout');
+    }
     return error ? error.message : null;
 };
 
 /**
- * Aggressive Global Sign Out
- * Ensures tokens are invalidated on the server AND cleared from local storage.
+ * Total Session Annihilation
+ * Clears LocalStorage, SessionStorage, and Cookies to prevent any auto-login.
  */
 export const signOut = async (): Promise<void> => {
+    // Mark as explicitly logged out to block auto-login checks
+    localStorage.setItem('medhist-explicit-logout', 'true');
+
     if (isMock) {
         mockSession = null;
-        localStorage.removeItem('medhist-mock-session');
     } else {
         try {
-            // Scope: global ensures all sessions for this user are invalidated on the server
+            // Attempt global server-side signout
             await supabase!.auth.signOut({ scope: 'global' });
-            
-            // Explicitly clear any Supabase related keys as a fail-safe
-            Object.keys(localStorage).forEach(key => {
-                if (key.startsWith('sb-')) {
-                    localStorage.removeItem(key);
-                }
-            });
         } catch (e) {
-            console.error("SignOut error", e);
-            // Fallback: forcefully clear storage anyway
-            Object.keys(localStorage).forEach(key => {
-                if (key.startsWith('sb-')) {
-                    localStorage.removeItem(key);
-                }
-            });
+            console.warn("Server-side signout failed, proceeding with local purge.");
+        }
+    }
+
+    // 1. Purge Local Storage
+    Object.keys(localStorage).forEach(key => {
+        if (key.startsWith('sb-') || key.startsWith('medhist-')) {
+            if (key !== 'medhist-explicit-logout') {
+                localStorage.removeItem(key);
+            }
+        }
+    });
+
+    // 2. Purge Session Storage
+    Object.keys(sessionStorage).forEach(key => {
+        if (key.startsWith('sb-') || key.startsWith('medhist-')) {
+            sessionStorage.removeItem(key);
+        }
+    });
+
+    // 3. Purge Auth Cookies (Best Effort)
+    const cookies = document.cookie.split(";");
+    for (let i = 0; i < cookies.length; i++) {
+        const cookie = cookies[i];
+        const eqPos = cookie.indexOf("=");
+        const name = eqPos > -1 ? cookie.substr(0, eqPos).trim() : cookie.trim();
+        if (name.startsWith('sb-') || name.startsWith('medhist-')) {
+            document.cookie = `${name}=; expires=Thu, 01 Jan 1970 00:00:00 UTC; path=/;`;
         }
     }
 };
@@ -192,7 +218,6 @@ export const getUserData = async (userId: string) => {
     let retries = 0;
     const MAX_RETRIES = 5; 
     
-    // Quick polling for profile existence (essential after signup)
     while (!profile && retries < MAX_RETRIES) {
         const { data, error } = await supabase!
             .from('profiles')
@@ -214,7 +239,6 @@ export const getUserData = async (userId: string) => {
 
     const familyId = profile.family_id;
 
-    // Fetch core data in parallel
     const [familyInfoRes, membersRes] = await Promise.all([
         supabase!.from('families').select('name, join_code').eq('id', familyId).single(),
         supabase!.from('family_members').select('*').eq('family_id', familyId)
@@ -234,7 +258,6 @@ export const getUserData = async (userId: string) => {
 
     const memberIds = familyMembers.map(m => m.id);
 
-    // Fetch medical records in parallel
     const [timelineRes, medsRes] = await Promise.all([
         supabase!
             .from('timeline_entries')
@@ -330,31 +353,16 @@ export const stopMedication = async (id: string) => {
     if (error) throw error;
 };
 
-/**
- * Robust path cleaner for Supabase Storage.
- */
 const sanitizePath = (path: string): string => {
     if (!path) return '';
     let clean = path.trim();
-    
-    try { clean = decodeURIComponent(clean); } catch (e) { /* ignore */ }
-    
-    const bucketPrefixes = [
-        `${STORAGE_BUCKET}/`, 
-        `/${STORAGE_BUCKET}/`, 
-        'reports/', 
-        '/reports/', 
-        'medical_reports/', 
-        '/medical_reports/',
-        'medical-reports/',
-        '/medical-reports/'
-    ];
+    try { clean = decodeURIComponent(clean); } catch (e) { }
+    const bucketPrefixes = [`${STORAGE_BUCKET}/`, `/${STORAGE_BUCKET}/`, 'reports/', '/reports/'];
     for (const prefix of bucketPrefixes) {
         if (clean.toLowerCase().startsWith(prefix.toLowerCase())) {
             clean = clean.substring(prefix.length);
         }
     }
-    
     return clean.replace(/^\/+/, '');
 };
 
@@ -447,14 +455,7 @@ export const getFileForEntry = async (entryId: string) => {
     if (!dbPath) return null;
 
     const cleanPath = sanitizePath(dbPath);
-
-    // Multi-stage path hunting to handle various encoding scenarios
-    const pathsToTry = [
-        dbPath,                                        // 1. Exact DB path
-        cleanPath,                                     // 2. Sanity-cleaned path
-        dbPath.replace(/ /g, '%20'),                   // 3. Simple space encoding
-        encodeURIComponent(dbPath).replace(/%2F/g, '/') // 4. Segment-wise encoding
-    ];
+    const pathsToTry = [dbPath, cleanPath];
 
     let finalResult = null;
     for (const p of pathsToTry) {
@@ -466,10 +467,7 @@ export const getFileForEntry = async (entryId: string) => {
         }
     }
 
-    if (!finalResult) {
-        console.error(`[Supabase] Storage Error for ID ${entryId}: Not found in '${STORAGE_BUCKET}' at:`, pathsToTry);
-        return null;
-    }
+    if (!finalResult) return null;
 
     return {
         signedUrl: finalResult.signedUrl,
@@ -487,11 +485,7 @@ export const downloadFile = async (path: string): Promise<Blob | null> => {
     if (isMock) return null;
     const cleanPath = sanitizePath(path);
     const { data, error } = await supabase!.storage.from(STORAGE_BUCKET).download(cleanPath);
-    if (error) {
-        const { data: fallbackData } = await supabase!.storage.from(STORAGE_BUCKET).download(path);
-        return fallbackData || null;
-    }
-    return data;
+    return data || null;
 };
 
 export const ignoreMismatch = async (entryId: string) => {
