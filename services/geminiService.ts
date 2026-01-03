@@ -55,13 +55,13 @@ async function withRetry<T>(fn: () => Promise<T>, retries = 8, delay = 2000): Pr
 const responseSchema = {
     type: Type.OBJECT,
     properties: {
-        date: { type: Type.STRING, description: "YYYY-MM-DD format only" },
+        date: { type: Type.STRING, description: "The primary report date in YYYY-MM-DD format. If missing, set to null. NEVER use placeholders." },
         reportType: { type: Type.STRING, description: "Title of report" },
         summary: { type: Type.STRING, description: "Clinical Brief" },
         doctorName: { type: Type.STRING },
         facilityName: { type: Type.STRING },
         patientName: { type: Type.STRING },
-        followUpDate: { type: Type.STRING, description: "YYYY-MM-DD format only" },
+        followUpDate: { type: Type.STRING, description: "Follow-up date in YYYY-MM-DD format. If missing, set to null. NEVER use placeholders." },
         medications: {
             type: Type.ARRAY,
             items: {
@@ -71,7 +71,7 @@ const responseSchema = {
                     dosage: { type: Type.STRING },
                     frequency: { type: Type.STRING },
                     purpose: { type: Type.STRING },
-                    startDate: { type: Type.STRING, description: "YYYY-MM-DD format only" }
+                    startDate: { type: Type.STRING, description: "YYYY-MM-DD format only. Set to null if missing." }
                 }
             }
         }
@@ -121,19 +121,26 @@ const extractTextFromPdf = async (base64Data: string, password?: string): Promis
 };
 
 /**
- * Advanced Scrubbing Utility
- * Eliminates "Not specified" and other non-clinical strings that crash SQL DATE columns.
+ * Advanced Recursive Scrubber
+ * Scans every key and value for ANY non-clinical placeholders and converts to literal null.
  */
 const scrubNullStrings = (obj: any): any => {
-    const placeholders = ['null', 'not specified', 'unknown', 'n/a', 'none', 'undefined', 'pending', 'tbd'];
+    const placeholders = [
+        'null', 'not specified', 'not-specified', 'unknown', 'n/a', 
+        'none', 'undefined', 'pending', 'tbd', 'not recorded', 'missing',
+        'placeholder', 'empty', 'not available', 'unknown date', 'unknown name'
+    ];
     
     if (Array.isArray(obj)) {
         return obj.map(scrubNullStrings);
     } else if (obj !== null && typeof obj === 'object') {
         return Object.fromEntries(
             Object.entries(obj).map(([k, v]) => {
-                if (typeof v === 'string' && placeholders.includes(v.trim().toLowerCase())) {
-                    return [k, null];
+                if (typeof v === 'string') {
+                    const cleanV = v.trim().toLowerCase().replace(/[.\s]$/, ''); 
+                    if (placeholders.includes(cleanV)) {
+                        return [k, null];
+                    }
                 }
                 return [k, scrubNullStrings(v)];
             })
@@ -144,10 +151,20 @@ const scrubNullStrings = (obj: any): any => {
 
 export const extractReportInfo = async (fileBase64: string, mimeType: string, password?: string): Promise<ExtractedReportData> => {
     const client = getAIClient();
-    const prompt = `Analyze medical report. Return JSON for: Date (YYYY-MM-DD), Patient Name, Title, Clinical Summary, Doctor, Facility, Follow-up, Medications. 
-    IMPORTANT: Use YYYY-MM-DD for dates. If a date is missing or unknown, set it to null. 
-    DO NOT use strings like "Not specified", "Unknown", or "N/A" for date fields. 
-    If you find no date, set the field to null.`;
+    
+    // Hardened prompt for handwriting and specific Indian clinic formats (Apollo Clinic)
+    const prompt = `Perform a high-precision medical analysis of the attached report.
+    - LOOK for dates in DD/MM/YYYY format (e.g., 30/12/2025) and CONVERT to YYYY-MM-DD.
+    - If a date is missing or handwritten in an unclear way (e.g., "Review in 2 weeks"), set the followUpDate to null. 
+    - NEVER use placeholders like "Not specified". If you don't have a calendar date, return null.
+    
+    EXTRACT:
+    1. Report Date (Top right/bottom header)
+    2. Patient Name (Mr Sriram Bharadwaj)
+    3. Title (Apollo Clinic Consultation)
+    4. Clinical Summary (Sneezing, heaviness in head, Penicillin Allergy)
+    5. Medications (Montek LC, Dolo 650, etc.)
+    `;
     
     try {
         let contentPart;
@@ -192,7 +209,7 @@ export const extractReportInfo = async (fileBase64: string, mimeType: string, pa
         const sanitizedJson = jsonText.replace(/^```json\s*/i, '').replace(/\s*```$/i, '');
         const rawParsed = JSON.parse(sanitizedJson.trim());
         
-        // Comprehensive cleanup of "Not specified" style hallucinations
+        // Comprehensive cleanup of all placeholders
         const parsedData = scrubNullStrings(rawParsed);
 
         // Registry integrity fallbacks

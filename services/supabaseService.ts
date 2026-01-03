@@ -51,23 +51,53 @@ let mockSession: Session | null = null;
 const STORAGE_BUCKET = 'medical-reports';
 
 /**
- * Enhanced Date Sanitizer
- * Intercepts AI placeholders that cause Postgres DATE type crashes.
+ * Strict Clinical Date Sanitizer (Whitelist Approach)
+ * Ensures only valid YYYY-MM-DD strings or literal null are returned.
+ * Rejects common AI hallucinations like "Not specified", "Unknown", etc.
  */
 const sanitizeDate = (val: any): string | null => {
     if (!val) return null;
-    const str = String(val).trim().toLowerCase();
     
-    // Proactively block strings that Postgres cannot cast to DATE
-    const blacklisted = ["null", "undefined", "not specified", "unknown", "n/a", "none", "tbd", "pending"];
-    if (blacklisted.includes(str) || str === "") return null;
-    
-    // Try to parse as date to verify validity
-    const d = new Date(val);
-    if (isNaN(d.getTime())) return null;
-    
-    // Ensure we only send the date part (YYYY-MM-DD)
-    return d.toISOString().split('T')[0];
+    // 1. Force to string and clean
+    const str = String(val).trim();
+    if (!str || str.toLowerCase() === 'null' || str.toLowerCase() === 'undefined') return null;
+
+    // 2. Immediate rejection of non-date words (AI Placeholders)
+    const placeholders = ["not specified", "unknown", "n/a", "none", "tbd", "pending", "not recorded"];
+    if (placeholders.some(p => str.toLowerCase().includes(p))) {
+        return null;
+    }
+
+    // 3. Regex check for ISO YYYY-MM-DD
+    const isoRegex = /^\d{4}-\d{2}-\d{2}$/;
+    if (isoRegex.test(str)) {
+        const d = new Date(str);
+        return isNaN(d.getTime()) ? null : str;
+    }
+
+    // 4. Fallback: Try to parse messy dates (like 30/12/2025)
+    try {
+        // Handle common Indian/EU format: DD/MM/YYYY
+        if (str.includes('/')) {
+            const parts = str.split('/');
+            if (parts.length === 3) {
+                const day = parseInt(parts[0]);
+                const month = parseInt(parts[1]);
+                const year = parseInt(parts[2]);
+                // Swap to YYYY-MM-DD
+                if (!isNaN(day) && !isNaN(month) && !isNaN(year)) {
+                    const d = new Date(year, month - 1, day);
+                    if (!isNaN(d.getTime())) return d.toISOString().split('T')[0];
+                }
+            }
+        }
+
+        const d = new Date(str);
+        if (isNaN(d.getTime())) return null;
+        return d.toISOString().split('T')[0];
+    } catch {
+        return null;
+    }
 };
 
 // --- AUTH FUNCTIONS ---
@@ -390,8 +420,9 @@ export const addTimelineEntry = async (entryData: any, fileData: any, medication
         throw new Error("Session expired or invalid. Please sign out and sign in again.");
     }
 
-    // CRITICAL: Final sanitization. 
-    // If sanitizeDate returns null, we use TODAY's date for the primary 'date' field because it is NOT NULL.
+    // FINAL STAGE DEFENSE
+    // Even if AI returns "Not specified", sanitizeDate will return null.
+    // 'date' is NOT NULL in DB, so we must have a valid fallback.
     const cleanDate = sanitizeDate(entryData.date) || new Date().toISOString().split('T')[0];
     const cleanFollowUp = sanitizeDate(entryData.follow_up_date);
 
@@ -407,7 +438,7 @@ export const addTimelineEntry = async (entryData: any, fileData: any, medication
         follow_up_date: cleanFollowUp 
     };
 
-    console.log("[medHist] Defensive DB Sync:", insertPayload);
+    console.log("[medHist] Strict DB Sync Payload:", insertPayload);
 
     // 1. Insert Timeline Entry
     let { data: entry, error: entryError } = await supabase!
@@ -453,7 +484,7 @@ export const addTimelineEntry = async (entryData: any, fileData: any, medication
         console.error("[medHist] File Link Failed:", fileError);
     }
 
-    // 4. Handle Medications
+    // 4. Handle Medications with the same strict date sanitization
     if (medications && medications.length > 0) {
         const medsToInsert = medications.map(m => ({
             family_member_id: entry!.family_member_id,
