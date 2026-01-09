@@ -1,5 +1,5 @@
 
-import React, { useState, useRef, useEffect } from 'react';
+import { useState, useRef, useEffect } from 'react';
 import { ChatIcon } from './icons/ChatIcon';
 import { CloseIcon } from './icons/CloseIcon';
 import { SendIcon } from './icons/SendIcon';
@@ -14,6 +14,7 @@ interface HealthAssistantProps {
   timelineEntries: TimelineEntry[];
   medications: Medication[];
   userName: string;
+  userId: string;
   onViewReport: (entry: TimelineEntry) => void;
 }
 
@@ -22,7 +23,7 @@ interface Message {
   text: string;
 }
 
-export const HealthAssistant: React.FC<HealthAssistantProps> = ({ familyMembers, timelineEntries, medications, userName, onViewReport }) => {
+export const HealthAssistant: React.FC<HealthAssistantProps> = ({ familyMembers, timelineEntries, medications, userName, userId, onViewReport }) => {
   const [isOpen, setIsOpen] = useState(false);
   const [messages, setMessages] = useState<Message[]>([
     { role: 'model', text: `Hi ${userName}! I can help you find reports or check meds. How can I help?` }
@@ -54,7 +55,7 @@ export const HealthAssistant: React.FC<HealthAssistantProps> = ({ familyMembers,
         parts: [{ text: m.text }]
       }));
 
-      const response = await chatWithHealthAssistant(userMessage, history, { familyMembers, timelineEntries, medications });
+      const response = await chatWithHealthAssistant(userMessage, history, { familyMembers, timelineEntries, medications }, userId);
       
       setMessages(prev => [...prev, { role: 'model', text: response }]);
     } catch (error: any) {
@@ -68,33 +69,57 @@ export const HealthAssistant: React.FC<HealthAssistantProps> = ({ familyMembers,
     }
   };
 
-  const handleLinkClick = (id: string) => {
-      const entry = timelineEntries.find(e => e.id === id);
+  const handleLinkClick = (rawId: string) => {
+      // 1. Aggressive cleaning of the ID provided by the AI
+      const cleanId = rawId
+          .replace(/DATABASE_ID:|REF_ID:|ID:|\[|\]/gi, '')
+          .trim();
+
+      console.debug("[medHist] Click Link. Raw:", rawId, "Clean:", cleanId);
+
+      // 2. Exact Match Check (Standard)
+      let entry = timelineEntries.find(e => e.id === cleanId);
+      
+      // 3. Robust Fuzzy Fallback (Handles AI truncation or case-mismatches)
+      if (!entry && cleanId.length > 5) {
+          entry = timelineEntries.find(e => 
+            e.id.toLowerCase().includes(cleanId.toLowerCase()) || 
+            cleanId.toLowerCase().includes(e.id.toLowerCase())
+          );
+      }
+      
       if (entry) {
           onViewReport(entry);
       } else {
-          alert("Could not find the report. It might have been deleted.");
+          console.warn("[medHist] Link match failed for:", cleanId);
+          alert("I found the record, but the secure link has changed. You can open it manually from the timeline.");
       }
   };
 
   const renderMessageText = (text: string) => {
-    const parts = text.split(/(\[VIEW:.*?:.*?\])/g);
+    // Splits text into parts, isolating the [VIEW:Label:ID] blocks
+    const parts = text.split(/(\[VIEW:[^\]]*?:[^\]]*?\])/g);
+    
     return parts.map((part, index) => {
+        // match[1] = Label, match[2] = ID
         const match = part.match(/\[VIEW:(.*?):(.*?)(?:\|.*?)?\]/); 
         if (match) {
-            const title = match[1];
-            const id = match[2];
+            const title = match[1].trim();
+            const id = match[2].trim();
             return (
                 <button
                     key={index}
-                    onClick={() => handleLinkClick(id)}
-                    className="inline-flex items-center gap-1 mx-1 px-2 py-0.5 bg-white text-rose-700 border border-rose-200 rounded text-xs font-semibold hover:bg-rose-50 transition shadow-sm pointer-events-auto"
+                    onClick={(e) => {
+                        e.stopPropagation();
+                        handleLinkClick(id);
+                    }}
+                    className="inline-flex items-center gap-1.5 mx-1 px-3 py-1.5 bg-white text-rose-700 border-2 border-rose-100 rounded-xl text-[10px] font-black uppercase tracking-widest hover:bg-rose-700 hover:text-white hover:border-rose-700 transition-all shadow-sm pointer-events-auto active:scale-95 mb-1"
                 >
-                    View {title} <ArrowRightIcon className="w-3 h-3" />
+                    View {title} <ArrowRightIcon className="w-3.5 h-3.5" />
                 </button>
             );
         }
-        return part;
+        return <span key={index}>{part}</span>;
     });
   };
 
@@ -120,7 +145,7 @@ export const HealthAssistant: React.FC<HealthAssistantProps> = ({ familyMembers,
           <div className="flex-grow overflow-y-auto p-4 space-y-4 bg-slate-50">
             {messages.map((msg, idx) => (
               <div key={idx} className={`flex ${msg.role === 'user' ? 'justify-end' : 'justify-start'}`}>
-                <div className={`max-w-[85%] rounded-2xl px-3 py-2 text-sm shadow-sm text-left ${
+                <div className={`max-w-[85%] rounded-2xl px-3 py-2 text-sm shadow-sm text-left pointer-events-auto ${
                   msg.role === 'user' 
                     ? 'bg-rose-700 text-white rounded-br-none' 
                     : 'bg-white text-slate-700 border border-slate-200 rounded-bl-none'

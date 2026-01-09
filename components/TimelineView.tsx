@@ -296,7 +296,14 @@ export const TimelineView: React.FC<TimelineViewProps> = ({
         />
       </main>
       
-      <HealthAssistant familyMembers={familyMembers} timelineEntries={timelineEntries} medications={medications} userName={user.name} onViewReport={handleViewReport} />
+      <HealthAssistant 
+        familyMembers={familyMembers} 
+        timelineEntries={timelineEntries} 
+        medications={medications} 
+        userName={user.name} 
+        userId={user.id}
+        onViewReport={handleViewReport} 
+      />
 
       {isUploadModalOpen && <UploadModal isOpen={isUploadModalOpen} onClose={() => setUploadModalOpen(false)} onUpload={handleUpload} familyMembers={familyMembers} initialSelectedMemberId={selectedMemberId} isLoading={isLoading} error={error} setError={setError} />}
 

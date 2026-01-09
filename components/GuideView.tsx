@@ -27,13 +27,15 @@ export const GuideView: React.FC<GuideViewProps> = ({ onBack, user, onLogout }) 
             <ArrowLeftIcon className="w-5 h-5" /> Back to Entry
         </button>
 
-        <div className="mb-16">
-            <h1 className="text-xl font-light text-slate-800 tracking-tight leading-none">
-              med<span className="font-black text-rose-800">Hist</span>
-            </h1>
-            <p className="text-[10px] font-black text-slate-400 uppercase tracking-[0.3em] mt-2 leading-none">
-              AI Powered Clinical Intelligence Center
-            </p>
+        <div className="flex flex-col sm:flex-row justify-between items-start gap-6 mb-16">
+            <div>
+                <h1 className="text-xl font-light text-slate-800 tracking-tight leading-none">
+                med<span className="font-black text-rose-800">Hist</span>
+                </h1>
+                <p className="text-[10px] font-black text-slate-400 uppercase tracking-[0.3em] mt-2 leading-none">
+                AI Powered Clinical Intelligence Center
+                </p>
+            </div>
         </div>
 
         <div className="grid grid-cols-1 md:grid-cols-2 gap-8 mb-20">
@@ -71,25 +73,6 @@ export const GuideView: React.FC<GuideViewProps> = ({ onBack, user, onLogout }) 
             ))}
         </div>
 
-        {/* High contrast section */}
-        <section className="border-t-2 border-slate-900 pt-16">
-            <p className="text-[11px] font-black text-slate-900 uppercase tracking-[0.4em] mb-10 leading-none">Deployment Scenarios</p>
-            <div className="grid grid-cols-1 sm:grid-cols-2 gap-10">
-                <div className="space-y-4">
-                    <h3 className="text-2xl font-black text-slate-900 tracking-tight">The Caretaker</h3>
-                    <p className="text-xs text-slate-600 font-bold leading-relaxed">
-                        Manage elderly parents health collectively. Invite siblings via the <strong>Family Invite Code</strong>. When one sibling uploads a cardiology report, everyone sees the AI summary and the next appointment countdown.
-                    </p>
-                </div>
-                <div className="space-y-4">
-                    <h3 className="text-2xl font-black text-slate-900 tracking-tight">The Chronic Patient</h3>
-                    <p className="text-xs text-slate-600 font-bold leading-relaxed">
-                        Ask the <strong>AI Health Assistant</strong> specific questions: "When was my last lisinopril adjustment?" The assistant finds the specific discharge memo and highlights the doctor's specific advice instantly.
-                    </p>
-                </div>
-            </div>
-        </section>
-
         <div className="mt-24 text-center">
             <button 
                 onClick={onBack}
@@ -101,7 +84,7 @@ export const GuideView: React.FC<GuideViewProps> = ({ onBack, user, onLogout }) 
       </main>
 
       <footer className="py-16 text-center text-slate-400 text-[10px] font-black uppercase tracking-[0.5em] mt-auto">
-          medHist Precision • v0.9.9
+          medHist Precision • v1.0.0
       </footer>
     </div>
   );

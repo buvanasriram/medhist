@@ -246,6 +246,7 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
                 timelineEntries={timelineEntries}
                 medications={medications}
                 userName={user.name}
+                userId={user.id}
                 onViewReport={handleViewReport}
             />
 

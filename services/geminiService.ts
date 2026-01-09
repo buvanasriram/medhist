@@ -231,10 +231,43 @@ interface FamilyData {
     medications: Medication[];
 }
 
-export const chatWithHealthAssistant = async (userMessage: string, history: any[], data: FamilyData): Promise<string> => {
+export const chatWithHealthAssistant = async (userMessage: string, history: any[], data: FamilyData, currentUserId: string): Promise<string> => {
     const client = getAIClient();
-    const contextSummary = `MEMBERS: ${data.familyMembers.map(m => m.name).join(', ')}. MEDS: ${data.medications.filter(m => m.active).map(m => m.name).join(', ')}`;
-    const systemPrompt = `You are "medHist Assistant". Concise health history support. Context: ${contextSummary}`;
+    
+    // Identify the family member folder that belongs to the current logged-in user
+    const currentUserFolder = data.familyMembers.find(m => m.linked_user_id === currentUserId);
+    const currentUserName = currentUserFolder?.name || "the user";
+
+    // Grouping data by member for absolute clarity
+    const memberContexts = data.familyMembers.map(member => {
+        const isSelf = member.linked_user_id === currentUserId;
+        const meds = data.medications.filter(m => m.family_member_id === member.id && m.active).map(m => m.name).join(', ');
+        
+        // Vertical, labeled format is the most "AI-proof" for ID copying
+        const entries = data.timelineEntries
+            .filter(e => e.family_member_id === member.id)
+            .map(e => `RECORD_START\nDATABASE_ID: ${e.id}\nDATE: ${e.date}\nTITLE: ${e.report_type}\nSUMMARY: ${e.summary}\nRECORD_END`)
+            .join('\n\n');
+
+        return `[PROFILE: ${member.name}] ${isSelf ? '(THIS IS THE CURRENT USER - "I/ME/MY" refers to this person)' : ''}
+Relationship: ${member.relationship}
+Meds: ${meds || 'None'}
+Timeline:
+${entries || 'No history recorded.'}`;
+    }).join('\n\n---\n\n');
+
+    const systemPrompt = `You are "medHist Assistant", a clinical record navigator. 
+    Current user is: ${currentUserName}. "I/me/my" = ${currentUserName}.
+
+    Registry Data:
+    ${memberContexts}
+
+    STRICT RULES:
+    1. DEEP LINKS: When mentioning a report, YOU MUST include a button: [VIEW:Short Title:DATABASE_ID].
+    2. ID PRECISION: You MUST copy the DATABASE_ID bit-for-bit. DO NOT truncate. DO NOT add "ID:" inside the button.
+    3. TARGETING: If a user asks about "I", only use the "CURRENT USER" profile.
+    4. PRIVACY: Treat each member as a separate medical folder.
+    5. STYLE: Be concise and professional.`;
 
     try {
         const chat = client.chats.create({
@@ -249,6 +282,7 @@ export const chatWithHealthAssistant = async (userMessage: string, history: any[
         const result: GenerateContentResponse = await withRetry(() => chat.sendMessage({ message: userMessage }));
         return result.text || "I'm sorry, I couldn't generate a response.";
     } catch (error: any) {
+        console.error("Assistant Error:", error);
         return "System busy. Please wait a moment.";
     }
 };
