@@ -45,9 +45,6 @@ export const supabase = supabaseClient;
 
 export type Session = any;
 
-const MOCK_USER_ID = 'mock-user-123';
-let mockSession: Session | null = null;
-
 const STORAGE_BUCKET = 'medical-reports';
 
 const sanitizeDate = (val: any): string | null => {
@@ -86,8 +83,7 @@ const sanitizeDate = (val: any): string | null => {
 
 export const getSession = async (): Promise<Session | null> => {
     if (localStorage.getItem('medhist-explicit-logout') === 'true') return null;
-    if (isMock) return mockSession;
-    
+    if (isMock) return null;
     try {
         const { data, error } = await supabase!.auth.getSession();
         if (error) throw error;
@@ -105,65 +101,41 @@ export const onAuthStateChange = (callback: (event: string, session: Session | n
 
 export const signUp = async (name: string, email: string, password: string, familyInput: { isJoin: boolean, value: string }): Promise<string|null> => {
     if (isMock) {
-        localStorage.removeItem('medhist-explicit-logout');
-        mockSession = { user: { id: MOCK_USER_ID, email, user_metadata: { full_name: name } } } as any;
+        if (!email || !password) return "Email and password are required.";
         return null;
     }
-
-    // 1. Create Auth Account
     const { data: authData, error: authError } = await supabase!.auth.signUp({
         email,
         password,
         options: { data: { full_name: name } }
     });
-
     if (authError) return authError.message;
     const user = authData.user;
-    if (!user) return "Signup failed: User not created.";
-
+    if (!user) return "Signup failed.";
     try {
-        // 2. Identify Target Family
         let familyId = '';
         if (familyInput.isJoin) {
             const joinCode = familyInput.value.trim().toUpperCase();
             const { data: family } = await supabase!.from('families').select('id').eq('join_code', joinCode).maybeSingle();
-            if (!family || !family.id) throw new Error(`Invalid Family Invite Code '${joinCode}'.`);
+            if (!family || !family.id) throw new Error(`Invalid Code '${joinCode}'.`);
             familyId = family.id;
         } else {
             const newJoinCode = Math.random().toString(36).substring(2, 8).toUpperCase();
-            const response = await supabase!
-                .from('families')
-                .insert({ name: familyInput.value, join_code: newJoinCode })
-                .select('id')
-                .single();
-            if (response.error || !response.data) throw new Error(response.error?.message || "Failed to create family group.");
+            const response = await supabase!.from('families').insert({ name: familyInput.value, join_code: newJoinCode }).select('id').single();
+            if (response.error || !response.data) throw new Error("Family creation failed.");
             familyId = response.data.id;
         }
-
-        // 3. ARCHITECTURAL FIX: 
-        // We ONLY insert into 'profiles'. 
-        // The Database Trigger (create_self_family_member) will handle 'family_members' automatically.
-        // This ensures the record creation is atomic and happens only once.
-        const { error: profileError } = await supabase!.from('profiles').insert({ 
-            id: user.id, 
-            family_id: familyId, 
-            full_name: name 
-        });
-
-        if (profileError) throw profileError;
-
+        await supabase!.from('profiles').upsert({ id: user.id, family_id: familyId, full_name: name });
         localStorage.removeItem('medhist-explicit-logout');
         return null;
     } catch (err: any) {
-        console.error("[medHist] Registry Sync Error (Trigger will attempt recovery):", err.message);
-        return null; 
+        return err.message;
     }
 };
 
 export const signIn = async (email: string, password: string): Promise<string|null> => {
     if (isMock) {
-        localStorage.removeItem('medhist-explicit-logout');
-        mockSession = { user: { id: MOCK_USER_ID, email, user_metadata: { full_name: 'Demo User' } } } as any;
+        if (!email || !password) return "Email and password are required.";
         return null;
     }
     const { error } = await supabase!.auth.signInWithPassword({ email, password });
@@ -171,210 +143,179 @@ export const signIn = async (email: string, password: string): Promise<string|nu
     return error ? error.message : null;
 };
 
-export const sendPasswordResetEmail = async (email: string): Promise<string | null> => {
-    if (isMock) return null;
-    const { error } = await supabase!.auth.resetPasswordForEmail(email, {
-        redirectTo: `${window.location.origin}/update-password`,
-    });
-    return error ? error.message : null;
+export const signOut = async () => {
+    if (isMock) return;
+    await supabase!.auth.signOut();
+    localStorage.setItem('medhist-explicit-logout', 'true');
 };
 
-export const updatePassword = async (password: string): Promise<string | null> => {
-    if (isMock) return null;
-    const { error } = await supabase!.auth.updateUser({ password });
-    return error ? error.message : null;
-};
-
-export const updateUserEmail = async (email: string): Promise<string | null> => {
-    if (isMock) return null;
-    const { error } = await supabase!.auth.updateUser({ email });
-    return error ? error.message : null;
-};
-
-export const hardReset = async (): Promise<void> => {
+export const hardReset = async () => {
     localStorage.clear();
-    sessionStorage.clear();
-    const cookies = document.cookie.split(";");
-    for (let i = 0; i < cookies.length; i++) {
-        const cookie = cookies[i];
-        const eqPos = cookie.indexOf("=");
-        const name = eqPos > -1 ? cookie.substr(0, eqPos).trim() : cookie.trim();
-        document.cookie = `${name}=; expires=Thu, 01 Jan 1970 00:00:00 UTC; path=/;`;
-    }
-    localStorage.setItem('medhist-explicit-logout', 'true');
-    if (window.location.pathname !== '/login') {
-        window.location.href = '/';
-    }
-};
-
-export const signOut = async (): Promise<void> => {
-    localStorage.setItem('medhist-explicit-logout', 'true');
-    if (isMock) {
-        mockSession = null;
-    } else if (supabase) {
-        try {
-            await supabase.auth.signOut({ scope: 'global' }).catch(() => {});
-        } catch (e) { /* ignore */ }
-    }
-    await hardReset();
+    if (!isMock) await supabase!.auth.signOut();
+    window.location.reload();
 };
 
 export const getUserData = async (userId: string) => {
-    if (isMock) return { familyMembers: [], timelineEntries: [], medications: [], familyInfo: { name: 'Demo Family', joinCode: 'MOCK12' } };
-
-    // 1. ATOMIC REGISTRY WAIT
-    // Poll for the profile (which should be created by signUp or Trigger)
-    let profile = null;
-    let attempts = 0;
-    while (attempts < 10) {
-        const { data } = await supabase!
-            .from('profiles')
-            .select('family_id, full_name')
-            .eq('id', userId)
-            .maybeSingle();
-        
-        if (data) {
-            profile = data;
-            break;
-        }
-        attempts++;
-        await new Promise(r => setTimeout(r, 500)); // Wait 500ms between checks
-    }
-
-    if (!profile) {
-        throw new Error("Registry Access Restricted. Account record missing.");
-    }
-
+    if (isMock) return { familyMembers: [], timelineEntries: [], medications: [], familyInfo: null };
+    const { data: profile } = await supabase!.from('profiles').select('family_id').eq('id', userId).single();
+    if (!profile) throw new Error("Profile not found.");
     const familyId = profile.family_id;
-
-    // 2. Parallel Fetch of all family data
-    const [familyInfoRes, membersRes, timelineRes, medsRes] = await Promise.all([
+    const [familyInfoRes, membersRes] = await Promise.all([
         supabase!.from('families').select('name, join_code').eq('id', familyId).single(),
-        supabase!.from('family_members').select('*').eq('family_id', familyId).order('name'),
-        supabase!.from('timeline_entries').select('*, files(*)').order('date', { ascending: false }),
-        supabase!.from('medications').select('*').order('created_at', { ascending: false })
+        supabase!.from('family_members').select('*').eq('family_id', familyId).order('name')
     ]);
-
-    if (membersRes.error) throw membersRes.error;
-    
-    const finalMembers = membersRes.data || [];
-    const memberIds = finalMembers.map(m => m.id);
-
+    const members = membersRes.data || [];
+    const memberIds = members.map(m => m.id);
+    const [timelineRes, medsRes] = await Promise.all([
+        supabase!.from('timeline_entries').select('*, files(*)').in('family_member_id', memberIds).order('date', { ascending: false }),
+        supabase!.from('medications').select('*').in('family_member_id', memberIds).order('created_at', { ascending: false })
+    ]);
     return {
-        familyMembers: finalMembers,
-        timelineEntries: (timelineRes.data || [])
-            .filter(e => memberIds.includes(e.family_member_id))
-            .map((e: any) => ({
-                ...e,
-                file: e.files?.[0] ? { id: e.files[0].id, name: e.files[0].name, type: e.files[0].type } : undefined
-            })),
-        medications: (medsRes.data || []).filter(m => memberIds.includes(m.family_member_id)),
-        familyInfo: familyInfoRes.data ? { name: familyInfoRes.data.name, joinCode: familyInfoRes.data.join_code } : null
+        familyMembers: members,
+        timelineEntries: timelineRes.data || [],
+        medications: medsRes.data || [],
+        familyInfo: familyInfoRes.data || null
     };
 };
 
 export const addFamilyMember = async (details: { name: string; relationship: string; dob: string; }) => {
-    if (isMock) return;
-    const session = await getSession();
-    if (!session) throw new Error("Authentication Required.");
-    const { data: profile } = await supabase!.from('profiles').select('family_id').eq('id', session.user.id).single();
-    if (!profile) throw new Error("Profile not found");
-    const { error } = await supabase!.from('family_members').insert({ family_id: profile.family_id, name: details.name, relationship: details.relationship, dob: sanitizeDate(details.dob) });
+    const { data: { user } } = await supabase!.auth.getUser();
+    if (!user) throw new Error("Not authenticated");
+    const { data: profile } = await supabase!.from('profiles').select('family_id').eq('id', user.id).single();
+    if (!profile) throw new Error("Family context missing.");
+    const { error } = await supabase!.from('family_members').insert({ 
+        name: details.name,
+        relationship: details.relationship,
+        dob: sanitizeDate(details.dob),
+        family_id: profile.family_id 
+    });
     if (error) throw error;
 };
 
-export const updateFamilyMember = async (id: string, updates: { name: string; relationship: string; dob: string; }) => {
-    if (isMock) return;
-    const { error } = await supabase!.from('family_members').update({ name: updates.name, relationship: updates.relationship, dob: sanitizeDate(updates.dob) }).eq('id', id);
+export const updateFamilyMember = async (id: string, updates: Partial<FamilyMember>) => {
+    const { error } = await supabase!.from('family_members').update({
+        ...updates,
+        dob: updates.dob ? sanitizeDate(updates.dob) : undefined
+    }).eq('id', id);
     if (error) throw error;
 };
 
-export const addMedication = async (data: any) => {
-    if (isMock) return;
-    const { error } = await supabase!.from('medications').insert({ family_member_id: data.family_member_id, timeline_entry_id: data.timeline_entry_id, name: data.name, dosage: data.dosage, frequency: data.frequency, purpose: data.purpose, start_date: sanitizeDate(data.start_date), active: true });
+export const deleteFamilyMember = async (id: string) => {
+    const { data: member, error: fetchError } = await supabase!
+        .from('family_members')
+        .select('linked_user_id, name')
+        .eq('id', id)
+        .single();
+    
+    if (fetchError) throw fetchError;
+    
+    if (member?.linked_user_id) {
+        throw new Error(`Cannot delete ${member.name}'s folder because it is currently linked to your login. Switch your identity to another folder first.`);
+    }
+
+    const { error } = await supabase!.from('family_members').delete().eq('id', id);
     if (error) throw error;
 };
 
-export const stopMedication = async (id: string) => {
-    if (isMock) return;
-    const { error } = await supabase!.from('medications').update({ active: false, stopped_at: new Date().toISOString() }).eq('id', id);
+export const claimFolder = async (memberId: string) => {
+    const { data: { user } } = await supabase!.auth.getUser();
+    if (!user) throw new Error("Not authenticated");
+    const { data: profile } = await supabase!.from('profiles').select('family_id').eq('id', user.id).single();
+    if (profile) {
+        await supabase!.from('family_members')
+            .update({ linked_user_id: null, relationship: 'Member' })
+            .eq('family_id', profile.family_id)
+            .eq('linked_user_id', user.id);
+    }
+    const { error } = await supabase!.from('family_members')
+        .update({ linked_user_id: user.id, relationship: 'Self' })
+        .eq('id', memberId);
     if (error) throw error;
-};
-
-const sanitizePath = (path: string): string => {
-    if (!path) return '';
-    let clean = path.trim();
-    try { clean = decodeURIComponent(clean); } catch (e) { }
-    const bucketPrefixes = [`${STORAGE_BUCKET}/`, `/${STORAGE_BUCKET}/`, 'reports/', '/reports/'];
-    for (const prefix of bucketPrefixes) {
-        if (clean.toLowerCase().startsWith(prefix.toLowerCase())) clean = clean.substring(prefix.length);
-    }
-    return clean.replace(/^\/+/, '');
-};
-
-export const addTimelineEntry = async (entryData: any, fileData: any, medications?: ExtractedMedication[]) => {
-    if (isMock) return;
-    const session = await getSession();
-    if (!session) throw new Error("Session invalid.");
-    const cleanDate = sanitizeDate(entryData.date) || new Date().toISOString().split('T')[0];
-    const cleanFollowUp = sanitizeDate(entryData.follow_up_date);
-    const insertPayload: any = { family_member_id: entryData.family_member_id, uploaded_by_user_id: session.user.id, date: cleanDate, report_type: entryData.report_type || "Medical Record", summary: entryData.summary || "", doctor_name: entryData.doctor_name || null, facility_name: entryData.facility_name || null, patient_name: entryData.patient_name || null, follow_up_date: cleanFollowUp };
-    let { data: entry, error: entryError } = await supabase!.from('timeline_entries').insert(insertPayload).select().single();
-    if (entryError || !entry) throw new Error(`Registry Sync Error: ${entryError?.message}`);
-    const { data: profile } = await supabase!.from('profiles').select('family_id').eq('id', session.user.id).single();
-    const filePath = `${profile?.family_id || entry.family_member_id}/${entry.id}/${fileData.name}`;
-    const fileBlob = base64ToBlob(fileData.data, fileData.type);
-    const { error: uploadError } = await supabase!.storage.from(STORAGE_BUCKET).upload(filePath, fileBlob, { contentType: fileData.type, upsert: true });
-    if (uploadError) {
-        await supabase!.from('timeline_entries').delete().eq('id', entry.id);
-        throw new Error(`File Storage Failed: ${uploadError.message}`);
-    }
-    await supabase!.from('files').insert({ timeline_entry_id: entry.id, name: fileData.name, type: fileData.type, file_path: filePath, password: fileData.password });
-    if (medications && medications.length > 0) {
-        const medsToInsert = medications.map(m => ({ family_member_id: entry!.family_member_id, timeline_entry_id: entry!.id, name: m.name, dosage: m.dosage, frequency: m.frequency, purpose: m.purpose, start_date: sanitizeDate(m.startDate), active: true }));
-        await supabase!.from('medications').insert(medsToInsert);
-    }
-    return entry;
-};
-
-export const deleteTimelineEntry = async (entryId: string) => {
-    if (isMock) return;
-    const { data: fileRecord } = await supabase!.from('files').select('file_path').eq('timeline_entry_id', entryId).maybeSingle();
-    if (fileRecord?.file_path) {
-        const cleanPath = sanitizePath(fileRecord.file_path);
-        await supabase!.storage.from(STORAGE_BUCKET).remove([cleanPath]);
-    }
-    await supabase!.from('timeline_entries').delete().eq('id', entryId);
 };
 
 export const getFileForEntry = async (entryId: string) => {
-    if (isMock) return null;
-    const { data: fileMetadata, error: metaError } = await supabase!.from('files').select('*').eq('timeline_entry_id', entryId).maybeSingle();
-    if (metaError || !fileMetadata) return null;
-    const dbPath = fileMetadata.file_path || (fileMetadata as any).storage_path;
-    if (!dbPath) return null;
-    const cleanPath = sanitizePath(dbPath);
-    const pathsToTry = [dbPath, cleanPath];
-    let finalResult = null;
-    for (const p of pathsToTry) {
-        if (!p) continue;
-        const result = await supabase!.storage.from(STORAGE_BUCKET).createSignedUrl(p, 3600);
-        if (!result.error && result.data?.signedUrl) {
-            finalResult = { signedUrl: result.data.signedUrl, path: p };
-            break;
-        }
-    }
-    if (!finalResult) return null;
-    return { signedUrl: finalResult.signedUrl, filePath: finalResult.path, metadata: { id: fileMetadata.id, name: fileMetadata.name, type: fileMetadata.type, password: fileMetadata.password } };
+    const { data: file } = await supabase!.from('files').select('*').eq('timeline_entry_id', entryId).single();
+    if (!file) return null;
+    const { data } = await supabase!.storage.from(STORAGE_BUCKET).createSignedUrl(file.file_path, 3600);
+    return { signedUrl: data?.signedUrl, filePath: file.file_path, metadata: file };
 };
 
-export const ignoreMismatch = async (entryId: string) => {
-    if (isMock) return;
-    await supabase!.from('timeline_entries').update({ mismatch_ignored: true }).eq('id', entryId);
+export const addTimelineEntry = async (entryData: any, fileData: any, extractedMedications?: ExtractedMedication[]) => {
+    const cleanEntry = {
+        ...entryData,
+        date: sanitizeDate(entryData.date) || new Date().toISOString().split('T')[0],
+        follow_up_date: sanitizeDate(entryData.follow_up_date)
+    };
+    const { data: entry, error: entryError } = await supabase!.from('timeline_entries').insert(cleanEntry).select().single();
+    if (entryError) throw entryError;
+
+    if (fileData && fileData.data) {
+        const blob = base64ToBlob(fileData.data, fileData.type);
+        const fileName = `${Date.now()}_${fileData.name}`;
+        const filePath = `${entryData.family_member_id}/${fileName}`;
+        const { error: uploadError } = await supabase!.storage.from(STORAGE_BUCKET).upload(filePath, blob);
+        if (uploadError) throw uploadError;
+        await supabase!.from('files').insert({
+            timeline_entry_id: entry.id,
+            name: fileData.name,
+            type: fileData.type,
+            file_path: filePath,
+            password: fileData.password
+        });
+    }
+
+    if (extractedMedications && extractedMedications.length > 0) {
+        const meds = extractedMedications.map(m => ({
+            family_member_id: entryData.family_member_id,
+            timeline_entry_id: entry.id,
+            name: m.name,
+            dosage: m.dosage,
+            frequency: m.frequency,
+            purpose: m.purpose,
+            start_date: sanitizeDate(m.startDate) || cleanEntry.date,
+            active: true
+        }));
+        await supabase!.from('medications').insert(meds);
+    }
+};
+
+export const deleteTimelineEntry = async (id: string) => {
+    const { data: file } = await supabase!.from('files').select('file_path').eq('timeline_entry_id', id).single();
+    if (file) await supabase!.storage.from(STORAGE_BUCKET).remove([file.file_path]);
+    await supabase!.from('timeline_entries').delete().eq('id', id);
+};
+
+export const ignoreMismatch = async (id: string) => {
+    await supabase!.from('timeline_entries').update({ mismatch_ignored: true }).eq('id', id);
+};
+
+export const addMedication = async (data: any) => {
+    await supabase!.from('medications').insert({ ...data, start_date: sanitizeDate(data.start_date), active: true });
+};
+
+export const stopMedication = async (id: string) => {
+    await supabase!.from('medications').update({ active: false, stopped_at: new Date().toISOString() }).eq('id', id);
+};
+
+export const sendPasswordResetEmail = async (email: string) => {
+    const { error } = await supabase!.auth.resetPasswordForEmail(email, { redirectTo: `${window.location.origin}/update-password` });
+    return error ? error.message : null;
+};
+
+export const updatePassword = async (password: string) => {
+    const { error } = await supabase!.auth.updateUser({ password });
+    return error ? error.message : null;
+};
+
+export const updateUserEmail = async (email: string) => {
+    const { error } = await supabase!.auth.updateUser({ email });
+    return error ? error.message : null;
 };
 
 export const createShareLink = async (entryId: string): Promise<string | null> => {
-    if (isMock) return "https://example.com/share/mock-link";
-    const result = await getFileForEntry(entryId);
-    return result?.signedUrl || null;
+    const { data: file } = await supabase!.from('files').select('file_path').eq('timeline_entry_id', entryId).single();
+    if (!file) return null;
+    const { data, error } = await supabase!.storage.from(STORAGE_BUCKET).createSignedUrl(file.file_path, 86400);
+    if (error) return null;
+    return data.signedUrl;
 };

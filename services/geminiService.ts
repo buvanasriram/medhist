@@ -3,17 +3,12 @@ import { GoogleGenAI, Type, GenerateContentResponse } from "@google/genai";
 import { pdfjs } from 'react-pdf';
 import type { ExtractedReportData, FamilyMember, TimelineEntry, Medication } from '../types';
 
-// [Fix] Defined missing FamilyData interface to resolve build error
 interface FamilyData {
     familyMembers: FamilyMember[];
     timelineEntries: TimelineEntry[];
     medications: Medication[];
 }
 
-/**
- * [medHist] v0.7.1 - Clinical Processing
- * Implements exponential backoff for transient API errors.
- */
 async function withRetry<T>(fn: () => Promise<T>, retries = 5, delay = 2000): Promise<T> {
     try {
         return await fn();
@@ -74,9 +69,19 @@ const extractTextFromPdf = async (base64Data: string, password?: string): Promis
 };
 
 export const extractReportInfo = async (fileBase64: string, mimeType: string, password?: string): Promise<ExtractedReportData> => {
-    // [Fix] Obtained Gemini API key exclusively from environment as per hard requirement
     const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
-    const prompt = `Perform a medical analysis. Extract date (YYYY-MM-DD), type, clinical summary, doctor, and patient name. Return JSON.`;
+    
+    // [medHist] v1.0.1 - Aggressive Med Extraction
+    const prompt = `Perform a comprehensive medical document analysis.
+    1. Extract the report date in YYYY-MM-DD format.
+    2. Identify the report type (e.g., Blood Test, Consultation, Prescription).
+    3. Provide a clear 2-sentence clinical summary.
+    4. MANDATORY: Extract EVERY medication mentioned in the document.
+       - Look for drug names, dosages (e.g., 500mg), frequencies (e.g., Twice daily).
+       - If the document is a prescription, capture the ENTIRE list.
+       - Do not omit any drugs even if they seem common.
+    Return strictly as a JSON object matching the schema.`;
+
     try {
         let contentPart;
         if (mimeType === 'application/pdf') {
@@ -90,7 +95,6 @@ export const extractReportInfo = async (fileBase64: string, mimeType: string, pa
             contents: { parts: [{ text: prompt }, contentPart] },
             config: { responseMimeType: 'application/json', responseSchema }
         }));
-        // [Fix] Accessing .text as a property, not a method
         const text = response.text || '';
         return JSON.parse(text.replace(/^```json\s*/i, '').replace(/\s*```$/i, '').trim());
     } catch (error) {
@@ -99,7 +103,6 @@ export const extractReportInfo = async (fileBase64: string, mimeType: string, pa
 };
 
 export const chatWithHealthAssistant = async (userMessage: string, history: any[], data: FamilyData, currentUserId: string): Promise<string> => {
-    // [Fix] Initialized Gemini client inside function using process.env.API_KEY
     const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
     const currentUserFolder = data.familyMembers.find(m => m.linked_user_id === currentUserId);
     const currentUserName = currentUserFolder?.name || "the user";
@@ -112,7 +115,7 @@ export const chatWithHealthAssistant = async (userMessage: string, history: any[
             .join('\n');
 
         return `PROFILE: ${member.name} ${isSelf ? '(CURRENT_USER)' : ''}
-Medications: ${data.medications.filter(m => m.family_member_id === member.id && m.active).map(m => m.name).join(', ') || 'None'}
+Medications: ${data.medications.filter(m => m.family_member_id === member.id && m.active).map(m => `${m.name} (${m.dosage || 'N/A'})`).join(', ') || 'None'}
 Timeline:
 ${entries || 'No history.'}`;
     }).join('\n\n---\n\n');
@@ -123,7 +126,7 @@ ${entries || 'No history.'}`;
     1. Map "I/me/my" to ${currentUserName}.
     2. Deep Link Button: [VIEW:Short Title:DOC_ID].
     3. Copy DOC_ID exactly from the data. Do not add prefixes like "DOC_ID:" inside the button.
-    4. Be clinical and concise.`;
+    4. Be clinical and concise. If medications are missing, explain that they might be in un-uploaded reports.`;
 
     try {
         const chat = ai.chats.create({
@@ -131,7 +134,6 @@ ${entries || 'No history.'}`;
             config: { systemInstruction: systemPrompt }
         });
         const result: GenerateContentResponse = await withRetry(() => chat.sendMessage({ message: userMessage }));
-        // [Fix] Accessing .text as a property
         return result.text || "I'm sorry, I couldn't help with that.";
     } catch (error) {
         return "System busy. Please try again.";

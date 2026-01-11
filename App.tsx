@@ -55,13 +55,20 @@ const App: React.FC = () => {
               setFamilyMembers(data.familyMembers || []);
               setTimelineEntries(data.timelineEntries || []);
               setMedications(data.medications || []);
-              setFamilyInfo(data.familyInfo || null);
+              const fInfo = data.familyInfo as any;
+              if (fInfo) {
+                  setFamilyInfo({
+                      name: fInfo.name,
+                      joinCode: fInfo.joinCode || fInfo.join_code
+                  });
+              } else {
+                  setFamilyInfo(null);
+              }
           }
       } catch (e: any) {
           console.error("[medHist] Data Load Error:", e);
           if (mountedRef.current) {
               setDataLoadError(e.message || "Registry Sync Failed.");
-              // If we hit a restricted registry error, auto-trigger rescue options
               setShowRescue(true);
           }
       } finally {
@@ -72,7 +79,6 @@ const App: React.FC = () => {
   useEffect(() => {
     mountedRef.current = true;
 
-    // Show rescue link after 5 seconds
     const rescueTimer = setTimeout(() => {
         if (isLoadingAuth && mountedRef.current) setShowRescue(true);
     }, 5000);
@@ -130,7 +136,7 @@ const App: React.FC = () => {
         subscription.unsubscribe();
         clearTimeout(rescueTimer);
     };
-  }, [clearLocalData, isLoadingAuth]);
+  }, [clearLocalData]);
 
   useEffect(() => { if (currentUser?.id) loadUserData(currentUser.id); }, [currentUser?.id, loadUserData]);
 
@@ -149,16 +155,22 @@ const App: React.FC = () => {
   };
 
   const handleLogin = async (email: string, password: string) => {
-    setIsLoadingAuth(true);
+    // We don't call setIsLoadingAuth(true) here anymore.
+    // This allows the LoginPage to show its own local loading spinner
+    // and keeps the error message visible if the login fails.
     const error = await supabaseService.signIn(email, password);
-    if (error) { setIsLoadingAuth(false); return error; }
+    if (error) {
+        return error;
+    }
+    // If successful, onAuthStateChange listener will handle the UI transition.
     return null;
   };
 
   const handleSignup = async (name: string, email: string, password: string, familyInput: any) => {
-    setIsLoadingAuth(true);
     const error = await supabaseService.signUp(name, email, password, familyInput);
-    if (error) { setIsLoadingAuth(false); return error; }
+    if (error) {
+        return error;
+    }
     return null;
   };
 
@@ -189,7 +201,6 @@ const App: React.FC = () => {
       );
   }
 
-  // GLOBAL ERROR SCREEN: Handle "Registry Restricted" orphans
   if (dataLoadError) {
       return (
         <div className="min-h-screen bg-white flex flex-col items-center justify-center p-8 text-center max-w-md mx-auto">

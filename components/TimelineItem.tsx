@@ -96,10 +96,10 @@ export const TimelineItem: React.FC<TimelineItemProps> = ({
                         {entry.facility_name && <span className="flex items-center gap-1"><BuildingIcon className="w-3.5 h-3.5 text-slate-900"/> {entry.facility_name}</span>}
                     </div>
 
-                    {/* Integrated Identity Mismatch Alert */}
+                    {/* Name Mismatch Warning Integrated in Card */}
                     {isMismatched && (
                         <div 
-                            className="mt-3 py-1.5 px-3 bg-amber-50 border border-amber-100 rounded-lg inline-flex items-center gap-2 animate-pulse"
+                            className="mt-3 py-1.5 px-3 bg-amber-50 border border-amber-100 rounded-lg inline-flex items-center gap-2 animate-pulse shadow-sm"
                             onClick={(e) => e.stopPropagation()}
                         >
                             <WarningIcon className="w-3.5 h-3.5 text-amber-600" />
@@ -108,9 +108,9 @@ export const TimelineItem: React.FC<TimelineItemProps> = ({
                             </span>
                             <button 
                                 onClick={(e) => { e.stopPropagation(); onIgnoreMismatch(entry); }} 
-                                className="ml-2 text-[8px] font-black uppercase tracking-widest bg-amber-600 text-white px-2 py-0.5 rounded shadow-sm hover:bg-slate-900 transition-colors"
+                                className="ml-2 text-[8px] font-black uppercase tracking-widest bg-amber-600 text-white px-3 py-1 rounded shadow hover:bg-slate-900 transition-colors"
                             >
-                                Confirm Match
+                                Folder is Correct
                             </button>
                         </div>
                     )}
@@ -156,7 +156,7 @@ export const TimelineItem: React.FC<TimelineItemProps> = ({
             </div>
         </div>
 
-        {/* AI Synthesis Summary - Nested within same card structure */}
+        {/* AI Synthesis Summary */}
         {showSummary && (
             <div 
                 className="mt-4 p-5 rounded-2xl text-[10px] sm:text-[11px] leading-relaxed shadow-inner border"

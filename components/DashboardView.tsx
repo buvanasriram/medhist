@@ -148,51 +148,51 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
         <div className="min-h-screen bg-white text-slate-800 flex flex-col relative text-left">
             <Header onLogout={onLogout} userName={user.name} onOpenGuide={onOpenGuide} />
             
-            <main className="container mx-auto p-4 sm:p-6 md:p-10 max-w-6xl flex-grow pb-24 z-10">
+            <main className="container mx-auto p-3 sm:p-6 md:p-10 max-w-6xl flex-grow pb-24 z-10">
                 
                 {/* UPCOMING MILESTONES - High Density Alert */}
                 {upcomingAppointments.length > 0 && (
-                    <div className="mb-6 bg-white rounded-2xl shadow-lg shadow-slate-200/50 border border-slate-100 flex items-center justify-between p-4 border-l-4 border-l-amber-400">
-                        <div className="flex items-center gap-3">
-                            <div className="bg-amber-50 p-2 rounded-xl shadow-inner">
-                                <BellIcon className="w-4 h-4 text-amber-500" />
+                    <div className="mb-4 sm:mb-6 bg-white rounded-2xl shadow-lg shadow-slate-200/50 border border-slate-100 flex items-center justify-between p-3 sm:p-4 border-l-4 border-l-amber-400">
+                        <div className="flex items-center gap-2 sm:gap-3">
+                            <div className="bg-amber-50 p-1.5 sm:p-2 rounded-xl shadow-inner">
+                                <BellIcon className="w-3.5 h-3.5 sm:w-4 sm:h-4 text-amber-500" />
                             </div>
                             <div>
-                                <p className="text-[8px] font-black text-amber-600 uppercase tracking-[0.2em] leading-none mb-1">Priority Directive</p>
-                                <h2 className="text-sm font-black text-slate-900 tracking-tight leading-none">
+                                <p className="text-[7px] sm:text-[8px] font-black text-amber-600 uppercase tracking-[0.2em] leading-none mb-0.5 sm:mb-1">Priority Directive</p>
+                                <h2 className="text-xs sm:text-sm font-black text-slate-900 tracking-tight leading-none">
                                     Review with {upcomingAppointments[0].doctor_name || "Specialist"}
                                 </h2>
-                                <p className="text-[8px] text-slate-400 font-bold uppercase tracking-widest mt-0.5">
+                                <p className="text-[7px] sm:text-[8px] text-slate-400 font-bold uppercase tracking-widest mt-0.5">
                                     {upcomingAppointments[0].memberName} • {getDaysUntil(upcomingAppointments[0].follow_up_date!)}
                                 </p>
                             </div>
                         </div>
                         <button 
                             onClick={() => upcomingAppointments[0].memberId && onSelectMember(upcomingAppointments[0].memberId)}
-                            className="bg-slate-50 p-2 rounded-full text-slate-300 hover:text-rose-700 hover:bg-rose-50 transition-all shadow-sm"
+                            className="bg-slate-50 p-1.5 sm:p-2 rounded-full text-slate-300 hover:text-rose-700 hover:bg-rose-50 transition-all shadow-sm"
                         >
                             <ArrowRightIcon className="w-3.5 h-3.5" />
                         </button>
                     </div>
                 )}
 
-                <div className="flex flex-col sm:flex-row justify-between items-start sm:items-end mb-8 gap-4">
+                <div className="flex flex-col sm:flex-row justify-between items-start sm:items-end mb-4 sm:mb-8 gap-3 sm:gap-4">
                     <div>
-                        <h1 className="text-3xl sm:text-4xl font-black text-slate-900 tracking-tighter leading-none mb-2.5">Family Board</h1>
-                        <p className="text-rose-700/40 font-black text-[8px] flex items-center gap-2 uppercase tracking-[0.3em]">
-                            <UsersIcon className="w-3.5 h-3.5 text-rose-700" /> {familyInfo?.name || "Family Registry"}
+                        <h1 className="text-2xl sm:text-4xl font-black text-slate-900 tracking-tighter leading-none mb-1.5 sm:mb-2.5">Family Board</h1>
+                        <p className="text-rose-700/40 font-black text-[7px] sm:text-[8px] flex items-center gap-1.5 sm:gap-2 uppercase tracking-[0.3em]">
+                            <UsersIcon className="w-3 sm:w-3.5 h-3 sm:h-3.5 text-rose-700" /> {familyInfo?.name || "Family Registry"}
                         </p>
                     </div>
                     <div className="flex gap-2 w-full sm:w-auto">
                         <button 
                             onClick={() => setShowInviteModal(true)}
-                            className="flex-1 sm:flex-none flex items-center justify-center gap-2 text-[8px] font-black uppercase tracking-[0.1em] text-slate-400 bg-white border border-slate-100 px-5 py-3 rounded-xl transition hover:bg-slate-50 hover:text-rose-700 shadow-sm"
+                            className="flex-1 sm:flex-none flex items-center justify-center gap-2 text-[7px] sm:text-[8px] font-black uppercase tracking-[0.1em] text-slate-400 bg-white border border-slate-100 px-3 sm:px-5 py-2.5 sm:py-3 rounded-xl transition hover:bg-slate-50 hover:text-rose-700 shadow-sm"
                         >
                             Invite
                         </button>
                         <button 
                             onClick={() => setShowAddMemberModal(true)}
-                            className="flex-1 sm:flex-none flex items-center justify-center gap-2 text-[8px] font-black uppercase tracking-[0.1em] text-white bg-slate-900 px-6 py-3 rounded-xl transition shadow-xl hover:bg-rose-900 active:scale-95"
+                            className="flex-1 sm:flex-none flex items-center justify-center gap-2 text-[7px] sm:text-[8px] font-black uppercase tracking-[0.1em] text-white bg-slate-900 px-4 sm:px-6 py-2.5 sm:py-3 rounded-xl transition shadow-xl hover:bg-rose-900 active:scale-95"
                         >
                             + New Folder
                         </button>
@@ -206,7 +206,7 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
                         <p className="text-rose-700/30 text-[8px] font-black uppercase tracking-[0.4em] mt-2">Precision Security Active</p>
                     </div>
                 ) : (
-                    <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4 sm:gap-5 relative z-10">
+                    <div className="grid grid-cols-2 sm:grid-cols-2 lg:grid-cols-3 gap-3 sm:gap-5 relative z-10">
                         {familyMembers.map((member, index) => {
                             const color = CLINICAL_PALETTE[index % CLINICAL_PALETTE.length];
                             return (
@@ -227,15 +227,15 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
                                 />
                             );
                         })}
-                        {/* High Density 'New Member' card */}
+                        {/* Compact 'New Member' card */}
                         <div 
                             onClick={() => setShowAddMemberModal(true)}
-                            className="border-2 border-dashed border-slate-200 p-4 rounded-3xl flex flex-col items-center justify-center gap-2 text-slate-300 hover:border-slate-300 hover:bg-slate-50 transition-all group cursor-pointer min-h-[140px]"
+                            className="border-2 border-dashed border-slate-200 p-3 sm:p-4 rounded-3xl flex flex-col items-center justify-center gap-1.5 sm:gap-2 text-slate-300 hover:border-slate-300 hover:bg-slate-50 transition-all group cursor-pointer min-h-[110px] sm:min-h-[140px]"
                         >
-                            <div className="w-8 h-8 rounded-full bg-slate-50 flex items-center justify-center group-hover:bg-slate-100 transition-colors border border-slate-100">
-                                <span className="text-xl font-light text-slate-400">+</span>
+                            <div className="w-6 sm:w-8 h-6 sm:h-8 rounded-full bg-slate-50 flex items-center justify-center group-hover:bg-slate-100 transition-colors border border-slate-100">
+                                <span className="text-lg sm:text-xl font-light text-slate-400">+</span>
                             </div>
-                            <span className="text-[8px] font-black uppercase tracking-[0.2em] group-hover:text-slate-600 transition-colors">Add Folder</span>
+                            <span className="text-[7px] sm:text-[8px] font-black uppercase tracking-[0.2em] group-hover:text-slate-600 transition-colors">Add Folder</span>
                         </div>
                     </div>
                 )}
@@ -299,7 +299,7 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
                 />
             )}
 
-            <footer className="py-12 text-center text-slate-300 text-[8px] font-black uppercase tracking-[0.5em] mt-auto">
+            <footer className="py-8 sm:py-12 text-center text-slate-300 text-[8px] font-black uppercase tracking-[0.5em] mt-auto">
                 medHist Precision • v1.0.0
             </footer>
         </div>
