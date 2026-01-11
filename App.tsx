@@ -19,33 +19,21 @@ const App: React.FC = () => {
     window.location.pathname === '/signup' ? '/signup' : '/login'
   );
   
-  const [isMockupMode, setIsMockupMode] = useState<boolean>(false);
-  const [showPublicGuide, setShowPublicGuide] = useState<boolean>(false);
-  
-  const [isRecoveryMode, setIsRecoveryMode] = useState<boolean>(false);
-
-  // Loading States
   const [isLoadingAuth, setIsLoadingAuth] = useState<boolean>(true);
   const [isSyncingData, setIsSyncingData] = useState<boolean>(false);
+  const [showRescue, setShowRescue] = useState<boolean>(false);
   const [dataLoadError, setDataLoadError] = useState<string | null>(null);
   
-  // UI State
-  const [viewMode, setViewMode] = useState<'dashboard' | 'timeline' | 'guide'>(
-      (window.history.state && window.history.state.view) || 'dashboard'
-  );
-  const [selectedMemberId, setSelectedMemberId] = useState<string | undefined>(
-      (window.history.state && window.history.state.memberId) || undefined
-  );
+  const [viewMode, setViewMode] = useState<'dashboard' | 'timeline' | 'guide'>('dashboard');
+  const [selectedMemberId, setSelectedMemberId] = useState<string | undefined>(undefined);
   
-  // Data State
   const [familyMembers, setFamilyMembers] = useState<FamilyMember[]>([]);
   const [timelineEntries, setTimelineEntries] = useState<TimelineEntry[]>([]);
   const [medications, setMedications] = useState<Medication[]>([]);
   const [familyInfo, setFamilyInfo] = useState<{name: string, joinCode: string} | null>(null);
 
-  // Logic Refs
   const mountedRef = useRef<boolean>(true);
-  const syncLock = useRef<string | null>(null);
+  const bootCalledRef = useRef<boolean>(false);
   
   const clearLocalData = useCallback(() => {
     setFamilyMembers([]);
@@ -53,80 +41,63 @@ const App: React.FC = () => {
     setMedications([]);
     setFamilyInfo(null);
     setDataLoadError(null);
-    syncLock.current = null;
     setSession(null);
     setCurrentUser(null);
   }, []);
 
   const loadUserData = useCallback(async (userId: string) => {
       if (!mountedRef.current) return;
-      if (syncLock.current === userId) return;
-      
-      syncLock.current = userId;
       setIsSyncingData(true);
       setDataLoadError(null);
-      
       try {
           const data = await supabaseService.getUserData(userId);
-          if (mountedRef.current && syncLock.current === userId) {
+          if (mountedRef.current) {
               setFamilyMembers(data.familyMembers || []);
               setTimelineEntries(data.timelineEntries || []);
               setMedications(data.medications || []);
               setFamilyInfo(data.familyInfo || null);
           }
       } catch (e: any) {
-          console.error("[medHist] Sync Failed:", e);
-          if (mountedRef.current && syncLock.current === userId) {
-              setDataLoadError(e.message || "Could not synchronize medical registry.");
-          }
+          console.error("[medHist] Data Load Error:", e);
+          if (mountedRef.current) setDataLoadError(e.message || "Registry Sync Failed.");
       } finally {
-          if (mountedRef.current && syncLock.current === userId) {
-              setIsSyncingData(false);
-          }
+          if (mountedRef.current) setIsSyncingData(false);
       }
   }, []);
 
   useEffect(() => {
     mountedRef.current = true;
 
-    const checkInitialSession = async () => {
-        if (localStorage.getItem('medhist-explicit-logout') === 'true') {
-            setIsLoadingAuth(false);
-            return;
-        }
+    // Show rescue link after 5 seconds
+    const rescueTimer = setTimeout(() => {
+        if (isLoadingAuth && mountedRef.current) setShowRescue(true);
+    }, 5000);
 
+    const boot = async () => {
+        if (bootCalledRef.current) return;
+        bootCalledRef.current = true;
+        
         try {
             const currentSession = await supabaseService.getSession();
             if (currentSession?.user && mountedRef.current) {
-                const user = { 
+                setSession(currentSession);
+                setCurrentUser({ 
                     id: currentSession.user.id, 
                     name: currentSession.user.user_metadata?.full_name || currentSession.user.email,
                     email: currentSession.user.email || ''
-                };
-                setSession(currentSession);
-                setCurrentUser(user);
+                });
             }
-        } catch (e: any) {
-            console.error("[medHist] Boot Error:", e);
-            // Critical: If auth is broken on boot, force local purge to avoid infinite "Securing Vault"
-            clearLocalData();
-            await supabaseService.signOut();
+        } catch (e) {
+            console.error("[medHist] Critical Auth Crash:", e);
+            await supabaseService.hardReset();
         } finally {
             if (mountedRef.current) {
                 setIsLoadingAuth(false);
             }
         }
     };
-
-    checkInitialSession();
-
-    const handleStorageChange = (e: StorageEvent) => {
-        if ((e.key && e.key.startsWith('sb-') && !e.newValue) || e.key === 'medhist-explicit-logout') {
-            clearLocalData();
-            setRoute('/login');
-        }
-    };
-    window.addEventListener('storage', handleStorageChange);
+    
+    boot();
 
     const { data: { subscription } } = supabaseService.onAuthStateChange(async (event, currentSession) => {
       if (!mountedRef.current) return;
@@ -137,42 +108,27 @@ const App: React.FC = () => {
           setIsLoadingAuth(false);
           return;
       }
-
+      
       if (currentSession?.user) {
-        localStorage.removeItem('medhist-explicit-logout');
-        
-        const user = { 
+        setSession(currentSession);
+        setCurrentUser({ 
           id: currentSession.user.id, 
           name: currentSession.user.user_metadata?.full_name || currentSession.user.email, 
           email: currentSession.user.email || '' 
-        };
-        
-        setSession(currentSession);
-        setCurrentUser(user);
-        
-        if (event === 'SIGNED_IN' || event === 'PASSWORD_REFRESHED') {
-            setIsLoadingAuth(false);
-            setRoute('/');
-        }
-
-        if (event === 'PASSWORD_RECOVERY') {
-            setIsRecoveryMode(true);
-        }
+        });
+        setIsLoadingAuth(false);
+        setRoute('/');
       }
     });
 
-    return () => {
-      mountedRef.current = false;
-      subscription.unsubscribe();
-      window.removeEventListener('storage', handleStorageChange);
+    return () => { 
+        mountedRef.current = false; 
+        subscription.unsubscribe();
+        clearTimeout(rescueTimer);
     };
-  }, [clearLocalData]);
+  }, [clearLocalData, isLoadingAuth]);
 
-  useEffect(() => {
-      if (currentUser?.id) {
-          loadUserData(currentUser.id);
-      }
-  }, [currentUser?.id, loadUserData]);
+  useEffect(() => { if (currentUser?.id) loadUserData(currentUser.id); }, [currentUser?.id, loadUserData]);
 
   const handleLogout = async () => {
     setIsLoadingAuth(true);
@@ -182,107 +138,70 @@ const App: React.FC = () => {
     setIsLoadingAuth(false);
   };
 
-  const handleLogin = async (email: string, password: string): Promise<string|null> => {
+  const handleHardReset = async () => {
+    setIsLoadingAuth(true);
+    await supabaseService.hardReset();
+    window.location.reload();
+  };
+
+  const handleLogin = async (email: string, password: string) => {
     setIsLoadingAuth(true);
     const error = await supabaseService.signIn(email, password);
-    if (error) {
-        setIsLoadingAuth(false);
-        return error;
-    }
-    setRoute('/');
+    if (error) { setIsLoadingAuth(false); return error; }
     return null;
   };
 
-  const handleSignup = async (name: string, email: string, password: string, familyInput: { isJoin: boolean, value: string }): Promise<string|null> => {
+  const handleSignup = async (name: string, email: string, password: string, familyInput: any) => {
     setIsLoadingAuth(true);
     const error = await supabaseService.signUp(name, email, password, familyInput);
-    if (error) {
-        setIsLoadingAuth(false);
-        return error;
-    }
-    setRoute('/');
+    if (error) { setIsLoadingAuth(false); return error; }
     return null;
   };
-
-  const handleSelectMember = (id: string) => {
-      setSelectedMemberId(id);
-      setViewMode('timeline');
-      window.history.pushState({ view: 'timeline', memberId: id }, '');
-  };
-
-  const handleBackToDashboard = () => {
-      setViewMode('dashboard');
-      window.history.pushState({ view: 'dashboard' }, '');
-  };
-
-  if (showPublicGuide) {
-      return <GuideView user={{ name: 'Guest' }} onBack={() => setShowPublicGuide(false)} onLogout={() => {}} />;
-  }
-
-  if (isMockupMode) {
-    return <MockupPreview onApprove={() => setIsMockupMode(false)} />;
-  }
 
   if (isLoadingAuth) {
       return (
-        <div className="min-h-screen bg-white flex flex-col items-center justify-center">
+        <div className="min-h-screen bg-white flex flex-col items-center justify-center p-6 text-center">
              <div className="relative mb-8">
                 <SpinnerIcon className="w-12 h-12 text-rose-700 animate-spin" />
+                <div className="absolute inset-0 flex items-center justify-center">
+                    <div className="w-2 h-2 bg-rose-700 rounded-full animate-ping"></div>
+                </div>
              </div>
-             <p className="text-slate-900 font-black uppercase tracking-[0.4em] text-[10px]">Securing Vault</p>
-             <p className="text-slate-300 font-bold uppercase tracking-[0.2em] text-[8px] mt-1">medHist Clinical Registry</p>
+             <h2 className="text-slate-900 font-black uppercase tracking-widest text-xs">Authenticating Vault...</h2>
+             <p className="text-slate-400 text-[9px] font-bold uppercase tracking-widest mt-2 animate-pulse">Establishing Secure Handshake</p>
+             
+             {showRescue && (
+                 <div className="mt-12 animate-fadeIn">
+                     <p className="text-[10px] text-slate-300 font-black uppercase tracking-widest mb-4">Taking too long?</p>
+                     <button 
+                        onClick={handleHardReset}
+                        className="px-6 py-3 bg-slate-50 text-rose-700 text-[10px] font-black uppercase tracking-widest rounded-xl border border-rose-100 hover:bg-rose-700 hover:text-white transition-all shadow-sm"
+                     >
+                        Force Reset Session
+                     </button>
+                 </div>
+             )}
         </div>
       );
   }
 
   if (!session || !currentUser) {
-    if (route === '/signup') return (
-        <SignupPage 
-            onSignup={handleSignup} 
-            onNavigateToLogin={() => setRoute('/login')} 
-            onOpenGuide={() => setShowPublicGuide(true)}
-        />
-    );
+    if (route === '/signup') return <SignupPage onSignup={handleSignup} onNavigateToLogin={() => setRoute('/login')} />;
     if (route === '/forgot-password') return <ForgotPasswordPage onNavigateToLogin={() => setRoute('/login')} />;
-    return (
-        <LoginPage 
-            onLogin={handleLogin} 
-            onNavigateToSignup={() => setRoute('/signup')} 
-            onNavigateToForgotPassword={() => setRoute('/forgot-password')} 
-            onOpenGuide={() => setShowPublicGuide(true)}
-        />
-    );
-  }
-  
-  if (dataLoadError) {
-      return (
-        <div className="min-h-screen bg-slate-50 flex flex-col items-center justify-center p-6 text-center">
-             <div className="bg-white p-10 rounded-[3rem] shadow-2xl max-w-sm w-full border border-slate-100">
-                 <div className="bg-rose-50 w-20 h-20 rounded-3xl flex items-center justify-center mx-auto mb-8 text-3xl">📡</div>
-                 <h2 className="text-2xl font-black text-slate-900 tracking-tight">Registry Offset</h2>
-                 <p className="text-xs text-slate-500 mb-10 leading-relaxed font-bold">{dataLoadError}</p>
-                 <div className="flex flex-col gap-4">
-                     <button onClick={() => { syncLock.current = null; loadUserData(currentUser.id); }} className="w-full bg-slate-900 text-white font-black py-5 rounded-2xl shadow-xl active:scale-95 transition text-[11px] uppercase tracking-widest">Reconnect Registry</button>
-                     <button onClick={handleLogout} className="w-full bg-slate-100 text-slate-600 font-black py-5 rounded-2xl active:bg-slate-200 transition text-[11px] uppercase tracking-widest">Sign Out</button>
-                 </div>
-             </div>
-        </div>
-      );
+    if (route === '/update-password') return <UpdatePasswordPage onSuccess={() => setRoute('/login')} />;
+    return <LoginPage onLogin={handleLogin} onNavigateToSignup={() => setRoute('/signup')} onNavigateToForgotPassword={() => setRoute('/forgot-password')} />;
   }
 
-  if (isRecoveryMode) return <UpdatePasswordPage onSuccess={() => { setIsRecoveryMode(false); setRoute('/'); }} />;
-  if (viewMode === 'guide') return <GuideView user={currentUser} onBack={handleBackToDashboard} onLogout={handleLogout} />;
   if (viewMode === 'timeline') {
       return (
           <TimelineView 
             onLogout={handleLogout} 
             user={currentUser} 
             initialSelectedMemberId={selectedMemberId}
-            onBackToDashboard={handleBackToDashboard}
+            onBackToDashboard={() => setViewMode('dashboard')}
             familyMembers={familyMembers}
             timelineEntries={timelineEntries}
-            onRefreshData={() => { syncLock.current = null; loadUserData(currentUser.id); }}
-            onOpenGuide={() => setViewMode('guide')}
+            onRefreshData={() => loadUserData(currentUser.id)}
             medications={medications}
           />
       );
@@ -296,9 +215,8 @@ const App: React.FC = () => {
         timelineEntries={timelineEntries}
         medications={medications}
         familyInfo={familyInfo}
-        onSelectMember={handleSelectMember}
-        onRefreshData={() => { syncLock.current = null; loadUserData(currentUser.id); }}
-        onOpenGuide={() => setViewMode('guide')}
+        onSelectMember={(id) => { setSelectedMemberId(id); setViewMode('timeline'); }}
+        onRefreshData={() => loadUserData(currentUser.id)}
         isSyncing={isSyncingData}
     />
   );

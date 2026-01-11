@@ -56,52 +56,38 @@ export const HealthAssistant: React.FC<HealthAssistantProps> = ({ familyMembers,
       }));
 
       const response = await chatWithHealthAssistant(userMessage, history, { familyMembers, timelineEntries, medications }, userId);
-      
       setMessages(prev => [...prev, { role: 'model', text: response }]);
-    } catch (error: any) {
-      console.error("Chat Error:", error);
-      const errorMsg = error?.message?.includes("overloaded") 
-        ? "The AI is a bit busy right now. I'll be ready in just a few seconds!" 
-        : "Sorry, I had trouble checking that. Please try again.";
-      setMessages(prev => [...prev, { role: 'model', text: errorMsg }]);
+    } catch (error) {
+      setMessages(prev => [...prev, { role: 'model', text: "Sorry, I had trouble with that query." }]);
     } finally {
       setIsLoading(false);
     }
   };
 
   const handleLinkClick = (rawId: string) => {
-      // 1. Aggressive cleaning of the ID provided by the AI
+      // REGISTRY LOCK: Aggressively clean any AI formatting artifacts
       const cleanId = rawId
-          .replace(/DATABASE_ID:|REF_ID:|ID:|\[|\]/gi, '')
+          .replace(/DOC_ID:|DATABASE_ID:|ID:|\[|\]/gi, '')
           .trim();
 
-      console.debug("[medHist] Click Link. Raw:", rawId, "Clean:", cleanId);
-
-      // 2. Exact Match Check (Standard)
+      // Attempt exact match first
       let entry = timelineEntries.find(e => e.id === cleanId);
       
-      // 3. Robust Fuzzy Fallback (Handles AI truncation or case-mismatches)
-      if (!entry && cleanId.length > 5) {
-          entry = timelineEntries.find(e => 
-            e.id.toLowerCase().includes(cleanId.toLowerCase()) || 
-            cleanId.toLowerCase().includes(e.id.toLowerCase())
-          );
+      // Fuzzy fallback for UUID truncation
+      if (!entry && cleanId.length > 8) {
+          entry = timelineEntries.find(e => e.id.includes(cleanId) || cleanId.includes(e.id));
       }
       
       if (entry) {
           onViewReport(entry);
       } else {
-          console.warn("[medHist] Link match failed for:", cleanId);
-          alert("I found the record, but the secure link has changed. You can open it manually from the timeline.");
+          alert("Record link expired. Please find it manually in the timeline.");
       }
   };
 
   const renderMessageText = (text: string) => {
-    // Splits text into parts, isolating the [VIEW:Label:ID] blocks
     const parts = text.split(/(\[VIEW:[^\]]*?:[^\]]*?\])/g);
-    
     return parts.map((part, index) => {
-        // match[1] = Label, match[2] = ID
         const match = part.match(/\[VIEW:(.*?):(.*?)(?:\|.*?)?\]/); 
         if (match) {
             const title = match[1].trim();
@@ -109,11 +95,8 @@ export const HealthAssistant: React.FC<HealthAssistantProps> = ({ familyMembers,
             return (
                 <button
                     key={index}
-                    onClick={(e) => {
-                        e.stopPropagation();
-                        handleLinkClick(id);
-                    }}
-                    className="inline-flex items-center gap-1.5 mx-1 px-3 py-1.5 bg-white text-rose-700 border-2 border-rose-100 rounded-xl text-[10px] font-black uppercase tracking-widest hover:bg-rose-700 hover:text-white hover:border-rose-700 transition-all shadow-sm pointer-events-auto active:scale-95 mb-1"
+                    onClick={(e) => { e.stopPropagation(); handleLinkClick(id); }}
+                    className="inline-flex items-center gap-1.5 mx-1 px-3 py-1.5 bg-white text-rose-700 border-2 border-rose-100 rounded-xl text-[10px] font-black uppercase tracking-widest hover:bg-rose-700 hover:text-white hover:border-rose-700 transition-all shadow-sm active:scale-95 mb-1"
                 >
                     View {title} <ArrowRightIcon className="w-3.5 h-3.5" />
                 </button>
@@ -126,29 +109,21 @@ export const HealthAssistant: React.FC<HealthAssistantProps> = ({ familyMembers,
   return (
     <div className="fixed inset-0 pointer-events-none z-[500] flex flex-col justify-end items-end p-6">
       {isOpen && (
-        <div className="w-full max-w-[360px] h-[500px] max-h-[70vh] bg-white rounded-3xl shadow-2xl flex flex-col border border-slate-200 overflow-hidden animate-fadeIn pointer-events-auto mb-4">
+        <div className="w-full max-w-[360px] h-[500px] bg-white rounded-3xl shadow-2xl flex flex-col border border-slate-200 overflow-hidden animate-fadeIn pointer-events-auto mb-4">
           <div className="bg-rose-700 p-4 text-white flex items-center justify-between">
             <div className="flex items-center gap-3">
-                <div className="bg-white/20 p-2 rounded-xl">
-                    <StethoscopeIcon className="w-5 h-5" />
-                </div>
-                <div>
-                    <h3 className="font-bold text-sm leading-tight text-left">Assistant</h3>
-                    <p className="text-[10px] text-rose-100 text-left">AI Medical Context</p>
-                </div>
+                <StethoscopeIcon className="w-5 h-5" />
+                <h3 className="font-bold text-sm">Assistant</h3>
             </div>
             <button onClick={() => setIsOpen(false)} className="p-2 hover:bg-white/10 rounded-full transition">
                 <CloseIcon className="w-5 h-5" />
             </button>
           </div>
-
           <div className="flex-grow overflow-y-auto p-4 space-y-4 bg-slate-50">
             {messages.map((msg, idx) => (
               <div key={idx} className={`flex ${msg.role === 'user' ? 'justify-end' : 'justify-start'}`}>
-                <div className={`max-w-[85%] rounded-2xl px-3 py-2 text-sm shadow-sm text-left pointer-events-auto ${
-                  msg.role === 'user' 
-                    ? 'bg-rose-700 text-white rounded-br-none' 
-                    : 'bg-white text-slate-700 border border-slate-200 rounded-bl-none'
+                <div className={`max-w-[85%] rounded-2xl px-3 py-2 text-sm shadow-sm text-left ${
+                  msg.role === 'user' ? 'bg-rose-700 text-white rounded-br-none' : 'bg-white text-slate-700 border border-slate-200 rounded-bl-none'
                 }`}>
                   {renderMessageText(msg.text)}
                 </div>
@@ -156,7 +131,7 @@ export const HealthAssistant: React.FC<HealthAssistantProps> = ({ familyMembers,
             ))}
             {isLoading && (
               <div className="flex justify-start">
-                 <div className="bg-white p-3 rounded-2xl rounded-bl-none border border-slate-200 shadow-sm flex items-center gap-2">
+                 <div className="bg-white p-3 rounded-2xl border border-slate-200 shadow-sm flex items-center gap-2">
                     <SpinnerIcon className="w-4 h-4 text-rose-700 animate-spin" />
                     <span className="text-xs text-slate-500 font-black uppercase tracking-widest">Thinking...</span>
                  </div>
@@ -164,34 +139,23 @@ export const HealthAssistant: React.FC<HealthAssistantProps> = ({ familyMembers,
             )}
             <div ref={messagesEndRef} />
           </div>
-
           <form onSubmit={handleSend} className="p-3 bg-white border-t border-slate-100">
             <div className="relative flex items-center">
               <input
                 type="text"
-                placeholder="Ask your records..."
-                className="w-full pl-4 pr-12 py-3 bg-slate-100 border-none rounded-2xl text-sm focus:ring-2 focus:ring-rose-500 focus:bg-white transition"
+                placeholder="Ask records..."
+                className="w-full pl-4 pr-12 py-3 bg-slate-100 rounded-2xl text-sm focus:ring-2 focus:ring-rose-500 transition"
                 value={input}
                 onChange={(e) => setInput(e.target.value)}
               />
-              <button 
-                type="submit" 
-                disabled={!input.trim() || isLoading}
-                className="absolute right-2 p-2 bg-rose-700 text-white rounded-xl hover:bg-rose-800 disabled:opacity-50 transition"
-              >
+              <button type="submit" className="absolute right-2 p-2 bg-rose-700 text-white rounded-xl">
                 <SendIcon className="w-4 h-4" />
               </button>
             </div>
           </form>
         </div>
       )}
-
-      <button
-        onClick={() => setIsOpen(!isOpen)}
-        className={`p-5 rounded-full shadow-2xl transition-all duration-300 pointer-events-auto active:scale-90 ${
-          isOpen ? 'bg-white text-slate-600' : 'bg-rose-700 text-white hover:bg-rose-800'
-        }`}
-      >
+      <button onClick={() => setIsOpen(!isOpen)} className="p-5 rounded-full shadow-2xl pointer-events-auto bg-rose-700 text-white hover:bg-rose-800 transition active:scale-95">
         {isOpen ? <CloseIcon className="w-7 h-7" /> : <ChatIcon className="w-8 h-8" />}
       </button>
     </div>
