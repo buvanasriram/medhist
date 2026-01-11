@@ -94,7 +94,7 @@ export const TimelineView: React.FC<TimelineViewProps> = ({
     if (isDeleting) return;
     try {
         const result = await supabaseService.getFileForEntry(entryToView.id);
-        if (!result) {
+        if (!result || !result.signedUrl) {
             alert("This record file could not be found.");
             return;
         }

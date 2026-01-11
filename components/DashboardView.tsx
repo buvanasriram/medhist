@@ -115,7 +115,7 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
     const handleViewReport = async (entry: TimelineEntry) => {
         try {
             const result = await supabaseService.getFileForEntry(entry.id);
-            if (!result) {
+            if (!result || !result.signedUrl) {
                 alert("Could not load report link.");
                 return;
             }
