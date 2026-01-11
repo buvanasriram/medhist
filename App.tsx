@@ -59,7 +59,11 @@ const App: React.FC = () => {
           }
       } catch (e: any) {
           console.error("[medHist] Data Load Error:", e);
-          if (mountedRef.current) setDataLoadError(e.message || "Registry Sync Failed.");
+          if (mountedRef.current) {
+              setDataLoadError(e.message || "Registry Sync Failed.");
+              // If we hit a restricted registry error, auto-trigger rescue options
+              setShowRescue(true);
+          }
       } finally {
           if (mountedRef.current) setIsSyncingData(false);
       }
@@ -181,6 +185,45 @@ const App: React.FC = () => {
                      </button>
                  </div>
              )}
+        </div>
+      );
+  }
+
+  // GLOBAL ERROR SCREEN: Handle "Registry Restricted" orphans
+  if (dataLoadError) {
+      return (
+        <div className="min-h-screen bg-white flex flex-col items-center justify-center p-8 text-center max-w-md mx-auto">
+             <div className="bg-rose-50 p-6 rounded-full mb-8">
+                <svg xmlns="http://www.w3.org/2000/svg" className="w-12 h-12 text-rose-700" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+                    <path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z" />
+                    <line x1="12" y1="9" x2="12" y2="13" />
+                    <line x1="12" y1="17" x2="12.01" y2="17" />
+                </svg>
+             </div>
+             <h2 className="text-2xl font-black text-slate-900 tracking-tighter mb-4">Registry Access Restricted</h2>
+             <p className="text-slate-500 text-sm font-bold leading-relaxed mb-8">
+                Your medical identity record was not found or has been detached. This can happen if your primary folder was accidentally purged.
+             </p>
+             <div className="flex flex-col gap-4 w-full">
+                <button 
+                    onClick={() => loadUserData(currentUser!.id)}
+                    className="w-full bg-slate-900 text-white font-black py-4 rounded-2xl text-[10px] uppercase tracking-widest shadow-xl hover:bg-rose-900 transition"
+                >
+                    Retry Verification
+                </button>
+                <button 
+                    onClick={handleHardReset}
+                    className="w-full bg-rose-50 text-rose-700 font-black py-4 rounded-2xl text-[10px] uppercase tracking-widest border border-rose-100 hover:bg-rose-700 hover:text-white transition"
+                >
+                    Hard Reset Session
+                </button>
+                <button 
+                    onClick={handleLogout}
+                    className="text-slate-400 font-black text-[9px] uppercase tracking-widest hover:text-slate-900 transition"
+                >
+                    Log Out
+                </button>
+             </div>
         </div>
       );
   }

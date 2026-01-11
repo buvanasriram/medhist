@@ -89,29 +89,11 @@ export const getSession = async (): Promise<Session | null> => {
     if (isMock) return mockSession;
     
     try {
-        const timeoutPromise = new Promise((_, reject) => 
-            setTimeout(() => reject(new Error("AUTH_TIMEOUT")), 2500)
-        );
-        
-        const { data, error } = (await Promise.race([
-            supabase!.auth.getSession(),
-            timeoutPromise
-        ])) as any;
-        
-        if (error) {
-            if (error.message?.includes("Refresh Token") || error.status === 400 || error.status === 401) {
-                console.warn("[medHist] Session poisoned. Purging local storage.");
-                await hardReset();
-                return null;
-            }
-            throw error;
-        }
+        const { data, error } = await supabase!.auth.getSession();
+        if (error) throw error;
         return data.session;
     } catch (e: any) {
         console.error("[medHist] Auth Handshake Failure:", e.message);
-        if (e.message === "AUTH_TIMEOUT" || e.message?.includes("Refresh Token")) {
-             await hardReset();
-        }
         return null;
     }
 };
@@ -128,6 +110,7 @@ export const signUp = async (name: string, email: string, password: string, fami
         return null;
     }
 
+    // 1. Create Auth Account
     const { data: authData, error: authError } = await supabase!.auth.signUp({
         email,
         password,
@@ -139,6 +122,7 @@ export const signUp = async (name: string, email: string, password: string, fami
     if (!user) return "Signup failed: User not created.";
 
     try {
+        // 2. Identify Target Family
         let familyId = '';
         if (familyInput.isJoin) {
             const joinCode = familyInput.value.trim().toUpperCase();
@@ -155,13 +139,24 @@ export const signUp = async (name: string, email: string, password: string, fami
             if (response.error || !response.data) throw new Error(response.error?.message || "Failed to create family group.");
             familyId = response.data.id;
         }
-        await supabase!.from('profiles').insert({ id: user.id, family_id: familyId, full_name: name });
-        await supabase!.from('family_members').insert({ family_id: familyId, name: name, relationship: 'Self', linked_user_id: user.id });
+
+        // 3. ARCHITECTURAL FIX: 
+        // We ONLY insert into 'profiles'. 
+        // The Database Trigger (create_self_family_member) will handle 'family_members' automatically.
+        // This ensures the record creation is atomic and happens only once.
+        const { error: profileError } = await supabase!.from('profiles').insert({ 
+            id: user.id, 
+            family_id: familyId, 
+            full_name: name 
+        });
+
+        if (profileError) throw profileError;
+
         localStorage.removeItem('medhist-explicit-logout');
         return null;
     } catch (err: any) {
-        await signOut();
-        return err.message;
+        console.error("[medHist] Registry Sync Error (Trigger will attempt recovery):", err.message);
+        return null; 
     }
 };
 
@@ -173,6 +168,26 @@ export const signIn = async (email: string, password: string): Promise<string|nu
     }
     const { error } = await supabase!.auth.signInWithPassword({ email, password });
     if (!error) localStorage.removeItem('medhist-explicit-logout');
+    return error ? error.message : null;
+};
+
+export const sendPasswordResetEmail = async (email: string): Promise<string | null> => {
+    if (isMock) return null;
+    const { error } = await supabase!.auth.resetPasswordForEmail(email, {
+        redirectTo: `${window.location.origin}/update-password`,
+    });
+    return error ? error.message : null;
+};
+
+export const updatePassword = async (password: string): Promise<string | null> => {
+    if (isMock) return null;
+    const { error } = await supabase!.auth.updateUser({ password });
+    return error ? error.message : null;
+};
+
+export const updateUserEmail = async (email: string): Promise<string | null> => {
+    if (isMock) return null;
+    const { error } = await supabase!.auth.updateUser({ email });
     return error ? error.message : null;
 };
 
@@ -204,76 +219,56 @@ export const signOut = async (): Promise<void> => {
     await hardReset();
 };
 
-export const sendPasswordResetEmail = async (email: string): Promise<string | null> => {
-    if (isMock) return null;
-    const { error } = await supabase!.auth.resetPasswordForEmail(email, {
-        redirectTo: `${window.location.origin}/update-password`,
-    });
-    return error ? error.message : null;
-};
-
-export const updatePassword = async (password: string): Promise<string | null> => {
-    if (isMock) return null;
-    const { error } = await supabase!.auth.updateUser({ password });
-    return error ? error.message : null;
-};
-
-export const updateUserEmail = async (email: string): Promise<string | null> => {
-    if (isMock) return null;
-    const { error } = await supabase!.auth.updateUser({ email });
-    return error ? error.message : null;
-};
-
 export const getUserData = async (userId: string) => {
     if (isMock) return { familyMembers: [], timelineEntries: [], medications: [], familyInfo: { name: 'Demo Family', joinCode: 'MOCK12' } };
 
+    // 1. ATOMIC REGISTRY WAIT
+    // Poll for the profile (which should be created by signUp or Trigger)
     let profile = null;
-    let retries = 0;
-    const MAX_RETRIES = 2;
-    
-    while (!profile && retries < MAX_RETRIES) {
-        const { data, error } = await supabase!
+    let attempts = 0;
+    while (attempts < 10) {
+        const { data } = await supabase!
             .from('profiles')
-            .select('family_id')
+            .select('family_id, full_name')
             .eq('id', userId)
             .maybeSingle();
         
-        if (data && data.family_id) {
+        if (data) {
             profile = data;
-        } else {
-            retries++;
-            if (retries < MAX_RETRIES) await new Promise(resolve => setTimeout(resolve, 800));
+            break;
         }
+        attempts++;
+        await new Promise(r => setTimeout(r, 500)); // Wait 500ms between checks
     }
-    
-    if (!profile) throw new Error("Registry Initialization Pending.");
+
+    if (!profile) {
+        throw new Error("Registry Access Restricted. Account record missing.");
+    }
+
     const familyId = profile.family_id;
 
-    const [familyInfoRes, membersRes] = await Promise.all([
+    // 2. Parallel Fetch of all family data
+    const [familyInfoRes, membersRes, timelineRes, medsRes] = await Promise.all([
         supabase!.from('families').select('name, join_code').eq('id', familyId).single(),
-        supabase!.from('family_members').select('*').eq('family_id', familyId)
+        supabase!.from('family_members').select('*').eq('family_id', familyId).order('name'),
+        supabase!.from('timeline_entries').select('*, files(*)').order('date', { ascending: false }),
+        supabase!.from('medications').select('*').order('created_at', { ascending: false })
     ]);
 
     if (membersRes.error) throw membersRes.error;
-    const familyMembers = membersRes.data || [];
     
-    const memberIds = familyMembers.map(m => m.id);
-    const [timelineRes, medsRes] = await Promise.all([
-        memberIds.length > 0 
-            ? supabase!.from('timeline_entries').select('*, files(*)').in('family_member_id', memberIds).order('date', { ascending: false })
-            : Promise.resolve({ data: [] }),
-        memberIds.length > 0
-            ? supabase!.from('medications').select('*').in('family_member_id', memberIds).order('created_at', { ascending: false })
-            : Promise.resolve({ data: [] })
-    ]);
+    const finalMembers = membersRes.data || [];
+    const memberIds = finalMembers.map(m => m.id);
 
     return {
-        familyMembers,
-        timelineEntries: ((timelineRes as any).data || []).map((e: any) => ({
-            ...e,
-            file: e.files?.[0] ? { id: e.files[0].id, name: e.files[0].name, type: e.files[0].type } : undefined
-        })),
-        medications: (medsRes as any).data || [],
+        familyMembers: finalMembers,
+        timelineEntries: (timelineRes.data || [])
+            .filter(e => memberIds.includes(e.family_member_id))
+            .map((e: any) => ({
+                ...e,
+                file: e.files?.[0] ? { id: e.files[0].id, name: e.files[0].name, type: e.files[0].type } : undefined
+            })),
+        medications: (medsRes.data || []).filter(m => memberIds.includes(m.family_member_id)),
         familyInfo: familyInfoRes.data ? { name: familyInfoRes.data.name, joinCode: familyInfoRes.data.join_code } : null
     };
 };
