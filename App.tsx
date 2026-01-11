@@ -66,10 +66,9 @@ const App: React.FC = () => {
               }
           }
       } catch (e: any) {
-          console.error("[medHist] Data Load Error:", e);
+          console.error(`[medHist] Data Load Error:`, e);
           if (mountedRef.current) {
               setDataLoadError(e.message || "Registry Sync Failed.");
-              setShowRescue(true);
           }
       } finally {
           if (mountedRef.current) setIsSyncingData(false);
@@ -155,14 +154,10 @@ const App: React.FC = () => {
   };
 
   const handleLogin = async (email: string, password: string) => {
-    // We don't call setIsLoadingAuth(true) here anymore.
-    // This allows the LoginPage to show its own local loading spinner
-    // and keeps the error message visible if the login fails.
     const error = await supabaseService.signIn(email, password);
     if (error) {
         return error;
     }
-    // If successful, onAuthStateChange listener will handle the UI transition.
     return null;
   };
 
@@ -213,7 +208,7 @@ const App: React.FC = () => {
              </div>
              <h2 className="text-2xl font-black text-slate-900 tracking-tighter mb-4">Registry Access Restricted</h2>
              <p className="text-slate-500 text-sm font-bold leading-relaxed mb-8">
-                Your medical identity record was not found or has been detached. This can happen if your primary folder was accidentally purged.
+                Your medical identity record was not found or has been detached. This can happen if your primary folder was accidentally purged or a database sync is in progress.
              </p>
              <div className="flex flex-col gap-4 w-full">
                 <button 

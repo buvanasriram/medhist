@@ -112,6 +112,7 @@ export const signUp = async (name: string, email: string, password: string, fami
     if (authError) return authError.message;
     const user = authData.user;
     if (!user) return "Signup failed.";
+
     try {
         let familyId = '';
         if (familyInput.isJoin) {
@@ -125,7 +126,16 @@ export const signUp = async (name: string, email: string, password: string, fami
             if (response.error || !response.data) throw new Error("Family creation failed.");
             familyId = response.data.id;
         }
-        await supabase!.from('profiles').upsert({ id: user.id, family_id: familyId, full_name: name });
+        
+        // Manual profile creation
+        const { error: profError } = await supabase!.from('profiles').upsert({ 
+            id: user.id, 
+            family_id: familyId, 
+            full_name: name 
+        });
+        
+        if (profError) throw profError;
+
         localStorage.removeItem('medhist-explicit-logout');
         return null;
     } catch (err: any) {
@@ -157,19 +167,40 @@ export const hardReset = async () => {
 
 export const getUserData = async (userId: string) => {
     if (isMock) return { familyMembers: [], timelineEntries: [], medications: [], familyInfo: null };
-    const { data: profile } = await supabase!.from('profiles').select('family_id').eq('id', userId).single();
-    if (!profile) throw new Error("Profile not found.");
+    
+    // Explicit query for the profile
+    const { data: profile, error: profError } = await supabase!
+        .from('profiles')
+        .select('family_id')
+        .eq('id', userId)
+        .single();
+    
+    if (profError || !profile) {
+        throw new Error("Profile not found.");
+    }
+
     const familyId = profile.family_id;
     const [familyInfoRes, membersRes] = await Promise.all([
         supabase!.from('families').select('name, join_code').eq('id', familyId).single(),
         supabase!.from('family_members').select('*').eq('family_id', familyId).order('name')
     ]);
+    
+    if (familyInfoRes.error) {
+         throw new Error("Family record not found.");
+    }
+
     const members = membersRes.data || [];
     const memberIds = members.map(m => m.id);
+    
     const [timelineRes, medsRes] = await Promise.all([
-        supabase!.from('timeline_entries').select('*, files(*)').in('family_member_id', memberIds).order('date', { ascending: false }),
-        supabase!.from('medications').select('*').in('family_member_id', memberIds).order('created_at', { ascending: false })
+        memberIds.length > 0 
+            ? supabase!.from('timeline_entries').select('*, files(*)').in('family_member_id', memberIds).order('date', { ascending: false })
+            : Promise.resolve({ data: [] }),
+        memberIds.length > 0 
+            ? supabase!.from('medications').select('*').in('family_member_id', memberIds).order('created_at', { ascending: false })
+            : Promise.resolve({ data: [] })
     ]);
+    
     return {
         familyMembers: members,
         timelineEntries: timelineRes.data || [],
