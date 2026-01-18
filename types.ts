@@ -25,6 +25,7 @@ export interface Medication {
   frequency?: string;
   purpose?: string; // e.g. "High Blood Pressure"
   start_date?: string; // Date medication started
+  end_date?: string; // Date medication is expected to finish
   active: boolean;
   created_at?: string;
   stopped_at?: string; // Timestamp when medication was archived
@@ -51,6 +52,7 @@ export interface TimelineEntry {
   follow_up_date?: string; // ISO 8601 format
   mismatch_ignored?: boolean;
   file?: ReportFile;
+  pending_medications?: ExtractedMedication[];
 }
 
 export interface ExtractedMedication {
@@ -59,6 +61,7 @@ export interface ExtractedMedication {
     frequency?: string;
     purpose?: string;
     startDate?: string;
+    endDate?: string;
 }
 
 export interface ExtractedReportData {

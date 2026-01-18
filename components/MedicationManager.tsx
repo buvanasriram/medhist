@@ -8,12 +8,13 @@ import { CloseIcon } from './icons/CloseIcon';
 import { SpinnerIcon } from './icons/SpinnerIcon';
 import { ConfirmationModal } from './ConfirmationModal';
 import { CalendarIcon } from './icons/CalendarIcon';
+import { HourglassIcon } from './icons/HourglassIcon';
 
 interface MedicationManagerProps {
   isOpen: boolean;
   onClose: () => void;
   medications: Medication[];
-  onAdd: (data: { name: string, dosage: string, frequency: string, purpose: string, start_date: string }) => Promise<void>;
+  onAdd: (data: { name: string, dosage: string, frequency: string, purpose: string, start_date: string, end_date: string }) => Promise<void>;
   onDelete: (id: string) => Promise<void>;
   memberName: string;
 }
@@ -24,6 +25,7 @@ export const MedicationManager: React.FC<MedicationManagerProps> = ({ isOpen, on
   const [frequency, setFrequency] = useState('');
   const [purpose, setPurpose] = useState('');
   const [startDate, setStartDate] = useState(new Date().toISOString().split('T')[0]);
+  const [endDate, setEndDate] = useState('');
 
   const [isAdding, setIsAdding] = useState(false);
   const [isAddFormOpen, setIsAddFormOpen] = useState(false);
@@ -40,12 +42,13 @@ export const MedicationManager: React.FC<MedicationManagerProps> = ({ isOpen, on
     setIsAdding(true);
     setError(null);
     try {
-        await onAdd({ name, dosage, frequency, purpose, start_date: startDate });
+        await onAdd({ name, dosage, frequency, purpose, start_date: startDate, end_date: endDate });
         setName('');
         setDosage('');
         setFrequency('');
         setPurpose('');
         setStartDate(new Date().toISOString().split('T')[0]);
+        setEndDate('');
         setIsAddFormOpen(false); 
     } catch (error) {
         console.error("Failed to add medication:", error);
@@ -131,19 +134,32 @@ export const MedicationManager: React.FC<MedicationManagerProps> = ({ isOpen, on
                     displayedMeds.map(med => {
                         const isStopped = !med.active;
                         const isOptimisticStop = optimisticStoppedIds.has(med.id);
+                        const isCompletingSoon = med.active && med.end_date && new Date(med.end_date) < new Date(Date.now() + 2 * 24 * 60 * 60 * 1000);
                         
                         return (
                         <div key={med.id} className={`flex items-center justify-between p-5 rounded-2xl border transition-all duration-300 text-left ${isStopped || isOptimisticStop ? 'bg-slate-50/50 border-slate-100 grayscale opacity-60' : 'bg-white border-slate-100 shadow-sm shadow-slate-200/40 hover:shadow-md'}`}>
                             <div className="min-w-0 pr-4">
-                                <h4 className={`text-base font-black tracking-tight ${isStopped || isOptimisticStop ? 'text-slate-400' : 'text-slate-900'}`}>
-                                    {med.name}
-                                </h4>
+                                <div className="flex items-center gap-2 mb-1">
+                                    <h4 className={`text-base font-black tracking-tight ${isStopped || isOptimisticStop ? 'text-slate-400' : 'text-slate-900'}`}>
+                                        {med.name}
+                                    </h4>
+                                    {isCompletingSoon && !isStopped && (
+                                        <span className="flex items-center gap-1 bg-amber-50 text-amber-700 text-[7px] font-black uppercase tracking-widest px-1.5 py-0.5 rounded border border-amber-100">
+                                           <HourglassIcon className="w-2.5 h-2.5" /> Finishing
+                                        </span>
+                                    )}
+                                </div>
                                 <div className="text-[10px] text-slate-400 font-bold tracking-tight mt-0.5 space-y-1">
                                     <p className="uppercase tracking-widest">{med.dosage || '-'} • {med.frequency || '-'}</p>
                                     {med.purpose && <p className="text-rose-700 font-black uppercase tracking-wider">{med.purpose}</p>}
-                                    <div className="flex items-center gap-2 mt-2 opacity-60">
+                                    <div className="flex flex-wrap items-center gap-x-3 gap-y-1 mt-2 opacity-60">
                                         {med.start_date && (
                                             <span className="flex items-center gap-1"><CalendarIcon className="w-3.5 h-3.5"/> Start: {new Date(med.start_date).toLocaleDateString()}</span>
+                                        )}
+                                        {med.end_date && !isStopped && (
+                                            <span className={`flex items-center gap-1 font-black ${isCompletingSoon ? 'text-amber-600' : 'text-slate-900'}`}>
+                                                <HourglassIcon className="w-3.5 h-3.5"/> End: {new Date(med.end_date).toLocaleDateString()}
+                                            </span>
                                         )}
                                         {med.stopped_at && isStopped && (
                                             <span className="text-red-700 font-black ml-1">• Stopped: {new Date(med.stopped_at).toLocaleDateString()}</span>
@@ -155,14 +171,14 @@ export const MedicationManager: React.FC<MedicationManagerProps> = ({ isOpen, on
                             {!isStopped && !isOptimisticStop && (
                                 <button 
                                     onClick={() => setMedToStop(med.id)}
-                                    className="p-3 text-slate-200 hover:text-red-700 hover:bg-red-50 rounded-xl transition-all active:scale-90"
+                                    className="p-2.5 bg-slate-50 text-slate-900 rounded-xl shadow-sm hover:bg-red-700 hover:text-white transition-all duration-200 active:scale-90 disabled:opacity-50"
                                     title="Discontinue Medication"
                                     disabled={!!isStoppingId}
                                 >
                                     {isStoppingId === med.id ? (
                                         <SpinnerIcon className="w-5 h-5 animate-spin text-rose-700" />
                                     ) : (
-                                        <StopCircleIcon className="w-6 h-6" />
+                                        <StopCircleIcon className="w-5 h-5" />
                                     )}
                                 </button>
                             )}
@@ -217,16 +233,28 @@ export const MedicationManager: React.FC<MedicationManagerProps> = ({ isOpen, on
                                     disabled={isAdding}
                                 />
                             </div>
-                            <div className="grid grid-cols-1 gap-2">
-                                <label className="text-[8px] font-black uppercase tracking-widest text-rose-400 pl-1">Protocol Start Date</label>
-                                <input 
-                                    type="date" 
-                                    className="w-full bg-white border border-rose-200/50 rounded-xl py-3 px-4 text-xs font-bold text-slate-900 focus:outline-none focus:border-rose-500 transition shadow-sm"
-                                    value={startDate}
-                                    onChange={e => setStartDate(e.target.value)}
-                                    disabled={isAdding}
-                                    required
-                                />
+                            <div className="grid grid-cols-2 gap-3">
+                                <div className="space-y-1">
+                                    <label className="text-[8px] font-black uppercase tracking-widest text-rose-400 pl-1">Start Date</label>
+                                    <input 
+                                        type="date" 
+                                        className="w-full bg-white border border-rose-200/50 rounded-xl py-2 px-3 text-[10px] font-bold text-slate-900 focus:outline-none focus:border-rose-500 transition shadow-sm"
+                                        value={startDate}
+                                        onChange={e => setStartDate(e.target.value)}
+                                        disabled={isAdding}
+                                        required
+                                    />
+                                </div>
+                                <div className="space-y-1">
+                                    <label className="text-[8px] font-black uppercase tracking-widest text-slate-400 pl-1">End Date (Optional)</label>
+                                    <input 
+                                        type="date" 
+                                        className="w-full bg-white border border-slate-200/50 rounded-xl py-2 px-3 text-[10px] font-bold text-slate-900 focus:outline-none focus:border-rose-500 transition shadow-sm"
+                                        value={endDate}
+                                        onChange={e => setEndDate(e.target.value)}
+                                        disabled={isAdding}
+                                    />
+                                </div>
                             </div>
                         </div>
                         

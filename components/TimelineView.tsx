@@ -61,6 +61,8 @@ export const TimelineView: React.FC<TimelineViewProps> = ({
   const [isGeneratingPdf, setIsGeneratingPdf] = useState<boolean>(false);
   const [error, setError] = useState<string | null>(null);
 
+  const selectedMember = useMemo(() => familyMembers.find(m => m.id === selectedMemberId), [familyMembers, selectedMemberId]);
+
   const handleUpload = useCallback(async (file: File, memberId: string, password?: string) => {
     setIsLoading(true);
     setError(null);
@@ -78,7 +80,10 @@ export const TimelineView: React.FC<TimelineViewProps> = ({
         follow_up_date: extractedData.followUpDate
       };
       const fileData = { name: file.name, type: file.type, data: base64, ...(password && { password }) };
-      await supabaseService.addTimelineEntry(newEntryData, fileData, extractedData.medications);
+      
+      // Pass the folder name for name mismatch verification
+      await supabaseService.addTimelineEntry(newEntryData, fileData, extractedData.medications, selectedMember?.name);
+      
       onRefreshData();
       setUploadModalOpen(false);
     } catch (err: any) {
@@ -88,7 +93,7 @@ export const TimelineView: React.FC<TimelineViewProps> = ({
     } finally {
       setIsLoading(false);
     }
-  }, [onRefreshData]);
+  }, [onRefreshData, selectedMember?.name]);
 
   const handleViewReport = useCallback(async (entryToView: TimelineEntry) => {
     if (isDeleting) return;
@@ -149,7 +154,6 @@ export const TimelineView: React.FC<TimelineViewProps> = ({
     setSearchQuery('');
   };
   
-  const selectedMember = useMemo(() => familyMembers.find(m => m.id === selectedMemberId), [familyMembers, selectedMemberId]);
   const memberEntries = useMemo(() => timelineEntries.filter(entry => entry.family_member_id === selectedMemberId), [timelineEntries, selectedMemberId]);
   
   const themeColor = useMemo(() => {

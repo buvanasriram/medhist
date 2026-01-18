@@ -1,5 +1,5 @@
 
-import { useState, useRef, useEffect } from 'react';
+import React, { useState, useRef, useEffect } from 'react';
 import { ChatIcon } from './icons/ChatIcon';
 import { CloseIcon } from './icons/CloseIcon';
 import { SendIcon } from './icons/SendIcon';
@@ -23,6 +23,7 @@ interface Message {
   text: string;
 }
 
+// Added React import above and using React.FC here
 export const HealthAssistant: React.FC<HealthAssistantProps> = ({ familyMembers, timelineEntries, medications, userName, userId, onViewReport }) => {
   const [isOpen, setIsOpen] = useState(false);
   const [messages, setMessages] = useState<Message[]>([
@@ -40,6 +41,7 @@ export const HealthAssistant: React.FC<HealthAssistantProps> = ({ familyMembers,
     scrollToBottom();
   }, [messages, isOpen, isLoading]);
 
+  // Using React.FormEvent here
   const handleSend = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!input.trim() || isLoading) return;

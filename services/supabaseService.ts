@@ -271,12 +271,61 @@ export const getFileForEntry = async (entryId: string) => {
     return { signedUrl: data?.signedUrl, filePath: file.file_path, metadata: file };
 };
 
-export const addTimelineEntry = async (entryData: any, fileData: any, extractedMedications?: ExtractedMedication[]) => {
+const normalizeName = (name: string): string => {
+    return name.toLowerCase().replace(/dr\.|dr\s|medical officer|consultant|signatory|physician|referring/gi, '').trim();
+};
+
+const isGenericName = (name: string): boolean => {
+    const generic = ["medical officer", "duty doctor", "physician", "doctor", "consultant", "n/a", "self", "not available"];
+    return generic.some(g => name.toLowerCase().includes(g)) && name.length < 25;
+};
+
+export const addTimelineEntry = async (entryData: any, fileData: any, extractedMedications?: ExtractedMedication[], folderName?: string) => {
+    if (isMock) return;
+
+    const cleanDate = sanitizeDate(entryData.date) || new Date().toISOString().split('T')[0];
+    const reportType = (entryData.report_type || '').trim();
+    const newDoctorName = (entryData.doctor_name || '').trim();
+
+    // 2. High-Precision Duplicate Logic (Resilient to AI Variance)
+    const { data: candidates } = await supabase!
+        .from('timeline_entries')
+        .select('id, doctor_name')
+        .eq('family_member_id', entryData.family_member_id)
+        .eq('date', cleanDate)
+        .eq('report_type', reportType);
+
+    if (candidates && candidates.length > 0) {
+        const isDuplicate = candidates.some(c => {
+            const existingDoc = (c.doctor_name || '').trim();
+            const normExisting = normalizeName(existingDoc);
+            const normNew = normalizeName(newDoctorName);
+            
+            // IF DATE AND REPORT TYPE MATCH, we handle Referrer vs Signatory vs Generic.
+            if (!normExisting || !normNew) return true;
+            
+            // If one is generic ('Medical Officer') and other is specific, it's a duplicate.
+            if (isGenericName(existingDoc) || isGenericName(newDoctorName)) return true;
+            
+            // Standard string comparison
+            return normExisting === normNew || normExisting.includes(normNew) || normNew.includes(normExisting);
+        });
+
+        if (isDuplicate) {
+            throw new Error("This clinical record is already registered (Identical Date & Type detected).");
+        }
+    }
+
+    const isMismatched = entryData.patient_name && folderName && 
+                         entryData.patient_name.trim().toLowerCase() !== folderName.trim().toLowerCase();
+
     const cleanEntry = {
         ...entryData,
-        date: sanitizeDate(entryData.date) || new Date().toISOString().split('T')[0],
-        follow_up_date: sanitizeDate(entryData.follow_up_date)
+        date: cleanDate,
+        follow_up_date: sanitizeDate(entryData.follow_up_date),
+        pending_medications: isMismatched ? extractedMedications : null
     };
+
     const { data: entry, error: entryError } = await supabase!.from('timeline_entries').insert(cleanEntry).select().single();
     if (entryError) throw entryError;
 
@@ -295,7 +344,7 @@ export const addTimelineEntry = async (entryData: any, fileData: any, extractedM
         });
     }
 
-    if (extractedMedications && extractedMedications.length > 0) {
+    if (!isMismatched && extractedMedications && extractedMedications.length > 0) {
         const meds = extractedMedications.map(m => ({
             family_member_id: entryData.family_member_id,
             timeline_entry_id: entry.id,
@@ -304,6 +353,7 @@ export const addTimelineEntry = async (entryData: any, fileData: any, extractedM
             frequency: m.frequency,
             purpose: m.purpose,
             start_date: sanitizeDate(m.startDate) || cleanEntry.date,
+            end_date: sanitizeDate(m.endDate),
             active: true
         }));
         await supabase!.from('medications').insert(meds);
@@ -311,39 +361,76 @@ export const addTimelineEntry = async (entryData: any, fileData: any, extractedM
 };
 
 export const deleteTimelineEntry = async (id: string) => {
+    if (isMock) return;
     const { data: file } = await supabase!.from('files').select('file_path').eq('timeline_entry_id', id).single();
     if (file) await supabase!.storage.from(STORAGE_BUCKET).remove([file.file_path]);
     await supabase!.from('timeline_entries').delete().eq('id', id);
 };
 
 export const ignoreMismatch = async (id: string) => {
-    await supabase!.from('timeline_entries').update({ mismatch_ignored: true }).eq('id', id);
+    if (isMock) return;
+    const { data: entry } = await supabase!
+        .from('timeline_entries')
+        .select('id, family_member_id, date, pending_medications')
+        .eq('id', id)
+        .single();
+    
+    if (entry && entry.pending_medications && Array.isArray(entry.pending_medications)) {
+        const meds = entry.pending_medications.map((m: ExtractedMedication) => ({
+            family_member_id: entry.family_member_id,
+            timeline_entry_id: entry.id,
+            name: m.name,
+            dosage: m.dosage,
+            frequency: m.frequency,
+            purpose: m.purpose,
+            start_date: sanitizeDate(m.startDate) || entry.date,
+            end_date: sanitizeDate(m.endDate),
+            active: true
+        }));
+        await supabase!.from('medications').insert(meds);
+    }
+
+    await supabase!
+        .from('timeline_entries')
+        .update({ mismatch_ignored: true, pending_medications: null })
+        .eq('id', id);
 };
 
 export const addMedication = async (data: any) => {
-    await supabase!.from('medications').insert({ ...data, start_date: sanitizeDate(data.start_date), active: true });
+    if (isMock) return;
+    await supabase!.from('medications').insert({ 
+        ...data, 
+        start_date: sanitizeDate(data.start_date),
+        end_date: sanitizeDate(data.end_date), 
+        active: true 
+    });
 };
 
 export const stopMedication = async (id: string) => {
+    if (isMock) return;
     await supabase!.from('medications').update({ active: false, stopped_at: new Date().toISOString() }).eq('id', id);
 };
 
 export const sendPasswordResetEmail = async (email: string) => {
+    if (isMock) return null;
     const { error } = await supabase!.auth.resetPasswordForEmail(email, { redirectTo: `${window.location.origin}/update-password` });
     return error ? error.message : null;
 };
 
 export const updatePassword = async (password: string) => {
+    if (isMock) return null;
     const { error } = await supabase!.auth.updateUser({ password });
     return error ? error.message : null;
 };
 
 export const updateUserEmail = async (email: string) => {
+    if (isMock) return null;
     const { error } = await supabase!.auth.updateUser({ email });
     return error ? error.message : null;
 };
 
 export const createShareLink = async (entryId: string): Promise<string | null> => {
+    if (isMock) return null;
     const { data: file } = await supabase!.from('files').select('file_path').eq('timeline_entry_id', entryId).single();
     if (!file) return null;
     const { data, error } = await supabase!.storage.from(STORAGE_BUCKET).createSignedUrl(file.file_path, 86400);

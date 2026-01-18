@@ -36,6 +36,7 @@ const App: React.FC = () => {
   const bootCalledRef = useRef<boolean>(false);
   
   const clearLocalData = useCallback(() => {
+    // 1. Clear Data State
     setFamilyMembers([]);
     setTimelineEntries([]);
     setMedications([]);
@@ -43,6 +44,10 @@ const App: React.FC = () => {
     setDataLoadError(null);
     setSession(null);
     setCurrentUser(null);
+    
+    // 2. Reset Navigation State (Fixes cross-user state residue)
+    setViewMode('dashboard');
+    setSelectedMemberId(undefined);
   }, []);
 
   const loadUserData = useCallback(async (userId: string) => {
@@ -234,11 +239,34 @@ const App: React.FC = () => {
       );
   }
 
+  if (viewMode === 'guide') {
+      return (
+          <GuideView 
+            user={currentUser || { name: 'Guest' }} 
+            onBack={() => setViewMode(currentUser ? 'dashboard' : 'timeline')} 
+            onLogout={handleLogout} 
+          />
+      );
+  }
+
   if (!session || !currentUser) {
-    if (route === '/signup') return <SignupPage onSignup={handleSignup} onNavigateToLogin={() => setRoute('/login')} />;
+    if (route === '/signup') return (
+        <SignupPage 
+            onSignup={handleSignup} 
+            onNavigateToLogin={() => setRoute('/login')} 
+            onOpenGuide={() => setViewMode('guide')}
+        />
+    );
     if (route === '/forgot-password') return <ForgotPasswordPage onNavigateToLogin={() => setRoute('/login')} />;
     if (route === '/update-password') return <UpdatePasswordPage onSuccess={() => setRoute('/login')} />;
-    return <LoginPage onLogin={handleLogin} onNavigateToSignup={() => setRoute('/signup')} onNavigateToForgotPassword={() => setRoute('/forgot-password')} />;
+    return (
+        <LoginPage 
+            onLogin={handleLogin} 
+            onNavigateToSignup={() => setRoute('/signup')} 
+            onNavigateToForgotPassword={() => setRoute('/forgot-password')} 
+            onOpenGuide={() => setViewMode('guide')}
+        />
+    );
   }
 
   if (viewMode === 'timeline') {
@@ -252,6 +280,7 @@ const App: React.FC = () => {
             timelineEntries={timelineEntries}
             onRefreshData={() => loadUserData(currentUser.id)}
             medications={medications}
+            onOpenGuide={() => setViewMode('guide')}
           />
       );
   }
@@ -267,6 +296,7 @@ const App: React.FC = () => {
         onSelectMember={(id) => { setSelectedMemberId(id); setViewMode('timeline'); }}
         onRefreshData={() => loadUserData(currentUser.id)}
         isSyncing={isSyncingData}
+        onOpenGuide={() => setViewMode('guide')}
     />
   );
 };
