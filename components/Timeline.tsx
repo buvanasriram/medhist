@@ -13,10 +13,11 @@ interface TimelineProps {
   isShared?: boolean;
   isReadOnly?: boolean;
   themeColor?: string;
+  isCompact?: boolean;
 }
 
 export const Timeline: React.FC<TimelineProps> = ({ 
-    entries, onViewReport, onDeleteReport, onIgnoreMismatch, selectedMemberName, isShared, isReadOnly = false, themeColor 
+    entries, onViewReport, onDeleteReport, onIgnoreMismatch, selectedMemberName, isShared, isReadOnly = false, themeColor, isCompact = false 
 }) => {
   if (entries.length === 0) {
     return (
@@ -33,7 +34,7 @@ export const Timeline: React.FC<TimelineProps> = ({
   }
 
   return (
-    <div className="space-y-4">
+    <div className={`space-y-${isCompact ? '2' : '4'}`}>
       {entries.map((entry) => (
         <TimelineItem 
           key={entry.id} 
@@ -44,6 +45,7 @@ export const Timeline: React.FC<TimelineProps> = ({
           selectedMemberName={selectedMemberName}
           isReadOnly={isReadOnly}
           themeColor={themeColor}
+          isCompact={isCompact}
         />
       ))}
     </div>

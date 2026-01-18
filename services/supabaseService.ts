@@ -304,8 +304,7 @@ export const addTimelineEntry = async (entryData: any, fileData: any, extractedM
     let targetEntryId = existing?.id;
 
     if (existing) {
-        // [medHist] v1.2.1: Duplicate Protection Guard
-        // A. Check if this exact file (same name/size) is already attached to this specific entry
+        // [medHist] v1.3.0: Enhanced File Duplicate Protection
         const { data: existingFiles } = await supabase!
             .from('files')
             .select('name')
@@ -313,10 +312,10 @@ export const addTimelineEntry = async (entryData: any, fileData: any, extractedM
             .eq('name', fileData.name);
 
         if (existingFiles && existingFiles.length > 0) {
-            throw new Error("This specific page/file is already part of this clinical record.");
+            throw new Error("Duplicate Upload Blocked: This clinical file already exists for this record.");
         }
 
-        // B. Semantic check: If the new AI summary is 95% similar to the existing summary, don't append redundant text
+        // B. Semantic check: Only append if summary is meaningfully different
         const normExisting = normalizeSummary(existing.summary);
         const normNew = normalizeSummary(entryData.summary);
         
@@ -329,7 +328,7 @@ export const addTimelineEntry = async (entryData: any, fileData: any, extractedM
             
         targetEntryId = existing.id;
     } else {
-        // Create new entry if no stitch-match found
+        // Create new entry
         const cleanEntry = {
             ...entryData,
             date: cleanDate,
@@ -342,7 +341,7 @@ export const addTimelineEntry = async (entryData: any, fileData: any, extractedM
         targetEntryId = entry.id;
     }
 
-    // 2. Attach the File
+    // 2. Attach File
     if (fileData && fileData.data && targetEntryId) {
         const blob = base64ToBlob(fileData.data, fileData.type);
         const fileName = `${Date.now()}_${fileData.name}`;
@@ -358,21 +357,22 @@ export const addTimelineEntry = async (entryData: any, fileData: any, extractedM
         });
     }
 
-    // 3. Handle Medications (Only if not already processed for this entry)
+    // 3. Smart Medication Merging (De-duplicate)
     const isMismatched = entryData.patient_name && folderName && 
                          entryData.patient_name.trim().toLowerCase() !== folderName.trim().toLowerCase();
 
     if (!isMismatched && extractedMedications && extractedMedications.length > 0 && targetEntryId) {
-        // Check if these meds were already added to this specific entry (prevent duplication on re-upload if logic partially failed)
-        const { data: existingMeds } = await supabase!
+        // Fetch ALL currently active medications for this family member to prevent cross-report duplication
+        const { data: activeMeds } = await supabase!
             .from('medications')
             .select('name')
-            .eq('timeline_entry_id', targetEntryId);
+            .eq('family_member_id', entryData.family_member_id)
+            .eq('active', true);
             
-        const existingMedNames = new Set((existingMeds || []).map(m => m.name.toLowerCase()));
+        const activeMedNames = new Set((activeMeds || []).map(m => m.name.toLowerCase().trim()));
 
-        const newMeds = extractedMedications
-            .filter(m => !existingMedNames.has(m.name.toLowerCase()))
+        const filteredMeds = extractedMedications
+            .filter(m => !activeMedNames.has(m.name.toLowerCase().trim()))
             .map(m => ({
                 family_member_id: entryData.family_member_id,
                 timeline_entry_id: targetEntryId,
@@ -385,8 +385,8 @@ export const addTimelineEntry = async (entryData: any, fileData: any, extractedM
                 active: true
             }));
             
-        if (newMeds.length > 0) {
-            await supabase!.from('medications').insert(newMeds);
+        if (filteredMeds.length > 0) {
+            await supabase!.from('medications').insert(filteredMeds);
         }
     }
 };
@@ -409,18 +409,32 @@ export const ignoreMismatch = async (id: string) => {
         .single();
     
     if (entry && entry.pending_medications && Array.isArray(entry.pending_medications)) {
-        const meds = entry.pending_medications.map((m: ExtractedMedication) => ({
-            family_member_id: entry.family_member_id,
-            timeline_entry_id: entry.id,
-            name: m.name,
-            dosage: m.dosage,
-            frequency: m.frequency,
-            purpose: m.purpose,
-            start_date: sanitizeDate(m.startDate) || entry.date,
-            end_date: sanitizeDate(m.endDate),
-            active: true
-        }));
-        await supabase!.from('medications').insert(meds);
+        // Still apply de-duplication during identity override
+        const { data: activeMeds } = await supabase!
+            .from('medications')
+            .select('name')
+            .eq('family_member_id', entry.family_member_id)
+            .eq('active', true);
+            
+        const activeMedNames = new Set((activeMeds || []).map(m => m.name.toLowerCase().trim()));
+
+        const meds = entry.pending_medications
+            .filter((m: ExtractedMedication) => !activeMedNames.has(m.name.toLowerCase().trim()))
+            .map((m: ExtractedMedication) => ({
+                family_member_id: entry.family_member_id,
+                timeline_entry_id: entry.id,
+                name: m.name,
+                dosage: m.dosage,
+                frequency: m.frequency,
+                purpose: m.purpose,
+                start_date: sanitizeDate(m.startDate) || entry.date,
+                end_date: sanitizeDate(m.endDate),
+                active: true
+            }));
+            
+        if (meds.length > 0) {
+            await supabase!.from('medications').insert(meds);
+        }
     }
 
     await supabase!

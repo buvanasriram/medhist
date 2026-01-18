@@ -17,6 +17,8 @@ import { ClipboardIcon } from './icons/ClipboardIcon';
 import { DownloadIcon } from './icons/DownloadIcon'; 
 import { SearchIcon } from './icons/SearchIcon';
 import { ChevronDownIcon } from './icons/ChevronDownIcon';
+import { GridIcon } from './icons/GridIcon';
+import { FilterIcon } from './icons/FilterIcon';
 import { HealthAssistant } from './HealthAssistant';
 import { ReportViewerModal } from './ReportViewerModal';
 
@@ -49,6 +51,7 @@ export const TimelineView: React.FC<TimelineViewProps> = ({
   const [selectedMemberId, setSelectedMemberId] = useState<string>(defaultMemberId);
   const [activeTab, setActiveTab] = useState<'all' | 'visits'>('all');
   const [searchQuery, setSearchQuery] = useState<string>('');
+  const [isCompact, setIsCompact] = useState<boolean>(false);
   
   const [isUploadModalOpen, setUploadModalOpen] = useState<boolean>(false);
   const [isViewerOpen, setViewerOpen] = useState(false);
@@ -87,8 +90,14 @@ export const TimelineView: React.FC<TimelineViewProps> = ({
       setUploadModalOpen(false);
     } catch (err: any) {
       console.error("[medHist] Upload failed:", err);
-      let errorMsg = err?.message || "Registry Sync Failed.";
+      // Catch duplicate file specifically
+      const errorMsg = err?.message || "Registry Sync Failed.";
       setError(errorMsg);
+      
+      // If duplicate, don't close modal yet so user can see the error
+      if (errorMsg.includes("Duplicate Upload")) {
+          // Allow them to see the error, maybe clear file
+      }
     } finally {
       setIsLoading(false);
     }
@@ -233,7 +242,7 @@ export const TimelineView: React.FC<TimelineViewProps> = ({
                     className="flex-1 sm:flex-none flex items-center justify-center gap-2 bg-slate-100 text-slate-900 border-2 border-slate-900 font-black py-2.5 px-5 rounded-xl shadow-md hover:bg-slate-200 transition disabled:opacity-50 text-[9px] uppercase tracking-widest"
                 >
                     {isGeneratingPdf ? <SpinnerIcon className="w-3.5 h-3.5 animate-spin" /> : <DownloadIcon className="w-3.5 h-3.5" />}
-                    Download History
+                    Brief
                 </button>
                 <button 
                     onClick={() => setUploadModalOpen(true)} 
@@ -241,27 +250,37 @@ export const TimelineView: React.FC<TimelineViewProps> = ({
                     className="flex-1 sm:flex-none flex items-center justify-center gap-2 bg-slate-900 text-white font-black py-2.5 px-6 rounded-xl shadow-xl hover:bg-rose-900 transition active:scale-95 text-[9px] uppercase tracking-widest disabled:opacity-50"
                 >
                     <PlusIcon className="w-3.5 h-3.5" />
-                    Upload Report
+                    Upload
                 </button>
              </div>
         </div>
 
         {/* Search & Tabs */}
         <div className="flex flex-col md:flex-row gap-4 mb-8 items-center justify-between">
-            <div className="flex space-x-1 bg-slate-100 p-1.5 rounded-2xl w-full md:w-fit border border-slate-200">
+            <div className="flex items-center gap-2 w-full md:w-auto">
+                <div className="flex space-x-1 bg-slate-100 p-1.5 rounded-2xl w-full md:w-fit border border-slate-200">
+                    <button 
+                        onClick={() => setActiveTab('all')} 
+                        disabled={isDeleting}
+                        className={`flex-1 md:flex-none flex items-center justify-center gap-2 px-6 py-2.5 text-[9px] font-black uppercase tracking-[0.2em] rounded-xl transition shadow-sm disabled:opacity-50 ${activeTab === 'all' ? 'bg-slate-900 text-white shadow-xl' : 'text-slate-500 hover:text-slate-900 hover:bg-slate-200'}`}
+                    >
+                        <ClipboardIcon className="w-3.5 h-3.5" /> All
+                    </button>
+                    <button 
+                        onClick={() => setActiveTab('visits')} 
+                        disabled={isDeleting}
+                        className={`flex-1 md:flex-none flex items-center justify-center gap-2 px-6 py-2.5 text-[9px] font-black uppercase tracking-[0.2em] rounded-xl transition shadow-sm disabled:opacity-50 ${activeTab === 'visits' ? 'bg-slate-900 text-white shadow-xl' : 'text-slate-500 hover:text-slate-900 hover:bg-slate-200'}`}
+                    >
+                        <StethoscopeIcon className="w-3.5 h-3.5" /> Visits
+                    </button>
+                </div>
+                {/* View Density Toggle */}
                 <button 
-                    onClick={() => setActiveTab('all')} 
-                    disabled={isDeleting}
-                    className={`flex-1 md:flex-none flex items-center justify-center gap-2 px-6 py-2.5 text-[9px] font-black uppercase tracking-[0.2em] rounded-xl transition shadow-sm disabled:opacity-50 ${activeTab === 'all' ? 'bg-slate-900 text-white shadow-xl' : 'text-slate-500 hover:text-slate-900 hover:bg-slate-200'}`}
+                    onClick={() => setIsCompact(!isCompact)}
+                    className={`p-2.5 rounded-xl border border-slate-200 shadow-sm transition-all ${isCompact ? 'bg-slate-900 text-white border-slate-900 shadow-xl' : 'bg-white text-slate-400 hover:text-slate-900 hover:bg-slate-50'}`}
+                    title={isCompact ? "Switch to Standard View" : "Switch to Compact View"}
                 >
-                    <ClipboardIcon className="w-3.5 h-3.5" /> All History
-                </button>
-                <button 
-                    onClick={() => setActiveTab('visits')} 
-                    disabled={isDeleting}
-                    className={`flex-1 md:flex-none flex items-center justify-center gap-2 px-6 py-2.5 text-[9px] font-black uppercase tracking-[0.2em] rounded-xl transition shadow-sm disabled:opacity-50 ${activeTab === 'visits' ? 'bg-slate-900 text-white shadow-xl' : 'text-slate-500 hover:text-slate-900 hover:bg-slate-200'}`}
-                >
-                    <StethoscopeIcon className="w-3.5 h-3.5" /> Visits
+                    {isCompact ? <GridIcon className="w-4 h-4" /> : <FilterIcon className="w-4 h-4" />}
                 </button>
             </div>
 
@@ -295,6 +314,7 @@ export const TimelineView: React.FC<TimelineViewProps> = ({
             selectedMemberName={selectedMember?.name} 
             themeColor={themeColor}
             isReadOnly={isDeleting}
+            isCompact={isCompact}
         />
       </main>
       
@@ -320,7 +340,7 @@ export const TimelineView: React.FC<TimelineViewProps> = ({
       {isConfirmModalOpen && <ConfirmationModal isOpen={isConfirmModalOpen} onClose={() => { setConfirmModalOpen(false); setEntryToDelete(null); }} onConfirm={handleConfirmDelete} title="Purge Record?" message="This will permanently delete this clinical record from the secure timeline." />}
       
       <footer className="py-16 text-center text-slate-400 text-[10px] font-black uppercase tracking-[0.5em] mt-auto">
-          medHist Precision • v1.0.0
+          medHist Precision • v1.3.0
       </footer>
     </div>
   );
