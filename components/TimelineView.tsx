@@ -52,7 +52,7 @@ export const TimelineView: React.FC<TimelineViewProps> = ({
   
   const [isUploadModalOpen, setUploadModalOpen] = useState<boolean>(false);
   const [isViewerOpen, setViewerOpen] = useState(false);
-  const [reportToViewRaw, setReportToViewRaw] = useState<{ url: string, filePath?: string, file: ReportFile } | null>(null);
+  const [reportToViewRaw, setReportToViewRaw] = useState<{ url: string, filePath?: string, file: ReportFile, entryId?: string } | null>(null);
   const [isConfirmModalOpen, setConfirmModalOpen] = useState<boolean>(false);
   const [entryToDelete, setEntryToDelete] = useState<TimelineEntry | null>(null);
   
@@ -81,7 +81,6 @@ export const TimelineView: React.FC<TimelineViewProps> = ({
       };
       const fileData = { name: file.name, type: file.type, data: base64, ...(password && { password }) };
       
-      // Pass the folder name for name mismatch verification
       await supabaseService.addTimelineEntry(newEntryData, fileData, extractedData.medications, selectedMember?.name);
       
       onRefreshData();
@@ -106,7 +105,8 @@ export const TimelineView: React.FC<TimelineViewProps> = ({
         setReportToViewRaw({ 
             url: result.signedUrl, 
             filePath: result.filePath,
-            file: result.metadata 
+            file: result.metadata,
+            entryId: entryToView.id
         });
         setViewerOpen(true);
     } catch (error) {
@@ -125,8 +125,6 @@ export const TimelineView: React.FC<TimelineViewProps> = ({
     if (!entryToDelete || isDeleting) return;
     
     const targetId = entryToDelete.id;
-    
-    // UI LOCKDOWN: Close modal and target state immediately to prevent stale references
     setConfirmModalOpen(false);
     setEntryToDelete(null);
     setIsDeleting(true);
@@ -322,7 +320,7 @@ export const TimelineView: React.FC<TimelineViewProps> = ({
       {isConfirmModalOpen && <ConfirmationModal isOpen={isConfirmModalOpen} onClose={() => { setConfirmModalOpen(false); setEntryToDelete(null); }} onConfirm={handleConfirmDelete} title="Purge Record?" message="This will permanently delete this clinical record from the secure timeline." />}
       
       <footer className="py-16 text-center text-slate-400 text-[10px] font-black uppercase tracking-[0.5em] mt-auto">
-          medHist Precision • v0.9.9
+          medHist Precision • v1.0.0
       </footer>
     </div>
   );

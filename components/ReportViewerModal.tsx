@@ -7,6 +7,7 @@ import { DownloadIcon } from './icons/DownloadIcon';
 import { ChevronDownIcon } from './icons/ChevronDownIcon';
 import { Document, Page, pdfjs } from 'react-pdf';
 import type { ReportFile } from '../types';
+import * as supabaseService from '../services/supabaseService';
 
 interface ReportViewerModalProps {
   isOpen: boolean;
@@ -15,10 +16,14 @@ interface ReportViewerModalProps {
     url: string;
     filePath?: string;
     file: ReportFile;
+    entryId?: string;
   };
 }
 
 export const ReportViewerModal: React.FC<ReportViewerModalProps> = ({ isOpen, onClose, report }) => {
+  const [allFiles, setAllFiles] = useState<any[]>([]);
+  const [currentFileIndex, setCurrentFileIndex] = useState(0);
+  
   const [numPages, setNumPages] = useState<number | null>(null);
   const [pageNumber, setPageNumber] = useState(1);
   const [error, setError] = useState<string | null>(null);
@@ -26,6 +31,11 @@ export const ReportViewerModal: React.FC<ReportViewerModalProps> = ({ isOpen, on
   const [isPageLoading, setIsPageLoading] = useState(false);
   const containerRef = useRef<HTMLDivElement>(null);
   const loadingTimeoutRef = useRef<number | null>(null);
+
+  const activeFile = allFiles[currentFileIndex] || { 
+      signedUrl: report.url, 
+      metadata: report.file 
+  };
 
   const isTouchDevice = useMemo(() => {
     return (('ontouchstart' in window) || (navigator.maxTouchPoints > 0));
@@ -37,19 +47,29 @@ export const ReportViewerModal: React.FC<ReportViewerModalProps> = ({ isOpen, on
       setError(null);
       setNumPages(null);
       setPageNumber(1);
-
-      // Mobile Back-Button Integration:
-      // Push a new state so the hardware back button closes the modal
-      window.history.pushState({ modalOpen: true }, '');
-
-      const handlePopState = (e: PopStateEvent) => {
-          // If we are popping back from the modalOpen state, close the modal
-          onClose();
-      };
       
+      const loadAllFiles = async () => {
+          if (report.entryId) {
+              try {
+                  const files = await supabaseService.getFilesForEntry(report.entryId);
+                  if (files) {
+                      setAllFiles(files);
+                      // Find index of the file that was clicked
+                      const idx = files.findIndex(f => f.filePath === report.filePath);
+                      if (idx !== -1) setCurrentFileIndex(idx);
+                  }
+              } catch (e) {
+                  console.error("Failed to load multi-page attachments", e);
+              }
+          }
+      };
+
+      loadAllFiles();
+
+      window.history.pushState({ modalOpen: true }, '');
+      const handlePopState = () => onClose();
       window.addEventListener('popstate', handlePopState);
 
-      // Defensive timeout
       loadingTimeoutRef.current = window.setTimeout(() => {
         if (isLoading) {
           setError("The document is taking too long to load. This can happen on low-memory mobile devices.");
@@ -62,11 +82,9 @@ export const ReportViewerModal: React.FC<ReportViewerModalProps> = ({ isOpen, on
         if (loadingTimeoutRef.current) window.clearTimeout(loadingTimeoutRef.current);
       };
     }
-  }, [isOpen, report.url, onClose]);
+  }, [isOpen, report.entryId, report.filePath, onClose]);
 
-  if (!isOpen) return null;
-
-  const isPdf = report.file.type === 'application/pdf';
+  const isPdf = activeFile.metadata.type === 'application/pdf';
 
   function onDocumentLoadSuccess({ numPages }: { numPages: number }) {
     if (loadingTimeoutRef.current) window.clearTimeout(loadingTimeoutRef.current);
@@ -83,14 +101,20 @@ export const ReportViewerModal: React.FC<ReportViewerModalProps> = ({ isOpen, on
   }
 
   const changePage = (offset: number) => {
-    setPageNumber(prevPageNumber => {
-        const next = prevPageNumber + offset;
-        return Math.min(Math.max(1, next), numPages || 1);
-    });
+    setPageNumber(prev => Math.min(Math.max(1, prev + offset), numPages || 1));
+  };
+
+  const changeFile = (offset: number) => {
+      const nextIdx = Math.min(Math.max(0, currentFileIndex + offset), allFiles.length - 1);
+      if (nextIdx !== currentFileIndex) {
+          setIsLoading(true);
+          setNumPages(null);
+          setPageNumber(1);
+          setCurrentFileIndex(nextIdx);
+      }
   };
 
   const handleClose = () => {
-    // If we're closing via the button, trigger a history back to keep the stack clean
     if (window.history.state && window.history.state.modalOpen) {
         window.history.back();
     } else {
@@ -98,10 +122,7 @@ export const ReportViewerModal: React.FC<ReportViewerModalProps> = ({ isOpen, on
     }
   };
 
-  const handleRetry = () => {
-    setError(null);
-    setIsLoading(true);
-  };
+  if (!isOpen) return null;
 
   return (
     <div className="fixed inset-0 bg-slate-900/90 backdrop-blur-sm z-[9999] flex items-center justify-center p-2 sm:p-4">
@@ -110,10 +131,10 @@ export const ReportViewerModal: React.FC<ReportViewerModalProps> = ({ isOpen, on
         <header className="flex items-center justify-between px-6 sm:px-8 py-4 sm:py-5 border-b border-slate-100 bg-white z-20">
           <div className="text-left min-w-0">
             <p className="text-[10px] font-black text-rose-700 uppercase tracking-[0.3em] mb-1 leading-none">
-              {isPdf ? 'Clinical PDF' : 'Medical Image'}
+              {allFiles.length > 1 ? `Attachment ${currentFileIndex + 1} of ${allFiles.length}` : (isPdf ? 'Clinical PDF' : 'Medical Image')}
             </p>
             <h2 className="text-sm font-black text-slate-800 tracking-tight truncate">
-              {report.file.name}
+              {activeFile.metadata.name}
             </h2>
           </div>
           <button onClick={handleClose} className="p-2 text-slate-400 hover:text-slate-900 transition flex-shrink-0">
@@ -125,7 +146,7 @@ export const ReportViewerModal: React.FC<ReportViewerModalProps> = ({ isOpen, on
           {isLoading && !error && (
             <div className="absolute inset-0 flex flex-col items-center justify-center bg-white/80 z-30">
               <SpinnerIcon className="w-10 h-10 text-rose-700 animate-spin mb-4" />
-              <p className="text-[10px] font-black text-slate-400 uppercase tracking-[0.4em]">Opening Secure Record...</p>
+              <p className="text-[10px] font-black text-slate-400 uppercase tracking-[0.4em]">Accessing Clinical Record...</p>
             </div>
           )}
 
@@ -137,11 +158,8 @@ export const ReportViewerModal: React.FC<ReportViewerModalProps> = ({ isOpen, on
                 {error}
               </p>
               <div className="flex flex-col gap-3 w-full max-w-xs">
-                <button onClick={handleRetry} className="bg-slate-100 text-slate-700 font-black py-4 rounded-2xl text-[10px] uppercase tracking-widest hover:bg-slate-200 transition">
-                   Refresh Viewer
-                </button>
-                <a href={report.url} target="_blank" rel="noopener noreferrer" className="bg-rose-700 text-white font-black px-6 py-4 rounded-2xl flex items-center justify-center gap-3 shadow-lg text-[10px] uppercase tracking-widest">
-                  <DownloadIcon className="w-4 h-4" /> Download Report
+                <a href={activeFile.signedUrl} target="_blank" rel="noopener noreferrer" className="bg-rose-700 text-white font-black px-6 py-4 rounded-2xl flex items-center justify-center gap-3 shadow-lg text-[10px] uppercase tracking-widest">
+                  <DownloadIcon className="w-4 h-4" /> Download This Page
                 </a>
               </div>
             </div>
@@ -156,15 +174,15 @@ export const ReportViewerModal: React.FC<ReportViewerModalProps> = ({ isOpen, on
                     </div>
                  )}
                  <Document
-                    key={`doc_${report.url}`}
-                    file={report.url}
+                    key={`doc_${activeFile.signedUrl}`}
+                    file={activeFile.signedUrl}
                     onLoadSuccess={onDocumentLoadSuccess}
                     onLoadError={onDocumentLoadError}
                     loading={null}
                     className="shadow-2xl border border-slate-200"
                   >
                     <Page 
-                      key={`page_${pageNumber}_${report.url}`}
+                      key={`page_${pageNumber}_${activeFile.signedUrl}`}
                       pageNumber={pageNumber} 
                       width={containerRef.current ? Math.min(containerRef.current.clientWidth - 32, 800) : 300}
                       devicePixelRatio={isTouchDevice ? 1 : undefined}
@@ -172,14 +190,13 @@ export const ReportViewerModal: React.FC<ReportViewerModalProps> = ({ isOpen, on
                       renderAnnotationLayer={false}
                       onLoadStart={() => setIsPageLoading(true)}
                       onLoadSuccess={() => setIsPageLoading(false)}
-                      onRenderError={() => setError("Rendering failed on this device.")}
                       className="bg-white"
                     />
                   </Document>
               </div>
             ) : (
               <img 
-                src={report.url} 
+                src={activeFile.signedUrl} 
                 className="max-w-full h-auto rounded-lg shadow-xl" 
                 onLoad={() => setIsLoading(false)}
                 onError={() => { setIsLoading(false); setError("Image failed to load."); }}
@@ -188,31 +205,58 @@ export const ReportViewerModal: React.FC<ReportViewerModalProps> = ({ isOpen, on
           </div>
         </main>
 
-        {isPdf && !isLoading && numPages && numPages > 1 && (
-            <div className="bg-white border-t border-slate-100 px-6 py-3 flex items-center justify-between z-20">
-                <button 
-                    disabled={pageNumber <= 1}
-                    onClick={() => changePage(-1)}
-                    className="p-2 text-rose-700 disabled:text-slate-300 transition-colors"
-                >
-                    <div className="rotate-90"><ChevronDownIcon className="w-6 h-6" /></div>
-                </button>
-                <span className="text-[10px] font-black text-slate-400 uppercase tracking-[0.4em]">
-                    Page {pageNumber} of {numPages}
-                </span>
-                <button 
-                    disabled={pageNumber >= numPages}
-                    onClick={() => changePage(1)}
-                    className="p-2 text-rose-700 disabled:text-slate-300 transition-colors"
-                >
-                    <div className="-rotate-90"><ChevronDownIcon className="w-6 h-6" /></div>
-                </button>
-            </div>
-        )}
+        {/* Navigation Layer */}
+        <div className="bg-white border-t border-slate-100 px-6 py-3 flex items-center justify-between z-20">
+            {/* Multi-File Navigation */}
+            {allFiles.length > 1 ? (
+                <div className="flex items-center gap-4">
+                    <button 
+                        disabled={currentFileIndex === 0}
+                        onClick={() => changeFile(-1)}
+                        className="flex items-center gap-2 text-rose-700 disabled:text-slate-300 transition-colors text-[9px] font-black uppercase tracking-widest"
+                    >
+                        <ArrowLeftIcon className="w-4 h-4" /> Prev Attachment
+                    </button>
+                    <div className="h-4 w-px bg-slate-100"></div>
+                    <button 
+                        disabled={currentFileIndex === allFiles.length - 1}
+                        onClick={() => changeFile(1)}
+                        className="flex items-center gap-2 text-rose-700 disabled:text-slate-300 transition-colors text-[9px] font-black uppercase tracking-widest"
+                    >
+                        Next Attachment <ArrowRightIcon className="w-4 h-4" />
+                    </button>
+                </div>
+            ) : (
+                <div className="flex-grow"></div>
+            )}
+
+            {/* PDF Page Navigation */}
+            {isPdf && !isLoading && numPages && numPages > 1 && (
+                <div className="flex items-center gap-6">
+                    <button 
+                        disabled={pageNumber <= 1}
+                        onClick={() => changePage(-1)}
+                        className="p-1 text-rose-700 disabled:text-slate-300 transition-colors"
+                    >
+                        <div className="rotate-90"><ChevronDownIcon className="w-6 h-6" /></div>
+                    </button>
+                    <span className="text-[10px] font-black text-slate-400 uppercase tracking-[0.4em]">
+                        Page {pageNumber} of {numPages}
+                    </span>
+                    <button 
+                        disabled={pageNumber >= numPages}
+                        onClick={() => changePage(1)}
+                        className="p-1 text-rose-700 disabled:text-slate-300 transition-colors"
+                    >
+                        <div className="-rotate-90"><ChevronDownIcon className="w-6 h-6" /></div>
+                    </button>
+                </div>
+            )}
+        </div>
 
         <footer className="p-6 bg-white border-t border-slate-100 flex gap-4 z-20">
-          <a href={report.url} target="_blank" rel="noopener noreferrer" className="flex-1 flex items-center justify-center gap-3 py-4 bg-slate-100 text-slate-700 font-black rounded-2xl text-[10px] uppercase tracking-widest transition hover:bg-slate-200">
-            <DownloadIcon className="w-4 h-4" /> Download Report
+          <a href={activeFile.signedUrl} target="_blank" rel="noopener noreferrer" className="flex-1 flex items-center justify-center gap-3 py-4 bg-slate-100 text-slate-700 font-black rounded-2xl text-[10px] uppercase tracking-widest transition hover:bg-slate-200">
+            <DownloadIcon className="w-4 h-4" /> Download
           </a>
           <button onClick={handleClose} className="flex-1 py-4 bg-slate-900 text-white font-black rounded-2xl text-[10px] uppercase tracking-widest transition hover:bg-rose-900 shadow-xl">
             Close Record
@@ -222,3 +266,7 @@ export const ReportViewerModal: React.FC<ReportViewerModalProps> = ({ isOpen, on
     </div>
   );
 };
+
+// Re-importing Arrow Icons for usage
+import { ArrowLeftIcon } from './icons/ArrowLeftIcon';
+import { ArrowRightIcon } from './icons/ArrowRightIcon';

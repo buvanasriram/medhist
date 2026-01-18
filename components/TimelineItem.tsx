@@ -35,14 +35,22 @@ export const TimelineItem: React.FC<TimelineItemProps> = ({
     day: 'numeric',
   });
   
-  const formattedFollowUp = entry.follow_up_date 
-      ? new Date(entry.follow_up_date).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })
+  const followUpDate = entry.follow_up_date ? new Date(entry.follow_up_date) : null;
+  const today = new Date();
+  today.setHours(0, 0, 0, 0);
+
+  const isUpcoming = followUpDate && followUpDate.getTime() >= today.getTime();
+
+  const formattedFollowUp = followUpDate 
+      ? followUpDate.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })
       : null;
 
   const isMismatched = !entry.mismatch_ignored &&
                        entry.patient_name && 
                        selectedMemberName && 
                        entry.patient_name.trim().toLowerCase() !== selectedMemberName.trim().toLowerCase();
+
+  const fileCount = (entry as any).files?.length || 1;
 
   const handleShare = async () => {
     setIsSharing(true);
@@ -74,9 +82,14 @@ export const TimelineItem: React.FC<TimelineItemProps> = ({
             <div className="flex items-center gap-4 w-full">
                 {/* Folder Icon */}
                 <div 
-                    className="p-3 rounded-xl shadow-lg flex-shrink-0 transition-all duration-200 bg-slate-50 text-rose-700 group-hover:bg-rose-900 group-hover:text-white"
+                    className="p-3 rounded-xl shadow-lg flex-shrink-0 transition-all duration-200 bg-slate-50 text-rose-700 group-hover:bg-rose-900 group-hover:text-white relative"
                 >
                     <DocumentIcon className="w-5 h-5" />
+                    {fileCount > 1 && (
+                        <span className="absolute -top-1 -right-1 bg-rose-700 text-white text-[8px] font-black w-4 h-4 flex items-center justify-center rounded-full border border-white">
+                            {fileCount}
+                        </span>
+                    )}
                 </div>
                 
                 <div className="min-w-0 flex-grow">
@@ -84,7 +97,12 @@ export const TimelineItem: React.FC<TimelineItemProps> = ({
                         <h4 className="text-sm sm:text-base font-black text-slate-900 tracking-tight leading-tight truncate">
                             {entry.report_type}
                         </h4>
-                        {formattedFollowUp && (
+                        {fileCount > 1 && (
+                            <span className="text-[7px] font-black uppercase px-1.5 py-0.5 rounded bg-slate-100 text-slate-500 tracking-[0.1em] shadow-sm">
+                               {fileCount} Pages
+                            </span>
+                        )}
+                        {isUpcoming && (
                             <span className="text-[7px] font-black uppercase px-1.5 py-0.5 rounded bg-rose-700 text-white tracking-[0.1em] shadow-sm">
                                Follow-up
                             </span>
@@ -169,14 +187,14 @@ export const TimelineItem: React.FC<TimelineItemProps> = ({
                 <p className="text-[8px] font-black uppercase tracking-[0.2em] mb-2 leading-none" style={{ color: themeColor }}>
                     AI Synthesis History
                 </p>
-                <div className="text-slate-900 font-bold">
+                <div className="text-slate-900 font-bold whitespace-pre-wrap">
                     {entry.summary || "No clinical brief available."}
                 </div>
                 {formattedFollowUp && (
                     <div className="mt-4 pt-3 border-t border-slate-200/50 flex items-center gap-2">
                         <CalendarIcon className="w-3.5 h-3.5" style={{ color: themeColor }} />
                         <span className="text-[9px] font-black uppercase tracking-widest" style={{ color: themeColor }}>
-                            Scheduled Follow-up: {formattedFollowUp}
+                            {isUpcoming ? 'Scheduled Follow-up:' : 'Past Follow-up Date:'} {formattedFollowUp}
                         </span>
                     </div>
                 )}

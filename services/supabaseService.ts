@@ -264,20 +264,26 @@ export const claimFolder = async (memberId: string) => {
     if (error) throw error;
 };
 
+export const getFilesForEntry = async (entryId: string) => {
+    const { data: files } = await supabase!.from('files').select('*').eq('timeline_entry_id', entryId).order('created_at');
+    if (!files || files.length === 0) return null;
+    
+    const signedFiles = await Promise.all(files.map(async (file) => {
+        const { data } = await supabase!.storage.from(STORAGE_BUCKET).createSignedUrl(file.file_path, 3600);
+        return { signedUrl: data?.signedUrl, filePath: file.file_path, metadata: file };
+    }));
+    
+    return signedFiles;
+};
+
+// Keeping for backward compatibility where only one file is expected
 export const getFileForEntry = async (entryId: string) => {
-    const { data: file } = await supabase!.from('files').select('*').eq('timeline_entry_id', entryId).single();
-    if (!file) return null;
-    const { data } = await supabase!.storage.from(STORAGE_BUCKET).createSignedUrl(file.file_path, 3600);
-    return { signedUrl: data?.signedUrl, filePath: file.file_path, metadata: file };
+    const files = await getFilesForEntry(entryId);
+    return files ? files[0] : null;
 };
 
-const normalizeName = (name: string): string => {
-    return name.toLowerCase().replace(/dr\.|dr\s|medical officer|consultant|signatory|physician|referring/gi, '').trim();
-};
-
-const isGenericName = (name: string): boolean => {
-    const generic = ["medical officer", "duty doctor", "physician", "doctor", "consultant", "n/a", "self", "not available"];
-    return generic.some(g => name.toLowerCase().includes(g)) && name.length < 25;
+const normalizeSummary = (text: string): string => {
+    return text.toLowerCase().replace(/[^a-z0-9]/gi, '').substring(0, 500);
 };
 
 export const addTimelineEntry = async (entryData: any, fileData: any, extractedMedications?: ExtractedMedication[], folderName?: string) => {
@@ -285,58 +291,66 @@ export const addTimelineEntry = async (entryData: any, fileData: any, extractedM
 
     const cleanDate = sanitizeDate(entryData.date) || new Date().toISOString().split('T')[0];
     const reportType = (entryData.report_type || '').trim();
-    const newDoctorName = (entryData.doctor_name || '').trim();
 
-    // 2. High-Precision Duplicate Logic (Resilient to AI Variance)
-    const { data: candidates } = await supabase!
+    // 1. Check for AUTO-STITCH match (Same Member, Date, and Type)
+    const { data: existing } = await supabase!
         .from('timeline_entries')
-        .select('id, doctor_name')
+        .select('id, summary')
         .eq('family_member_id', entryData.family_member_id)
         .eq('date', cleanDate)
-        .eq('report_type', reportType);
+        .eq('report_type', reportType)
+        .maybeSingle();
 
-    if (candidates && candidates.length > 0) {
-        const isDuplicate = candidates.some(c => {
-            const existingDoc = (c.doctor_name || '').trim();
-            const normExisting = normalizeName(existingDoc);
-            const normNew = normalizeName(newDoctorName);
-            
-            // IF DATE AND REPORT TYPE MATCH, we handle Referrer vs Signatory vs Generic.
-            if (!normExisting || !normNew) return true;
-            
-            // If one is generic ('Medical Officer') and other is specific, it's a duplicate.
-            if (isGenericName(existingDoc) || isGenericName(newDoctorName)) return true;
-            
-            // Standard string comparison
-            return normExisting === normNew || normExisting.includes(normNew) || normNew.includes(normExisting);
-        });
+    let targetEntryId = existing?.id;
 
-        if (isDuplicate) {
-            throw new Error("This clinical record is already registered (Identical Date & Type detected).");
+    if (existing) {
+        // [medHist] v1.2.1: Duplicate Protection Guard
+        // A. Check if this exact file (same name/size) is already attached to this specific entry
+        const { data: existingFiles } = await supabase!
+            .from('files')
+            .select('name')
+            .eq('timeline_entry_id', existing.id)
+            .eq('name', fileData.name);
+
+        if (existingFiles && existingFiles.length > 0) {
+            throw new Error("This specific page/file is already part of this clinical record.");
         }
+
+        // B. Semantic check: If the new AI summary is 95% similar to the existing summary, don't append redundant text
+        const normExisting = normalizeSummary(existing.summary);
+        const normNew = normalizeSummary(entryData.summary);
+        
+        if (normExisting !== normNew && !normExisting.includes(normNew)) {
+            const updatedSummary = `${existing.summary}\n\n[Additional Findings]: ${entryData.summary}`;
+            await supabase!.from('timeline_entries')
+                .update({ summary: updatedSummary })
+                .eq('id', existing.id);
+        }
+            
+        targetEntryId = existing.id;
+    } else {
+        // Create new entry if no stitch-match found
+        const cleanEntry = {
+            ...entryData,
+            date: cleanDate,
+            follow_up_date: sanitizeDate(entryData.follow_up_date),
+            mismatch_ignored: false
+        };
+
+        const { data: entry, error: entryError } = await supabase!.from('timeline_entries').insert(cleanEntry).select().single();
+        if (entryError) throw entryError;
+        targetEntryId = entry.id;
     }
 
-    const isMismatched = entryData.patient_name && folderName && 
-                         entryData.patient_name.trim().toLowerCase() !== folderName.trim().toLowerCase();
-
-    const cleanEntry = {
-        ...entryData,
-        date: cleanDate,
-        follow_up_date: sanitizeDate(entryData.follow_up_date),
-        pending_medications: isMismatched ? extractedMedications : null
-    };
-
-    const { data: entry, error: entryError } = await supabase!.from('timeline_entries').insert(cleanEntry).select().single();
-    if (entryError) throw entryError;
-
-    if (fileData && fileData.data) {
+    // 2. Attach the File
+    if (fileData && fileData.data && targetEntryId) {
         const blob = base64ToBlob(fileData.data, fileData.type);
         const fileName = `${Date.now()}_${fileData.name}`;
         const filePath = `${entryData.family_member_id}/${fileName}`;
         const { error: uploadError } = await supabase!.storage.from(STORAGE_BUCKET).upload(filePath, blob);
         if (uploadError) throw uploadError;
         await supabase!.from('files').insert({
-            timeline_entry_id: entry.id,
+            timeline_entry_id: targetEntryId,
             name: fileData.name,
             type: fileData.type,
             file_path: filePath,
@@ -344,26 +358,45 @@ export const addTimelineEntry = async (entryData: any, fileData: any, extractedM
         });
     }
 
-    if (!isMismatched && extractedMedications && extractedMedications.length > 0) {
-        const meds = extractedMedications.map(m => ({
-            family_member_id: entryData.family_member_id,
-            timeline_entry_id: entry.id,
-            name: m.name,
-            dosage: m.dosage,
-            frequency: m.frequency,
-            purpose: m.purpose,
-            start_date: sanitizeDate(m.startDate) || cleanEntry.date,
-            end_date: sanitizeDate(m.endDate),
-            active: true
-        }));
-        await supabase!.from('medications').insert(meds);
+    // 3. Handle Medications (Only if not already processed for this entry)
+    const isMismatched = entryData.patient_name && folderName && 
+                         entryData.patient_name.trim().toLowerCase() !== folderName.trim().toLowerCase();
+
+    if (!isMismatched && extractedMedications && extractedMedications.length > 0 && targetEntryId) {
+        // Check if these meds were already added to this specific entry (prevent duplication on re-upload if logic partially failed)
+        const { data: existingMeds } = await supabase!
+            .from('medications')
+            .select('name')
+            .eq('timeline_entry_id', targetEntryId);
+            
+        const existingMedNames = new Set((existingMeds || []).map(m => m.name.toLowerCase()));
+
+        const newMeds = extractedMedications
+            .filter(m => !existingMedNames.has(m.name.toLowerCase()))
+            .map(m => ({
+                family_member_id: entryData.family_member_id,
+                timeline_entry_id: targetEntryId,
+                name: m.name,
+                dosage: m.dosage,
+                frequency: m.frequency,
+                purpose: m.purpose,
+                start_date: sanitizeDate(m.startDate) || cleanDate,
+                end_date: sanitizeDate(m.endDate),
+                active: true
+            }));
+            
+        if (newMeds.length > 0) {
+            await supabase!.from('medications').insert(newMeds);
+        }
     }
 };
 
 export const deleteTimelineEntry = async (id: string) => {
     if (isMock) return;
-    const { data: file } = await supabase!.from('files').select('file_path').eq('timeline_entry_id', id).single();
-    if (file) await supabase!.storage.from(STORAGE_BUCKET).remove([file.file_path]);
+    const { data: files } = await supabase!.from('files').select('file_path').eq('timeline_entry_id', id);
+    if (files && files.length > 0) {
+        await supabase!.storage.from(STORAGE_BUCKET).remove(files.map(f => f.file_path));
+    }
     await supabase!.from('timeline_entries').delete().eq('id', id);
 };
 
@@ -431,7 +464,7 @@ export const updateUserEmail = async (email: string) => {
 
 export const createShareLink = async (entryId: string): Promise<string | null> => {
     if (isMock) return null;
-    const { data: file } = await supabase!.from('files').select('file_path').eq('timeline_entry_id', entryId).single();
+    const { data: file } = await supabase!.from('files').select('file_path').eq('timeline_entry_id', entryId).limit(1).single();
     if (!file) return null;
     const { data, error } = await supabase!.storage.from(STORAGE_BUCKET).createSignedUrl(file.file_path, 86400);
     if (error) return null;

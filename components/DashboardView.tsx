@@ -8,7 +8,6 @@ import { EditMemberModal } from './EditMemberModal';
 import { InviteSuccessModal } from './InviteSuccessModal';
 import { UsersIcon } from './icons/UsersIcon';
 import { BellIcon } from './icons/BellIcon';
-import { ArrowRightIcon } from './icons/ArrowRightIcon';
 import { SpinnerIcon } from './icons/SpinnerIcon';
 import { HealthAssistant } from './HealthAssistant';
 import { ReportViewerModal } from './ReportViewerModal';
@@ -70,6 +69,7 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
             .filter(entry => {
                 if (!entry.follow_up_date) return false;
                 const followUp = new Date(entry.follow_up_date);
+                // ONLY future appointments show on dashboard
                 return followUp >= today;
             })
             .sort((a, b) => new Date(a.follow_up_date!).getTime() - new Date(b.follow_up_date!).getTime())
@@ -150,29 +150,30 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
             
             <main className="container mx-auto p-3 sm:p-6 md:p-10 max-w-6xl flex-grow pb-24 z-10">
                 
-                {/* UPCOMING MILESTONES - High Density Alert */}
+                {/* UPCOMING MILESTONES - List View */}
                 {upcomingAppointments.length > 0 && (
-                    <div className="mb-4 sm:mb-6 bg-white rounded-2xl shadow-lg shadow-slate-200/50 border border-slate-100 flex items-center justify-between p-3 sm:p-4 border-l-4 border-l-amber-400">
-                        <div className="flex items-center gap-2 sm:gap-3">
-                            <div className="bg-amber-50 p-1.5 sm:p-2 rounded-xl shadow-inner">
-                                <BellIcon className="w-3.5 h-3.5 sm:w-4 sm:h-4 text-amber-500" />
+                    <div className="mb-6 sm:mb-8 space-y-3 max-h-[400px] overflow-y-auto pr-2 scrollbar-thin">
+                        {upcomingAppointments.map((appt) => (
+                            <div 
+                                key={appt.id}
+                                onClick={() => appt.memberId && onSelectMember(appt.memberId)}
+                                className="bg-white rounded-2xl shadow-lg shadow-slate-200/50 border border-slate-100 flex items-center justify-between p-4 sm:p-5 border-l-4 border-l-rose-700 overflow-hidden cursor-pointer hover:border-slate-300 transition-all active:scale-[0.99] animate-fadeIn"
+                            >
+                                <div className="flex items-center gap-4 sm:gap-6 flex-grow min-w-0">
+                                    <div className="bg-rose-50 p-2.5 sm:p-3.5 rounded-2xl shadow-inner flex-shrink-0 border border-rose-100">
+                                        <BellIcon className="w-5 h-5 sm:w-6 sm:h-6 text-rose-700" />
+                                    </div>
+                                    <div className="min-w-0 flex flex-col gap-1 sm:gap-1.5">
+                                        <h2 className="text-sm sm:text-base font-black text-rose-700 tracking-tight leading-tight whitespace-normal">
+                                            Review with {appt.doctor_name || "Specialist"}
+                                        </h2>
+                                        <h2 className="text-sm sm:text-base font-black text-slate-900 tracking-tight leading-tight uppercase whitespace-normal">
+                                            {appt.memberName} • Appointment {getDaysUntil(appt.follow_up_date!)}
+                                        </h2>
+                                    </div>
+                                </div>
                             </div>
-                            <div>
-                                <p className="text-[7px] sm:text-[8px] font-black text-amber-600 uppercase tracking-[0.2em] leading-none mb-0.5 sm:mb-1">Priority Directive</p>
-                                <h2 className="text-xs sm:text-sm font-black text-slate-900 tracking-tight leading-none">
-                                    Review with {upcomingAppointments[0].doctor_name || "Specialist"}
-                                </h2>
-                                <p className="text-[7px] sm:text-[8px] text-slate-400 font-bold uppercase tracking-widest mt-0.5">
-                                    {upcomingAppointments[0].memberName} • {getDaysUntil(upcomingAppointments[0].follow_up_date!)}
-                                </p>
-                            </div>
-                        </div>
-                        <button 
-                            onClick={() => upcomingAppointments[0].memberId && onSelectMember(upcomingAppointments[0].memberId)}
-                            className="bg-slate-50 p-1.5 sm:p-2 rounded-full text-slate-300 hover:text-rose-700 hover:bg-rose-50 transition-all shadow-sm"
-                        >
-                            <ArrowRightIcon className="w-3.5 h-3.5" />
-                        </button>
+                        ))}
                     </div>
                 )}
 
