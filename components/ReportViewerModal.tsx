@@ -5,6 +5,8 @@ import { SpinnerIcon } from './icons/SpinnerIcon';
 import { WarningIcon } from './icons/WarningIcon';
 import { DownloadIcon } from './icons/DownloadIcon';
 import { ChevronDownIcon } from './icons/ChevronDownIcon';
+import { PlusIcon } from './icons/PlusIcon';
+import { MinusIcon } from './icons/MinusIcon';
 import { Document, Page, pdfjs } from 'react-pdf';
 import type { ReportFile } from '../types';
 import * as supabaseService from '../services/supabaseService';
@@ -26,6 +28,7 @@ export const ReportViewerModal: React.FC<ReportViewerModalProps> = ({ isOpen, on
   
   const [numPages, setNumPages] = useState<number | null>(null);
   const [pageNumber, setPageNumber] = useState(1);
+  const [scale, setScale] = useState(1.0);
   const [error, setError] = useState<string | null>(null);
   const [isLoading, setIsLoading] = useState(true);
   const [isPageLoading, setIsPageLoading] = useState(false);
@@ -47,6 +50,7 @@ export const ReportViewerModal: React.FC<ReportViewerModalProps> = ({ isOpen, on
       setError(null);
       setNumPages(null);
       setPageNumber(1);
+      setScale(1.0);
       
       const loadAllFiles = async () => {
           if (report.entryId) {
@@ -54,7 +58,6 @@ export const ReportViewerModal: React.FC<ReportViewerModalProps> = ({ isOpen, on
                   const files = await supabaseService.getFilesForEntry(report.entryId);
                   if (files) {
                       setAllFiles(files);
-                      // Find index of the file that was clicked
                       const idx = files.findIndex(f => f.filePath === report.filePath);
                       if (idx !== -1) setCurrentFileIndex(idx);
                   }
@@ -110,8 +113,13 @@ export const ReportViewerModal: React.FC<ReportViewerModalProps> = ({ isOpen, on
           setIsLoading(true);
           setNumPages(null);
           setPageNumber(1);
+          setScale(1.0);
           setCurrentFileIndex(nextIdx);
       }
+  };
+
+  const handleZoom = (delta: number) => {
+    setScale(prev => Math.min(Math.max(0.5, prev + delta), 3.0));
   };
 
   const handleClose = () => {
@@ -142,7 +150,7 @@ export const ReportViewerModal: React.FC<ReportViewerModalProps> = ({ isOpen, on
           </button>
         </header>
         
-        <main className="flex-grow bg-slate-100 overflow-y-auto relative" ref={containerRef}>
+        <main className="flex-grow bg-slate-100 overflow-auto relative" ref={containerRef}>
           {isLoading && !error && (
             <div className="absolute inset-0 flex flex-col items-center justify-center bg-white/80 z-30">
               <SpinnerIcon className="w-10 h-10 text-rose-700 animate-spin mb-4" />
@@ -167,7 +175,7 @@ export const ReportViewerModal: React.FC<ReportViewerModalProps> = ({ isOpen, on
           
           <div className="flex flex-col items-center p-4 min-h-full justify-start">
             {isPdf ? (
-              <div className="relative">
+              <div className="relative shadow-2xl border border-slate-200">
                  {isPageLoading && (
                     <div className="absolute inset-0 flex items-center justify-center bg-white/40 z-10 rounded-lg">
                         <SpinnerIcon className="w-8 h-8 text-rose-700 animate-spin" />
@@ -179,12 +187,11 @@ export const ReportViewerModal: React.FC<ReportViewerModalProps> = ({ isOpen, on
                     onLoadSuccess={onDocumentLoadSuccess}
                     onLoadError={onDocumentLoadError}
                     loading={null}
-                    className="shadow-2xl border border-slate-200"
                   >
                     <Page 
-                      key={`page_${pageNumber}_${activeFile.signedUrl}`}
+                      key={`page_${pageNumber}_${activeFile.signedUrl}_${scale}`}
                       pageNumber={pageNumber} 
-                      width={containerRef.current ? Math.min(containerRef.current.clientWidth - 32, 800) : 300}
+                      width={containerRef.current ? Math.max(containerRef.current.clientWidth - 32, (containerRef.current.clientWidth - 32) * scale) : 300}
                       devicePixelRatio={isTouchDevice ? 1 : undefined}
                       renderTextLayer={false}
                       renderAnnotationLayer={false}
@@ -197,7 +204,8 @@ export const ReportViewerModal: React.FC<ReportViewerModalProps> = ({ isOpen, on
             ) : (
               <img 
                 src={activeFile.signedUrl} 
-                className="max-w-full h-auto rounded-lg shadow-xl" 
+                style={{ width: scale === 1 ? 'auto' : `${scale * 100}%`, maxWidth: scale === 1 ? '100%' : 'none' }}
+                className="h-auto rounded-lg shadow-xl" 
                 onLoad={() => setIsLoading(false)}
                 onError={() => { setIsLoading(false); setError("Image failed to load."); }}
               />
@@ -205,8 +213,8 @@ export const ReportViewerModal: React.FC<ReportViewerModalProps> = ({ isOpen, on
           </div>
         </main>
 
-        {/* Navigation Layer */}
-        <div className="bg-white border-t border-slate-100 px-6 py-3 flex items-center justify-between z-20">
+        {/* Navigation & Zoom Layer */}
+        <div className="bg-white border-t border-slate-100 px-6 py-3 flex flex-wrap items-center justify-between gap-4 z-20">
             {/* Multi-File Navigation */}
             {allFiles.length > 1 ? (
                 <div className="flex items-center gap-4">
@@ -215,7 +223,7 @@ export const ReportViewerModal: React.FC<ReportViewerModalProps> = ({ isOpen, on
                         onClick={() => changeFile(-1)}
                         className="flex items-center gap-2 text-rose-700 disabled:text-slate-300 transition-colors text-[9px] font-black uppercase tracking-widest"
                     >
-                        <ArrowLeftIcon className="w-4 h-4" /> Prev Attachment
+                        <ArrowLeftIcon className="w-4 h-4" /> Prev
                     </button>
                     <div className="h-4 w-px bg-slate-100"></div>
                     <button 
@@ -223,34 +231,51 @@ export const ReportViewerModal: React.FC<ReportViewerModalProps> = ({ isOpen, on
                         onClick={() => changeFile(1)}
                         className="flex items-center gap-2 text-rose-700 disabled:text-slate-300 transition-colors text-[9px] font-black uppercase tracking-widest"
                     >
-                        Next Attachment <ArrowRightIcon className="w-4 h-4" />
+                        Next <ArrowRightIcon className="w-4 h-4" />
                     </button>
                 </div>
             ) : (
-                <div className="flex-grow"></div>
+                <div className="flex-shrink-0"></div>
+            )}
+
+            {/* Zoom Controls */}
+            {!isLoading && !error && (
+              <div className="flex items-center bg-slate-50 px-3 py-1.5 rounded-xl border border-slate-100 gap-4 shadow-inner">
+                <button onClick={() => handleZoom(-0.25)} className="text-slate-500 hover:text-rose-700 transition active:scale-90">
+                  <MinusIcon className="w-4 h-4" />
+                </button>
+                <span className="text-[9px] font-black text-slate-800 uppercase tracking-widest w-12 text-center">
+                  {Math.round(scale * 100)}%
+                </span>
+                <button onClick={() => handleZoom(0.25)} className="text-slate-500 hover:text-rose-700 transition active:scale-90">
+                  <PlusIcon className="w-4 h-4" />
+                </button>
+              </div>
             )}
 
             {/* PDF Page Navigation */}
-            {isPdf && !isLoading && numPages && numPages > 1 && (
-                <div className="flex items-center gap-6">
+            {isPdf && !isLoading && numPages && numPages > 1 ? (
+                <div className="flex items-center gap-4">
                     <button 
                         disabled={pageNumber <= 1}
                         onClick={() => changePage(-1)}
                         className="p-1 text-rose-700 disabled:text-slate-300 transition-colors"
                     >
-                        <div className="rotate-90"><ChevronDownIcon className="w-6 h-6" /></div>
+                        <div className="rotate-90"><ChevronDownIcon className="w-5 h-5" /></div>
                     </button>
-                    <span className="text-[10px] font-black text-slate-400 uppercase tracking-[0.4em]">
-                        Page {pageNumber} of {numPages}
+                    <span className="text-[10px] font-black text-slate-400 uppercase tracking-[0.2em]">
+                        {pageNumber}/{numPages}
                     </span>
                     <button 
                         disabled={pageNumber >= numPages}
                         onClick={() => changePage(1)}
                         className="p-1 text-rose-700 disabled:text-slate-300 transition-colors"
                     >
-                        <div className="-rotate-90"><ChevronDownIcon className="w-6 h-6" /></div>
+                        <div className="-rotate-90"><ChevronDownIcon className="w-5 h-5" /></div>
                     </button>
                 </div>
+            ) : (
+              <div className="flex-shrink-0"></div>
             )}
         </div>
 
@@ -267,6 +292,5 @@ export const ReportViewerModal: React.FC<ReportViewerModalProps> = ({ isOpen, on
   );
 };
 
-// Re-importing Arrow Icons for usage
 import { ArrowLeftIcon } from './icons/ArrowLeftIcon';
 import { ArrowRightIcon } from './icons/ArrowRightIcon';
