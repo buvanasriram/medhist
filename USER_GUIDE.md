@@ -1,4 +1,4 @@
-# medHist: Professional User Guide (v1.0)
+# medHist: Professional User Guide (v1.3.1)
 
 ## 🏥 Purpose
 medHist is a private, family-centric clinical registry. It is designed to solve the "fragmented record" problem by using **Gemini AI** to transform messy hospital PDFs, prescriptions, and lab reports into a unified, searchable health history.
@@ -17,7 +17,7 @@ Your dashboard acts as a "Medical Folder" for the entire family.
 When you upload a document, our Clinical AI performs three tasks:
 - **Extraction**: Identifies Doctor, Date, Facility, and Patient name.
 - **Synthesis**: Writes a 2-sentence "Clinical Brief" so you don't have to re-read a 10-page discharge summary.
-- **Medication Mapping**: Automatically populates your pharmacy list by extracting drugs and dosages from the text.
+- **Medication Mapping**: Automatically populates your pharmacy list. **Note:** In v1.3.1, we use "No-Filter Restoration"—every medication found is added to ensure nothing is missed. You can manually prune duplicates in the Meds manager.
 
 ### 3. Smart Pharmacy Registry
 - **Active vs. Archive**: Track what your family is currently taking.
@@ -26,7 +26,7 @@ When you upload a document, our Clinical AI performs three tasks:
 
 ### 4. Health Assistant (Chat)
 Tap the stethoscope icon to talk to your records:
-- "When was Nilesh's last blood test?"
+- "When was John's last blood test?"
 - "What was the doctor's advice on the Apollo report?"
 - "List all meds Patty is currently taking."
 - **Deep Linking**: The assistant provides direct buttons to open the relevant reports.
@@ -50,7 +50,7 @@ Add members for everyone in the family. We recommend adding "Date of Birth" to e
 ### Step 3: The First Upload
 Take a clear photo of a prescription or upload a lab PDF.
 - **PDF Security**: If your hospital PDF is password-protected, enter the password in the upload modal. We process it securely and do not store the password.
-- **Verification**: If the AI detects a name on the report that doesn't match the folder name (e.g., uploading Dad's report to the Son's folder), it will flag a **"Name Mismatch"** for you to verify.
+- **Verification**: If the AI detects a name on the report that doesn't match the folder name, it will flag a **"Name Mismatch"**. You can confirm the match to link medications automatically.
 
 ### Step 4: Install for Mobile
 medHist is a **Progressive Web App (PWA)**. 

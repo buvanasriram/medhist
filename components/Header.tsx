@@ -80,7 +80,7 @@ export const Header: React.FC<HeaderProps> = ({ onLogout, userName, onOpenGuide 
 
                 {isMenuOpen && (
                     <div className="absolute right-0 mt-3 w-48 bg-white rounded-2xl shadow-xl border border-slate-100 py-2 z-50 animate-fadeIn">
-                        <div className="px-4 py-2 mb-2 border-b border-slate-50">
+                        <div className="px-4 py-2 mb-2 border-b border-slate-50 text-left">
                             <p className="text-[10px] font-black text-slate-300 uppercase tracking-widest">Logged in as</p>
                             <p className="text-xs font-bold text-slate-800 truncate">{userName}</p>
                         </div>
@@ -101,6 +101,9 @@ export const Header: React.FC<HeaderProps> = ({ onLogout, userName, onOpenGuide 
                             </svg>
                             Sign Out
                         </button>
+                        <div className="mt-2 pt-2 border-t border-slate-50 px-4 pb-1">
+                            <p className="text-[8px] font-black text-slate-300 uppercase tracking-[0.4em] text-center">v1.3.1 Stable</p>
+                        </div>
                     </div>
                 )}
              </div>

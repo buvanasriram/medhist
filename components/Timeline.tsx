@@ -7,6 +7,7 @@ import { ClipboardIcon } from './icons/ClipboardIcon';
 interface TimelineProps {
   entries: TimelineEntry[];
   onViewReport: (entry: TimelineEntry) => void;
+  onEditReport: (entry: TimelineEntry) => void;
   onDeleteReport: (entry: TimelineEntry) => void;
   onIgnoreMismatch: (entry: TimelineEntry) => void;
   selectedMemberName?: string;
@@ -17,7 +18,7 @@ interface TimelineProps {
 }
 
 export const Timeline: React.FC<TimelineProps> = ({ 
-    entries, onViewReport, onDeleteReport, onIgnoreMismatch, selectedMemberName, isShared, isReadOnly = false, themeColor, isCompact = false 
+    entries, onViewReport, onEditReport, onDeleteReport, onIgnoreMismatch, selectedMemberName, isShared, isReadOnly = false, themeColor, isCompact = false 
 }) => {
   if (entries.length === 0) {
     return (
@@ -40,6 +41,7 @@ export const Timeline: React.FC<TimelineProps> = ({
           key={entry.id} 
           entry={entry} 
           onViewReport={onViewReport} 
+          onEditReport={onEditReport}
           onDeleteReport={onDeleteReport}
           onIgnoreMismatch={onIgnoreMismatch}
           selectedMemberName={selectedMemberName}

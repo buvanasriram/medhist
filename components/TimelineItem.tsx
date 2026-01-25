@@ -10,11 +10,13 @@ import { ChevronDownIcon } from './icons/ChevronDownIcon';
 import { ChevronUpIcon } from './icons/ChevronUpIcon';
 import { CalendarIcon } from './icons/CalendarIcon';
 import { ShareIcon } from './icons/ShareIcon';
+import { PencilIcon } from './icons/PencilIcon';
 import * as supabaseService from '../services/supabaseService';
 
 interface TimelineItemProps {
   entry: TimelineEntry;
   onViewReport: (entry: TimelineEntry) => void;
+  onEditReport: (entry: TimelineEntry) => void;
   onDeleteReport: (entry: TimelineEntry) => void;
   onIgnoreMismatch: (entry: TimelineEntry) => void;
   selectedMemberName?: string;
@@ -24,7 +26,7 @@ interface TimelineItemProps {
 }
 
 export const TimelineItem: React.FC<TimelineItemProps> = ({ 
-    entry, onViewReport, onDeleteReport, onIgnoreMismatch, selectedMemberName, isReadOnly = false, themeColor = '#be123c', isCompact = false 
+    entry, onViewReport, onEditReport, onDeleteReport, onIgnoreMismatch, selectedMemberName, isReadOnly = false, themeColor = '#be123c', isCompact = false 
 }) => {
   const [showSummary, setShowSummary] = useState(false);
   const [isSharing, setIsSharing] = useState(false);
@@ -50,6 +52,11 @@ export const TimelineItem: React.FC<TimelineItemProps> = ({
                        entry.patient_name && 
                        selectedMemberName && 
                        entry.patient_name.trim().toLowerCase() !== selectedMemberName.trim().toLowerCase();
+
+  // Truncate long names to prevent internal hospital IDs from breaking the UI
+  const cleanedPatientName = entry.patient_name && entry.patient_name.length > 25 
+    ? entry.patient_name.substring(0, 25) + "..." 
+    : entry.patient_name;
 
   const fileCount = (entry as any).files?.length || 1;
 
@@ -78,6 +85,11 @@ export const TimelineItem: React.FC<TimelineItemProps> = ({
     if (!isReadOnly) setShowSummary(!showSummary);
   };
 
+  const handleEdit = (e: React.MouseEvent) => {
+    e.stopPropagation();
+    onEditReport(entry);
+  };
+
   const handleDelete = (e: React.MouseEvent) => {
     e.stopPropagation();
     onDeleteReport(entry);
@@ -92,7 +104,6 @@ export const TimelineItem: React.FC<TimelineItemProps> = ({
       >
         <div className={`flex flex-col sm:flex-row justify-between items-start ${isCompact ? 'sm:items-center' : 'sm:items-center'} gap-2 sm:gap-4`}>
             <div className="flex items-center gap-3 sm:gap-4 w-full min-w-0">
-                {/* Folder Icon */}
                 <div 
                     className={`rounded-xl shadow-lg flex-shrink-0 transition-all duration-200 bg-slate-50 text-rose-700 group-hover:bg-rose-900 group-hover:text-white relative ${isCompact ? 'p-2' : 'p-3'}`}
                 >
@@ -145,28 +156,28 @@ export const TimelineItem: React.FC<TimelineItemProps> = ({
                         </div>
                     )}
 
-                    {/* Name Mismatch Warning Integrated in Card */}
                     {isMismatched && (
                         <div 
-                            className={`mt-2 py-1 px-2 bg-amber-50 border border-amber-100 rounded-lg inline-flex items-center gap-1.5 animate-pulse shadow-sm ${isCompact ? 'scale-90 origin-left' : ''}`}
+                            className={`mt-2.5 py-2 px-3 bg-amber-50 border border-amber-100 rounded-xl flex flex-wrap items-center gap-2.5 animate-fadeIn shadow-sm max-w-full ${isCompact ? 'scale-90 origin-left' : ''}`}
                             onClick={(e) => e.stopPropagation()}
                         >
-                            <WarningIcon className="w-3 h-3 text-amber-600" />
-                            <span className="text-[7px] sm:text-[8px] font-black text-amber-700 uppercase tracking-widest whitespace-nowrap">
-                                Name mismatch: {entry.patient_name}
-                            </span>
+                            <div className="flex items-center gap-2 min-w-0">
+                                <WarningIcon className="w-3.5 h-3.5 text-amber-600 flex-shrink-0" />
+                                <span className="text-[7.5px] sm:text-[8.5px] font-black text-amber-800 uppercase tracking-widest leading-tight">
+                                    Confirm Identity: {cleanedPatientName}
+                                </span>
+                            </div>
                             <button 
                                 onClick={(e) => { e.stopPropagation(); onIgnoreMismatch(entry); }} 
-                                className="text-[7px] font-black uppercase tracking-widest bg-amber-600 text-white px-2 py-0.5 rounded shadow hover:bg-slate-900 transition-colors"
+                                className="text-[7.5px] font-black uppercase tracking-widest bg-amber-600 text-white px-3 py-1.5 rounded-lg shadow-md hover:bg-slate-900 transition-all active:scale-95 flex-shrink-0 sm:ml-auto"
                             >
-                                Confirm
+                                Confirm & Link Meds
                             </button>
                         </div>
                     )}
                 </div>
             </div>
 
-            {/* Action Tray */}
             <div className={`flex items-center gap-2 flex-shrink-0 ${isCompact ? 'ml-auto mt-0' : 'mt-1 sm:mt-0 ml-auto sm:ml-4'}`}>
                 <button
                     onClick={handleToggleSummary}
@@ -177,6 +188,16 @@ export const TimelineItem: React.FC<TimelineItemProps> = ({
                     {showSummary ? <ChevronUpIcon className={`${isCompact ? 'w-3.5 h-3.5' : 'w-4 h-4'}`} /> : <ChevronDownIcon className={`${isCompact ? 'w-3.5 h-3.5' : 'w-4 h-4'}`} />}
                 </button>
                 
+                {!isReadOnly && (
+                    <button
+                        onClick={handleEdit}
+                        className={`${isCompact ? 'p-1.5' : 'p-2.5'} bg-slate-50 text-slate-900 rounded-xl shadow-sm hover:bg-rose-900 hover:text-white transition-all duration-200 active:scale-90`}
+                        title="Edit Record"
+                    >
+                        <PencilIcon className={`${isCompact ? 'w-3.5 h-3.5' : 'w-4 h-4'}`} />
+                    </button>
+                )}
+
                 <div className="relative">
                     <button
                         onClick={handleShare}
@@ -205,7 +226,6 @@ export const TimelineItem: React.FC<TimelineItemProps> = ({
             </div>
         </div>
 
-        {/* AI Synthesis Summary */}
         {showSummary && (
             <div 
                 className={`mt-3 p-4 rounded-2xl leading-relaxed shadow-inner border animate-fadeIn ${isCompact ? 'p-3 text-[9px]' : 'p-5 text-[10px] sm:text-[11px]'}`}

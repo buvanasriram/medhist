@@ -1,4 +1,4 @@
-# medHist: Family Medical Registry (v1.0.0 Harmony)
+# medHist: Family Medical Registry (v1.3.1 High Integrity)
 
 medHist is a secure, family-focused web application designed to solve the problem of fragmented medical records. It uses **Google Gemini AI** to automatically extract clinical details from PDFs and images, creating a chronological health timeline for every family member.
 
@@ -6,7 +6,7 @@ medHist is a secure, family-focused web application designed to solve the proble
 
 *   **Family Board**: A high-density dashboard for managing spouse, children, and elderly parents.
 *   **AI Clinical Engine**: Automatic extraction of diagnosis, medications, and follow-up dates.
-*   **Pharmacy Registry**: Real-time tracking of active vs. archived medications.
+*   **Pharmacy Registry**: Real-time tracking of active vs. archived medications with **No-Filter Restoration** for 100% data fidelity.
 *   **Health Assistant**: A context-aware chatbot that can "search" your family's records and provide direct links to reports.
 *   **Doctor's Brief**: One-click generation of a professional PDF summary for specialist visits.
 *   **PWA Optimized**: Fully installable on iOS and Android with offline-first asset caching.
@@ -20,7 +20,7 @@ medHist is a secure, family-focused web application designed to solve the proble
 
 ## 📦 Deployment & Stability
 
-*   **Mobile Memory Throttling**: Specialized DPI scaling for high-resolution mobile screens to prevent browser crashes.
+*   **High-DPI Throttling**: Specialized scaling for high-resolution mobile screens (v1.3.1) to prevent browser memory crashes during PDF rendering.
 *   **Registry Locking**: Dynamic PDF worker synchronization to ensure 100% version parity in production environments.
 *   **Concurrency Guarding**: Robust auth-state locks to prevent race conditions during high-latency boot sequences.
 

@@ -4,6 +4,7 @@ import { Header } from './Header';
 import { Timeline } from './Timeline';
 import { UploadModal } from './UploadModal';
 import { ConfirmationModal } from './ConfirmationModal';
+import { EditTimelineEntryModal } from './EditTimelineEntryModal';
 import { extractReportInfo } from '../services/geminiService';
 import { fileToBase64 } from '../utils/fileUtils';
 import { generateDoctorBrief } from '../utils/pdfGenerator';
@@ -56,6 +57,10 @@ export const TimelineView: React.FC<TimelineViewProps> = ({
   const [isUploadModalOpen, setUploadModalOpen] = useState<boolean>(false);
   const [isViewerOpen, setViewerOpen] = useState(false);
   const [reportToViewRaw, setReportToViewRaw] = useState<{ url: string, filePath?: string, file: ReportFile, entryId?: string } | null>(null);
+  
+  const [isEditModalOpen, setEditModalOpen] = useState<boolean>(false);
+  const [entryToEdit, setEntryToEdit] = useState<TimelineEntry | null>(null);
+
   const [isConfirmModalOpen, setConfirmModalOpen] = useState<boolean>(false);
   const [entryToDelete, setEntryToDelete] = useState<TimelineEntry | null>(null);
   
@@ -90,14 +95,8 @@ export const TimelineView: React.FC<TimelineViewProps> = ({
       setUploadModalOpen(false);
     } catch (err: any) {
       console.error("[medHist] Upload failed:", err);
-      // Catch duplicate file specifically
       const errorMsg = err?.message || "Registry Sync Failed.";
       setError(errorMsg);
-      
-      // If duplicate, don't close modal yet so user can see the error
-      if (errorMsg.includes("Duplicate Upload")) {
-          // Allow them to see the error, maybe clear file
-      }
     } finally {
       setIsLoading(false);
     }
@@ -122,6 +121,12 @@ export const TimelineView: React.FC<TimelineViewProps> = ({
         console.error('Error viewing report', error);
         alert('Could not open record viewer.');
     }
+  }, [isDeleting]);
+
+  const handleEditReport = useCallback((entry: TimelineEntry) => {
+    if (isDeleting) return;
+    setEntryToEdit(entry);
+    setEditModalOpen(true);
   }, [isDeleting]);
   
   const handleDeleteReport = useCallback((entry: TimelineEntry) => {
@@ -309,6 +314,7 @@ export const TimelineView: React.FC<TimelineViewProps> = ({
         <Timeline 
             entries={displayedEntries} 
             onViewReport={handleViewReport} 
+            onEditReport={handleEditReport}
             onDeleteReport={handleDeleteReport} 
             onIgnoreMismatch={handleIgnoreMismatch} 
             selectedMemberName={selectedMember?.name} 
@@ -336,11 +342,20 @@ export const TimelineView: React.FC<TimelineViewProps> = ({
             report={reportToViewRaw} 
         />
       )}
+
+      {isEditModalOpen && entryToEdit && (
+        <EditTimelineEntryModal 
+          isOpen={isEditModalOpen} 
+          onClose={() => { setEditModalOpen(false); setEntryToEdit(null); }} 
+          entry={entryToEdit} 
+          onUpdate={onRefreshData} 
+        />
+      )}
       
       {isConfirmModalOpen && <ConfirmationModal isOpen={isConfirmModalOpen} onClose={() => { setConfirmModalOpen(false); setEntryToDelete(null); }} onConfirm={handleConfirmDelete} title="Purge Record?" message="This will permanently delete this clinical record from the secure timeline." />}
       
       <footer className="py-16 text-center text-slate-400 text-[10px] font-black uppercase tracking-[0.5em] mt-auto">
-          medHist Precision • v1.3.0
+          medHist Precision • v1.3.1
       </footer>
     </div>
   );

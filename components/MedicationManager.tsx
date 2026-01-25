@@ -9,17 +9,21 @@ import { SpinnerIcon } from './icons/SpinnerIcon';
 import { ConfirmationModal } from './ConfirmationModal';
 import { CalendarIcon } from './icons/CalendarIcon';
 import { HourglassIcon } from './icons/HourglassIcon';
+import { TrashIcon } from './icons/TrashIcon';
+import { RotateCcwIcon } from './icons/RotateCcwIcon';
 
 interface MedicationManagerProps {
   isOpen: boolean;
   onClose: () => void;
   medications: Medication[];
   onAdd: (data: { name: string, dosage: string, frequency: string, purpose: string, start_date: string, end_date: string }) => Promise<void>;
-  onDelete: (id: string) => Promise<void>;
+  onStop: (id: string) => Promise<void>;
+  onReactivate: (id: string) => Promise<void>;
+  onHardDelete: (id: string) => Promise<void>;
   memberName: string;
 }
 
-export const MedicationManager: React.FC<MedicationManagerProps> = ({ isOpen, onClose, medications, onAdd, onDelete, memberName }) => {
+export const MedicationManager: React.FC<MedicationManagerProps> = ({ isOpen, onClose, medications, onAdd, onStop, onReactivate, onHardDelete, memberName }) => {
   const [name, setName] = useState('');
   const [dosage, setDosage] = useState('');
   const [frequency, setFrequency] = useState('');
@@ -29,12 +33,14 @@ export const MedicationManager: React.FC<MedicationManagerProps> = ({ isOpen, on
 
   const [isAdding, setIsAdding] = useState(false);
   const [isAddFormOpen, setIsAddFormOpen] = useState(false);
-  const [isStoppingId, setIsStoppingId] = useState<string | null>(null);
+  const [isSyncingId, setIsSyncingId] = useState<string | null>(null);
   const [showHistory, setShowHistory] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
   const [medToStop, setMedToStop] = useState<string | null>(null);
-  const [optimisticStoppedIds, setOptimisticStoppedIds] = useState<Set<string>>(new Set());
+  const [medToDelete, setMedToDelete] = useState<string | null>(null);
+  const [medToReactivate, setMedToReactivate] = useState<string | null>(null);
+  const [optimisticRemovedIds, setOptimisticRemovedIds] = useState<Set<string>>(new Set());
 
   const handleAdd = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -63,27 +69,57 @@ export const MedicationManager: React.FC<MedicationManagerProps> = ({ isOpen, on
       if (!id) return;
 
       setMedToStop(null);
-      setIsStoppingId(id);
+      setIsSyncingId(id);
       setError(null);
-      setOptimisticStoppedIds(prev => new Set(prev).add(id));
 
       try {
-          await onDelete(id);
+          await onStop(id);
       } catch (error) {
-          setError("Failed to update medication status.");
-          setOptimisticStoppedIds(prev => {
+          setError("Failed to archive medication.");
+      } finally {
+          setIsSyncingId(null);
+      }
+  };
+
+  const handleReactivate = async (id: string) => {
+      setIsSyncingId(id);
+      setError(null);
+      try {
+          await onReactivate(id);
+      } catch (error) {
+          setError("Failed to restart medication.");
+      } finally {
+          setIsSyncingId(null);
+      }
+  };
+
+  const confirmHardDelete = async () => {
+      const id = medToDelete;
+      if (!id) return;
+
+      setMedToDelete(null);
+      setIsSyncingId(id);
+      setError(null);
+      setOptimisticRemovedIds(prev => new Set(prev).add(id));
+
+      try {
+          await onHardDelete(id);
+      } catch (error) {
+          setError("Failed to delete medication record.");
+          setOptimisticRemovedIds(prev => {
               const next = new Set(prev);
               next.delete(id);
               return next;
           });
       } finally {
-          setIsStoppingId(null);
+          setIsSyncingId(null);
       }
-  }
+  };
 
-  const displayedMeds = showHistory 
+  const displayedMeds = (showHistory 
       ? medications 
-      : medications.filter(m => m.active && !optimisticStoppedIds.has(m.id));
+      : medications.filter(m => m.active))
+      .filter(m => !optimisticRemovedIds.has(m.id));
 
   if (!isOpen) return null;
 
@@ -133,14 +169,13 @@ export const MedicationManager: React.FC<MedicationManagerProps> = ({ isOpen, on
                 ) : (
                     displayedMeds.map(med => {
                         const isStopped = !med.active;
-                        const isOptimisticStop = optimisticStoppedIds.has(med.id);
                         const isCompletingSoon = med.active && med.end_date && new Date(med.end_date) < new Date(Date.now() + 2 * 24 * 60 * 60 * 1000);
                         
                         return (
-                        <div key={med.id} className={`flex items-center justify-between p-5 rounded-2xl border transition-all duration-300 text-left ${isStopped || isOptimisticStop ? 'bg-slate-50/50 border-slate-100 grayscale opacity-60' : 'bg-white border-slate-100 shadow-sm shadow-slate-200/40 hover:shadow-md'}`}>
+                        <div key={med.id} className={`flex items-center justify-between p-5 rounded-2xl border transition-all duration-300 text-left ${isStopped ? 'bg-slate-50/50 border-slate-100 grayscale opacity-60' : 'bg-white border-slate-100 shadow-sm shadow-slate-200/40 hover:shadow-md'}`}>
                             <div className="min-w-0 pr-4">
                                 <div className="flex items-center gap-2 mb-1">
-                                    <h4 className={`text-base font-black tracking-tight ${isStopped || isOptimisticStop ? 'text-slate-400' : 'text-slate-900'}`}>
+                                    <h4 className={`text-base font-black tracking-tight ${isStopped ? 'text-slate-400' : 'text-slate-900'}`}>
                                         {med.name}
                                     </h4>
                                     {isCompletingSoon && !isStopped && (
@@ -168,20 +203,47 @@ export const MedicationManager: React.FC<MedicationManagerProps> = ({ isOpen, on
                                 </div>
                             </div>
                             
-                            {!isStopped && !isOptimisticStop && (
+                            <div className="flex flex-col gap-2">
+                                {!isStopped ? (
+                                    <button 
+                                        onClick={() => setMedToStop(med.id)}
+                                        className="p-2.5 bg-slate-50 text-slate-900 rounded-xl shadow-sm hover:bg-red-700 hover:text-white transition-all duration-200 active:scale-90 disabled:opacity-50"
+                                        title="Archive (Discontinue)"
+                                        disabled={!!isSyncingId}
+                                    >
+                                        {isSyncingId === med.id ? (
+                                            <SpinnerIcon className="w-5 h-5 animate-spin text-rose-700" />
+                                        ) : (
+                                            <StopCircleIcon className="w-5 h-5" />
+                                        )}
+                                    </button>
+                                ) : (
+                                    <button 
+                                        onClick={() => handleReactivate(med.id)}
+                                        className="p-2.5 bg-rose-50 text-rose-700 rounded-xl shadow-sm hover:bg-rose-700 hover:text-white transition-all duration-200 active:scale-90 disabled:opacity-50"
+                                        title="Restart Protocol"
+                                        disabled={!!isSyncingId}
+                                    >
+                                        {isSyncingId === med.id ? (
+                                            <SpinnerIcon className="w-5 h-5 animate-spin" />
+                                        ) : (
+                                            <RotateCcwIcon className="w-5 h-5" />
+                                        )}
+                                    </button>
+                                )}
                                 <button 
-                                    onClick={() => setMedToStop(med.id)}
-                                    className="p-2.5 bg-slate-50 text-slate-900 rounded-xl shadow-sm hover:bg-red-700 hover:text-white transition-all duration-200 active:scale-90 disabled:opacity-50"
-                                    title="Discontinue Medication"
-                                    disabled={!!isStoppingId}
+                                    onClick={() => setMedToDelete(med.id)}
+                                    className={`p-2.5 rounded-xl shadow-sm transition-all duration-200 active:scale-90 disabled:opacity-50 ${isStopped ? 'bg-slate-100 text-slate-400 hover:bg-red-700 hover:text-white' : 'bg-slate-50 text-slate-300 hover:bg-red-100 hover:text-red-700'}`}
+                                    title="Permanently Delete Record"
+                                    disabled={!!isSyncingId}
                                 >
-                                    {isStoppingId === med.id ? (
-                                        <SpinnerIcon className="w-5 h-5 animate-spin text-rose-700" />
+                                    {isSyncingId === med.id ? (
+                                        <SpinnerIcon className="w-5 h-5 animate-spin" />
                                     ) : (
-                                        <StopCircleIcon className="w-5 h-5" />
+                                        <TrashIcon className="w-5 h-5" />
                                     )}
                                 </button>
-                            )}
+                            </div>
                         </div>
                     )})
                 )}
@@ -276,8 +338,16 @@ export const MedicationManager: React.FC<MedicationManagerProps> = ({ isOpen, on
         isOpen={!!medToStop}
         onClose={() => setMedToStop(null)}
         onConfirm={confirmStop}
-        title="Discontinue Medication?"
-        message="This will move the protocol to archive history. It remains searchable in the full timeline."
+        title="Archive Medication?"
+        message="This will move the protocol to dispense history. It remains visible in the full registry list."
+    />
+
+    <ConfirmationModal
+        isOpen={!!medToDelete}
+        onClose={() => setMedToDelete(null)}
+        onConfirm={confirmHardDelete}
+        title="Permanently Purge?"
+        message="This will completely remove this medication from your registry. This action cannot be undone."
     />
     </>
   );

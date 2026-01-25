@@ -112,6 +112,26 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
         }
     };
 
+    const handleReactivateMedication = async (id: string) => {
+        try {
+            await supabaseService.reactivateMedication(id);
+            onRefreshData();
+        } catch (err) {
+            console.error("Error reactivating medication:", err);
+            throw err;
+        }
+    };
+
+    const handleHardDeleteMedication = async (id: string) => {
+        try {
+            await supabaseService.deleteMedication(id);
+            onRefreshData();
+        } catch (err) {
+            console.error("Error deleting medication:", err);
+            throw err;
+        }
+    };
+
     const handleViewReport = async (entry: TimelineEntry) => {
         try {
             const result = await supabaseService.getFileForEntry(entry.id);
@@ -288,7 +308,9 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
                     memberName={familyMembers.find(m => m.id === managingMedsMemberId)?.name || 'Member'}
                     medications={getAllMemberMeds(managingMedsMemberId)}
                     onAdd={handleAddMedication}
-                    onDelete={handleStopMedication}
+                    onStop={handleStopMedication}
+                    onReactivate={handleReactivateMedication}
+                    onHardDelete={handleHardDeleteMedication}
                 />
             )}
 
@@ -301,7 +323,7 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
             )}
 
             <footer className="py-8 sm:py-12 text-center text-slate-300 text-[8px] font-black uppercase tracking-[0.5em] mt-auto">
-                medHist Precision • v1.0.0
+                medHist Precision • v1.3.1
             </footer>
         </div>
     );

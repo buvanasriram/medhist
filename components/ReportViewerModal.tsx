@@ -7,6 +7,8 @@ import { DownloadIcon } from './icons/DownloadIcon';
 import { ChevronDownIcon } from './icons/ChevronDownIcon';
 import { PlusIcon } from './icons/PlusIcon';
 import { MinusIcon } from './icons/MinusIcon';
+import { ArrowLeftIcon } from './icons/ArrowLeftIcon';
+import { ArrowRightIcon } from './icons/ArrowRightIcon';
 import { Document, Page, pdfjs } from 'react-pdf';
 import type { ReportFile } from '../types';
 import * as supabaseService from '../services/supabaseService';
@@ -43,6 +45,11 @@ export const ReportViewerModal: React.FC<ReportViewerModalProps> = ({ isOpen, on
   const isTouchDevice = useMemo(() => {
     return (('ontouchstart' in window) || (navigator.maxTouchPoints > 0));
   }, []);
+
+  // Registry Guard: Memory-Safe Limits
+  // Mobile browsers crash when canvas pixels exceed ~16-32MB. 
+  // On 3x DPI screens, we cap at 1.75x to remain in the safe zone.
+  const maxScale = isTouchDevice ? 1.75 : 3.0;
 
   useEffect(() => {
     if (isOpen) {
@@ -119,7 +126,11 @@ export const ReportViewerModal: React.FC<ReportViewerModalProps> = ({ isOpen, on
   };
 
   const handleZoom = (delta: number) => {
-    setScale(prev => Math.min(Math.max(0.5, prev + delta), 3.0));
+    setScale(prev => {
+        const next = prev + delta;
+        // Strict safety clamp
+        return Math.min(Math.max(0.5, next), maxScale);
+    });
   };
 
   const handleClose = () => {
@@ -241,13 +252,22 @@ export const ReportViewerModal: React.FC<ReportViewerModalProps> = ({ isOpen, on
             {/* Zoom Controls */}
             {!isLoading && !error && (
               <div className="flex items-center bg-slate-50 px-3 py-1.5 rounded-xl border border-slate-100 gap-4 shadow-inner">
-                <button onClick={() => handleZoom(-0.25)} className="text-slate-500 hover:text-rose-700 transition active:scale-90">
+                <button 
+                  onClick={() => handleZoom(-0.25)} 
+                  disabled={scale <= 0.5}
+                  className="text-slate-500 hover:text-rose-700 transition active:scale-90 disabled:opacity-20"
+                >
                   <MinusIcon className="w-4 h-4" />
                 </button>
                 <span className="text-[9px] font-black text-slate-800 uppercase tracking-widest w-12 text-center">
                   {Math.round(scale * 100)}%
                 </span>
-                <button onClick={() => handleZoom(0.25)} className="text-slate-500 hover:text-rose-700 transition active:scale-90">
+                <button 
+                  onClick={() => handleZoom(0.25)} 
+                  disabled={scale >= maxScale}
+                  className="text-slate-500 hover:text-rose-700 transition active:scale-90 disabled:opacity-20"
+                  title={scale >= maxScale ? "Mobile Safety Limit Reached" : "Zoom In"}
+                >
                   <PlusIcon className="w-4 h-4" />
                 </button>
               </div>
@@ -291,6 +311,3 @@ export const ReportViewerModal: React.FC<ReportViewerModalProps> = ({ isOpen, on
     </div>
   );
 };
-
-import { ArrowLeftIcon } from './icons/ArrowLeftIcon';
-import { ArrowRightIcon } from './icons/ArrowRightIcon';
