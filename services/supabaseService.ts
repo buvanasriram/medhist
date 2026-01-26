@@ -227,11 +227,6 @@ export const getFileForEntry = async (entryId: string) => {
 
 const normalizeSummary = (text: string): string => text.toLowerCase().replace(/[^a-z0-9]/gi, '').substring(0, 500);
 
-/**
- * [medHist] v1.5.1 - No-Filter Medication Restoration
- * We've removed de-duplication logic. If a report contains meds, we add them. 
- * Period. Users can manually delete duplicates if they wish, but we never skip data.
- */
 export const addTimelineEntry = async (entryData: any, fileData: any, extractedMedications?: ExtractedMedication[], folderName?: string) => {
     if (isMock) return;
 
@@ -282,8 +277,6 @@ export const addTimelineEntry = async (entryData: any, fileData: any, extractedM
         await supabase!.from('files').insert({ timeline_entry_id: targetEntryId, name: fileData.name, type: fileData.type, file_path: filePath, password: fileData.password });
     }
 
-    // MANDATORY MEDICATIONS SYNC
-    // If name matched, we add meds. We DO NOT check for duplicates here anymore.
     if (!isMismatched && extractedMedications && extractedMedications.length > 0 && targetEntryId) {
         console.debug(`[medHist] Auto-linking all ${extractedMedications.length} meds from report.`);
         
@@ -308,7 +301,17 @@ export const addTimelineEntry = async (entryData: any, fileData: any, extractedM
 
 export const updateTimelineEntry = async (id: string, updates: Partial<TimelineEntry>) => {
     if (isMock) return;
-    const { error } = await supabase!.from('timeline_entries').update({ ...updates, date: updates.date ? sanitizeDate(updates.date) : undefined, follow_up_date: updates.follow_up_date ? sanitizeDate(updates.follow_up_date) : undefined }).eq('id', id);
+    
+    const payload: any = { ...updates };
+    // Explicitly handle date sanitization to ensure empty strings/nulls are handled correctly by the DB
+    if ('date' in updates) {
+        payload.date = sanitizeDate(updates.date);
+    }
+    if ('follow_up_date' in updates) {
+        payload.follow_up_date = sanitizeDate(updates.follow_up_date);
+    }
+
+    const { error } = await supabase!.from('timeline_entries').update(payload).eq('id', id);
     if (error) throw error;
 };
 
@@ -316,7 +319,6 @@ export const deleteTimelineEntry = async (id: string) => {
     if (isMock) return;
     const { data: files } = await supabase!.from('files').select('file_path').eq('timeline_entry_id', id);
     if (files && files.length > 0) await supabase!.storage.from(STORAGE_BUCKET).remove(files.map(f => f.file_path));
-    // Cascade delete in Supabase DB handles associated medications
     await supabase!.from('timeline_entries').delete().eq('id', id);
 };
 
@@ -324,7 +326,6 @@ export const ignoreMismatch = async (id: string) => {
     if (isMock) return;
     const { data: entry } = await supabase!.from('timeline_entries').select('id, family_member_id, date, pending_medications').eq('id', id).single();
     
-    // Restoration: Add every pending medication without filtering
     if (entry && entry.pending_medications && Array.isArray(entry.pending_medications)) {
         const meds = entry.pending_medications.map((m: ExtractedMedication) => ({
             family_member_id: entry.family_member_id,

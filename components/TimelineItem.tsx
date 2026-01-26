@@ -102,8 +102,9 @@ export const TimelineItem: React.FC<TimelineItemProps> = ({
         style={{ borderLeftColor: themeColor }}
         onClick={() => !isReadOnly && onViewReport(entry)}
       >
-        <div className={`flex flex-col sm:flex-row justify-between items-start ${isCompact ? 'sm:items-center' : 'sm:items-center'} gap-2 sm:gap-4`}>
-            <div className="flex items-center gap-3 sm:gap-4 w-full min-w-0">
+        {/* Card Header: Layout refactored to ensure buttons are never hidden */}
+        <div className="flex justify-between items-start gap-3 w-full">
+            <div className="flex items-start gap-3 sm:gap-4 min-w-0 flex-grow">
                 <div 
                     className={`rounded-xl shadow-lg flex-shrink-0 transition-all duration-200 bg-slate-50 text-rose-700 group-hover:bg-rose-900 group-hover:text-white relative ${isCompact ? 'p-2' : 'p-3'}`}
                 >
@@ -115,127 +116,98 @@ export const TimelineItem: React.FC<TimelineItemProps> = ({
                     )}
                 </div>
                 
-                <div className="min-w-0 flex-grow">
-                    <div className="flex flex-wrap items-center gap-2 mb-0.5">
-                        <h4 className={`${isCompact ? 'text-[13px] sm:text-sm' : 'text-sm sm:text-base'} font-black text-slate-900 tracking-tight leading-tight truncate`}>
+                <div className="min-w-0">
+                    <div className="flex flex-wrap items-center gap-1.5 mb-1">
+                        <h4 className={`${isCompact ? 'text-[13px]' : 'text-sm sm:text-base'} font-black text-slate-900 tracking-tight leading-tight truncate max-w-[150px] sm:max-w-none`}>
                             {entry.report_type}
                         </h4>
-                        {fileCount > 1 && !isCompact && (
-                            <span className="text-[7px] font-black uppercase px-1.5 py-0.5 rounded bg-slate-100 text-slate-500 tracking-[0.1em] shadow-sm">
-                               {fileCount} Pages
-                            </span>
-                        )}
                         {isUpcoming && (
-                            <span className={`${isCompact ? 'text-[6px] px-1' : 'text-[7px] px-1.5'} font-black uppercase py-0.5 rounded bg-rose-700 text-white tracking-[0.1em] shadow-sm`}>
+                            <span className="text-[6px] sm:text-[7px] font-black uppercase px-1 py-0.5 rounded bg-rose-700 text-white tracking-[0.1em] shadow-sm">
                                Follow-up
                             </span>
                         )}
                     </div>
                     
-                    {isCompact ? (
-                        <div className="flex flex-wrap items-center gap-x-2 gap-y-0.5 text-[7px] sm:text-[8px] font-black text-slate-400 uppercase tracking-widest leading-none">
-                            <span className="text-slate-900">{formattedDate}</span>
-                            {entry.doctor_name && (
-                                <span className="flex items-center gap-1">
-                                    <UserIcon className="w-2.5 h-2.5 text-slate-400"/> 
-                                    <span className="truncate max-w-[80px]">DR. {entry.doctor_name}</span>
-                                </span>
-                            )}
-                            {entry.facility_name && (
-                                <span className="flex items-center gap-1">
-                                    <BuildingIcon className="w-2.5 h-2.5 text-slate-400"/> 
-                                    <span className="truncate max-w-[80px]">{entry.facility_name}</span>
-                                </span>
-                            )}
-                        </div>
-                    ) : (
-                        <div className="flex flex-wrap items-center gap-x-3 gap-y-1 text-[8px] font-black text-slate-400 uppercase tracking-widest">
-                            <span className="text-slate-900 font-black">{formattedDate}</span>
-                            {entry.doctor_name && <span className="flex items-center gap-1"><UserIcon className="w-3.5 h-3.5 text-slate-900"/> DR. {entry.doctor_name}</span>}
-                            {entry.facility_name && <span className="flex items-center gap-1"><BuildingIcon className="w-3.5 h-3.5 text-slate-900"/> {entry.facility_name}</span>}
-                        </div>
-                    )}
-
-                    {isMismatched && (
-                        <div 
-                            className={`mt-2.5 py-2 px-3 bg-amber-50 border border-amber-100 rounded-xl flex flex-wrap items-center gap-2.5 animate-fadeIn shadow-sm max-w-full ${isCompact ? 'scale-90 origin-left' : ''}`}
-                            onClick={(e) => e.stopPropagation()}
-                        >
-                            <div className="flex items-center gap-2 min-w-0">
-                                <WarningIcon className="w-3.5 h-3.5 text-amber-600 flex-shrink-0" />
-                                <span className="text-[7.5px] sm:text-[8.5px] font-black text-amber-800 uppercase tracking-widest leading-tight">
-                                    Confirm Identity: {cleanedPatientName}
-                                </span>
-                            </div>
-                            <button 
-                                onClick={(e) => { e.stopPropagation(); onIgnoreMismatch(entry); }} 
-                                className="text-[7.5px] font-black uppercase tracking-widest bg-amber-600 text-white px-3 py-1.5 rounded-lg shadow-md hover:bg-slate-900 transition-all active:scale-95 flex-shrink-0 sm:ml-auto"
-                            >
-                                Confirm & Link Meds
-                            </button>
-                        </div>
-                    )}
+                    <div className="flex flex-wrap items-center gap-x-2 gap-y-0.5 text-[8px] font-black text-slate-400 uppercase tracking-widest leading-tight">
+                        <span className="text-slate-900">{formattedDate}</span>
+                        {entry.doctor_name && (
+                            <span className="hidden sm:flex items-center gap-1">
+                                <UserIcon className="w-2.5 h-2.5 text-slate-400"/> DR. {entry.doctor_name}
+                            </span>
+                        )}
+                        {entry.facility_name && (
+                            <span className="flex items-center gap-1 truncate max-w-[100px]">
+                                <BuildingIcon className="w-2.5 h-2.5 text-slate-400"/> {entry.facility_name}
+                            </span>
+                        )}
+                    </div>
                 </div>
             </div>
 
-            <div className={`flex items-center gap-2 flex-shrink-0 ${isCompact ? 'ml-auto mt-0' : 'mt-1 sm:mt-0 ml-auto sm:ml-4'}`}>
+            {/* Actions: Always visible on the right */}
+            <div className="flex items-center gap-1 sm:gap-2 flex-shrink-0 z-10">
                 <button
                     onClick={handleToggleSummary}
-                    className={`${isCompact ? 'p-1.5' : 'p-2.5'} bg-slate-50 text-slate-900 rounded-xl shadow-sm hover:bg-rose-900 hover:text-white transition-all duration-200 active:scale-90`}
+                    className={`${isCompact ? 'p-1.5' : 'p-2'} bg-slate-50 text-slate-900 rounded-lg sm:rounded-xl border border-slate-100 shadow-sm hover:bg-rose-900 hover:text-white transition-all active:scale-90`}
                     title="Toggle Summary"
                     disabled={isReadOnly}
                 >
-                    {showSummary ? <ChevronUpIcon className={`${isCompact ? 'w-3.5 h-3.5' : 'w-4 h-4'}`} /> : <ChevronDownIcon className={`${isCompact ? 'w-3.5 h-3.5' : 'w-4 h-4'}`} />}
+                    {showSummary ? <ChevronUpIcon className="w-4 h-4" /> : <ChevronDownIcon className="w-4 h-4" />}
                 </button>
                 
                 {!isReadOnly && (
                     <button
                         onClick={handleEdit}
-                        className={`${isCompact ? 'p-1.5' : 'p-2.5'} bg-slate-50 text-slate-900 rounded-xl shadow-sm hover:bg-rose-900 hover:text-white transition-all duration-200 active:scale-90`}
+                        className={`${isCompact ? 'p-1.5' : 'p-2'} bg-slate-50 text-slate-900 rounded-lg sm:rounded-xl border border-slate-100 shadow-sm hover:bg-rose-900 hover:text-white transition-all active:scale-90`}
                         title="Edit Record"
                     >
-                        <PencilIcon className={`${isCompact ? 'w-3.5 h-3.5' : 'w-4 h-4'}`} />
+                        <PencilIcon className="w-4 h-4" />
                     </button>
                 )}
-
-                <div className="relative">
-                    <button
-                        onClick={handleShare}
-                        disabled={isSharing || isReadOnly}
-                        className={`${isCompact ? 'p-1.5' : 'p-2.5'} bg-slate-50 text-slate-900 rounded-xl shadow-sm hover:bg-rose-900 hover:text-white transition-all duration-200 active:scale-90 disabled:opacity-50`}
-                        title="Share Record"
-                    >
-                        <ShareIcon className={`${isCompact ? 'w-3.5 h-3.5' : 'w-4 h-4'}`} />
-                    </button>
-                    {shareFeedback && (
-                        <div className="absolute right-0 bottom-full mb-2 bg-slate-900 text-white text-[7px] font-black uppercase tracking-widest px-2 py-1 rounded shadow-xl whitespace-nowrap z-30">
-                            {shareFeedback}
-                        </div>
-                    )}
-                </div>
 
                 {!isReadOnly && (
                     <button
                         onClick={handleDelete}
-                        className={`${isCompact ? 'p-1.5' : 'p-2.5'} bg-slate-50 text-slate-900 rounded-xl shadow-sm hover:bg-red-700 hover:text-white transition-all duration-200 active:scale-90`}
+                        className={`${isCompact ? 'p-1.5' : 'p-2'} bg-slate-50 text-slate-300 hover:bg-red-700 hover:text-white rounded-lg sm:rounded-xl border border-slate-100 shadow-sm transition-all active:scale-90`}
                         title="Delete Record"
                     >
-                        <TrashIcon className={`${isCompact ? 'w-3.5 h-3.5' : 'w-4 h-4'}`} />
+                        <TrashIcon className="w-4 h-4" />
                     </button>
                 )}
             </div>
         </div>
 
+        {/* Mismatch Warning */}
+        {isMismatched && (
+            <div 
+                className="mt-3 py-2 px-3 bg-amber-50 border border-amber-100 rounded-xl flex flex-wrap items-center justify-between gap-2 animate-fadeIn shadow-sm"
+                onClick={(e) => e.stopPropagation()}
+            >
+                <div className="flex items-center gap-2 min-w-0">
+                    <WarningIcon className="w-3.5 h-3.5 text-amber-600 flex-shrink-0" />
+                    <span className="text-[7.5px] sm:text-[8.5px] font-black text-amber-800 uppercase tracking-widest leading-tight truncate">
+                        Confirm Identity: {cleanedPatientName}
+                    </span>
+                </div>
+                <button 
+                    onClick={(e) => { e.stopPropagation(); onIgnoreMismatch(entry); }} 
+                    className="text-[7px] font-black uppercase tracking-widest bg-amber-600 text-white px-2.5 py-1.5 rounded-lg shadow-md hover:bg-slate-900 transition-all active:scale-95"
+                >
+                    Link Meds
+                </button>
+            </div>
+        )}
+
         {showSummary && (
             <div 
-                className={`mt-3 p-4 rounded-2xl leading-relaxed shadow-inner border animate-fadeIn ${isCompact ? 'p-3 text-[9px]' : 'p-5 text-[10px] sm:text-[11px]'}`}
+                className={`mt-4 p-4 rounded-2xl leading-relaxed shadow-inner border animate-fadeIn text-[10px] sm:text-[11px]`}
                 style={{ 
                     backgroundColor: themeColor + '08', 
                     borderColor: themeColor + '15' 
                 }}
                 onClick={(e) => e.stopPropagation()}
             >
-                <p className={`font-black uppercase tracking-[0.2em] mb-2 leading-none ${isCompact ? 'text-[7px]' : 'text-[8px]'}`} style={{ color: themeColor }}>
+                <p className="font-black uppercase tracking-[0.2em] mb-2 leading-none text-[8px]" style={{ color: themeColor }}>
                     AI Synthesis History
                 </p>
                 <div className="text-slate-900 font-bold whitespace-pre-wrap">
@@ -244,7 +216,7 @@ export const TimelineItem: React.FC<TimelineItemProps> = ({
                 {formattedFollowUp && (
                     <div className="mt-3 pt-2 border-t border-slate-200/50 flex items-center gap-2">
                         <CalendarIcon className="w-3 h-3" style={{ color: themeColor }} />
-                        <span className={`font-black uppercase tracking-widest ${isCompact ? 'text-[7.5px]' : 'text-[9px]'}`} style={{ color: themeColor }}>
+                        <span className="font-black uppercase tracking-widest text-[9px]" style={{ color: themeColor }}>
                             {isUpcoming ? 'Scheduled Follow-up:' : 'Past Follow-up Date:'} {formattedFollowUp}
                         </span>
                     </div>
