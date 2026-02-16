@@ -323,7 +323,7 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
             )}
 
             <footer className="py-8 sm:py-12 text-center text-slate-300 text-[8px] font-black uppercase tracking-[0.5em] mt-auto">
-                medHist Precision • v1.3.1
+                medHist Precision • v1.4.0
             </footer>
         </div>
     );

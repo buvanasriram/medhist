@@ -102,7 +102,7 @@ export const Header: React.FC<HeaderProps> = ({ onLogout, userName, onOpenGuide 
                             Sign Out
                         </button>
                         <div className="mt-2 pt-2 border-t border-slate-50 px-4 pb-1">
-                            <p className="text-[8px] font-black text-slate-300 uppercase tracking-[0.4em] text-center">v1.3.1 Stable</p>
+                            <p className="text-[8px] font-black text-slate-300 uppercase tracking-[0.4em] text-center">v1.4.0 Stable</p>
                         </div>
                     </div>
                 )}

@@ -1,4 +1,5 @@
-# medHist: Professional User Guide (v1.3.1)
+
+# medHist: Professional User Guide (v1.4.0)
 
 ## 🏥 Purpose
 medHist is a private, family-centric clinical registry. It is designed to solve the "fragmented record" problem by using **Gemini AI** to transform messy hospital PDFs, prescriptions, and lab reports into a unified, searchable health history.
@@ -17,7 +18,7 @@ Your dashboard acts as a "Medical Folder" for the entire family.
 When you upload a document, our Clinical AI performs three tasks:
 - **Extraction**: Identifies Doctor, Date, Facility, and Patient name.
 - **Synthesis**: Writes a 2-sentence "Clinical Brief" so you don't have to re-read a 10-page discharge summary.
-- **Medication Mapping**: Automatically populates your pharmacy list. **Note:** In v1.3.1, we use "No-Filter Restoration"—every medication found is added to ensure nothing is missed. You can manually prune duplicates in the Meds manager.
+- **Medication Mapping**: Automatically populates your pharmacy list. **Note:** In v1.4.0, we use "No-Filter Restoration"—every medication found is added to ensure nothing is missed. You can manually prune duplicates in the Meds manager.
 
 ### 3. Smart Pharmacy Registry
 - **Active vs. Archive**: Track what your family is currently taking.

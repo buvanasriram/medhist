@@ -355,7 +355,7 @@ export const TimelineView: React.FC<TimelineViewProps> = ({
       {isConfirmModalOpen && <ConfirmationModal isOpen={isConfirmModalOpen} onClose={() => { setConfirmModalOpen(false); setEntryToDelete(null); }} onConfirm={handleConfirmDelete} title="Purge Record?" message="This will permanently delete this clinical record from the secure timeline." />}
       
       <footer className="py-16 text-center text-slate-400 text-[10px] font-black uppercase tracking-[0.5em] mt-auto">
-          medHist Precision • v1.3.1
+          medHist Precision • v1.4.0
       </footer>
     </div>
   );
