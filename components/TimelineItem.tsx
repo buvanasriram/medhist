@@ -51,7 +51,17 @@ export const TimelineItem: React.FC<TimelineItemProps> = ({
   const isMismatched = !entry.mismatch_ignored &&
                        entry.patient_name && 
                        selectedMemberName && 
-                       entry.patient_name.trim().toLowerCase() !== selectedMemberName.trim().toLowerCase();
+                       (() => {
+                           const clean = (s: string) => s.toLowerCase()
+                               .replace(/^(mr|mrs|ms|dr|master|miss|prof|baby|md|m\/s)\.?\s+/gi, '')
+                               .replace(/[^a-z0-9\s]/gi, '')
+                               .replace(/\s+/g, ' ')
+                               .trim();
+                           const cExtracted = clean(entry.patient_name || "");
+                           const cFolder = clean(selectedMemberName || "");
+                           if (!cExtracted || !cFolder) return false;
+                           return !(cExtracted.includes(cFolder) || cFolder.includes(cExtracted));
+                       })();
 
   // Truncate long names to prevent internal hospital IDs from breaking the UI
   const cleanedPatientName = entry.patient_name && entry.patient_name.length > 25 
@@ -193,7 +203,7 @@ export const TimelineItem: React.FC<TimelineItemProps> = ({
                     onClick={(e) => { e.stopPropagation(); onIgnoreMismatch(entry); }} 
                     className="text-[7px] font-black uppercase tracking-widest bg-amber-600 text-white px-2.5 py-1.5 rounded-lg shadow-md hover:bg-slate-900 transition-all active:scale-95"
                 >
-                    Link Meds
+                    {entry.pending_medications && entry.pending_medications.length > 0 ? "Link Meds" : "Confirm Match"}
                 </button>
             </div>
         )}

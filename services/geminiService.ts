@@ -2,6 +2,7 @@
 import { GoogleGenAI, Type, GenerateContentResponse } from "@google/genai";
 import { pdfjs } from 'react-pdf';
 import type { ExtractedReportData, FamilyMember, TimelineEntry, Medication } from '../types';
+import { CREDENTIALS } from '../credentials';
 
 interface FamilyData {
     familyMembers: FamilyMember[];
@@ -41,7 +42,9 @@ const responseSchema = {
                     name: { type: Type.STRING },
                     dosage: { type: Type.STRING },
                     frequency: { type: Type.STRING },
-                    purpose: { type: Type.STRING, description: "Inferred or explicit clinical use" }
+                    purpose: { type: Type.STRING, description: "Inferred or explicit clinical use" },
+                    startDate: { type: Type.STRING, description: "YYYY-MM-DD format (leave blank if not explicitly scheduled)" },
+                    endDate: { type: Type.STRING, description: "YYYY-MM-DD format (leave blank if not explicitly scheduled)" }
                 }
             }
         }
@@ -154,17 +157,31 @@ const extractTextFromPdf = async (base64Data: string, password?: string): Promis
 };
 
 export const extractReportInfo = async (fileBase64: string, mimeType: string, password?: string): Promise<ExtractedReportData> => {
-    const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
+    const apiKey = process.env.API_KEY || CREDENTIALS.GEMINI_API_KEY;
+    const ai = new GoogleGenAI({
+        apiKey,
+        httpOptions: {
+            headers: {
+                'User-Agent': 'aistudio-build',
+            }
+        }
+    });
     
-    const prompt = `Act as a clinical data analyst. Extract info from the document.
-    
-    DIRECTIONS:
-    - Identify Patient Name (Human name only, no IDs).
-    - Identify the date of consultation. 
-    - Decipher medications.
-    - IMPORTANT FOR MEDICATIONS: For each drug (e.g. Siraforte, Sirazide), if the purpose is not written, use your clinical knowledge to INFER the most likely medical purpose (e.g. 'Multivitamin', 'Diabetes', 'Hypertension'). 
-    - DO NOT leave the purpose as "Unknown" if the drug is a recognizable brand or generic.
-    - OUTPUT ONLY VALID JSON.`;
+    const prompt = `Act as an expert clinical data analyst. Carefully extract patient information and medications from the provided medical document (which can be a prescription, plan of care, clinical summary, lab report, or checkup bill).
+
+DIRECTIONS:
+- Identify the Patient Name (extract human name only, e.g., "Buvana Swaminathan", "Buvana Sriram", ignoring titles like Mrs/Ms/Mr if possible, keep it clean, no IDs).
+- Identify the Consultation Date. If a specific consultation/consult/visit date is not explicitly visible or written on the document, default to the CURRENT DATE: ${new Date().toISOString().split('T')[0]}. Do not leave it blank.
+- Extract and decipher all Medications listed:
+  - Carefully look for printed names, handwritten additions, circles, tick marks, or list items under sections like "Plan Of Care", "Medications", "Rx", "Treatment Plan".
+  - For each medication, extract:
+    * "name": The clear brand or generic drug name (e.g. "Empha", "Lumia", "Meconerv"). Stripped of qualifiers like "TAB." or "CAP." where possible but keep the core name recognizable.
+    * "dosage": The strength or dosage (e.g., "10mg", "60K IU", "1500mcg").
+    * "frequency": The frequency of intake (e.g., "1-0-0 (after food)", "Once a week", "Once a month", "0-0-1 (after food)").
+    * "purpose": INFER the clinical purpose using your medical knowledge if not explicitly stated (e.g., "Diabetes / Glycemic Control" for Empagliflozin, "Vitamin D3 Supplement" for Lumia, "Neuropathy / Vitamin B12" for Meconerv / Methylcobalamin). DO NOT put "Unknown".
+  - CRITICAL RULES FOR MEDICATIONS:
+    * If a medication is accompanied by "STOP", "DISCONTINUE", or crossed out (e.g., "STOP. TAB. STALIX"), do NOT include it as a new active medication. Or, if you must, ensure it is NOT listed in the active medications to avoid confusing the patient's ongoing therapy.
+- Ensure the resulting structure fits the JSON Schema perfectly.`;
 
     try {
         let contentPart;
@@ -177,7 +194,7 @@ export const extractReportInfo = async (fileBase64: string, mimeType: string, pa
         
         console.group("[medHist] AI Analysis Request");
         const response: GenerateContentResponse = await withRetry(() => ai.models.generateContent({
-            model: 'gemini-3-flash-preview',
+            model: 'gemini-3.5-flash',
             contents: { parts: [{ text: prompt }, contentPart] },
             config: { 
                 responseMimeType: 'application/json',
@@ -197,7 +214,15 @@ export const extractReportInfo = async (fileBase64: string, mimeType: string, pa
 };
 
 export const chatWithHealthAssistant = async (userMessage: string, history: any[], data: FamilyData, currentUserId: string): Promise<string> => {
-    const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
+    const apiKey = process.env.API_KEY || CREDENTIALS.GEMINI_API_KEY;
+    const ai = new GoogleGenAI({
+        apiKey,
+        httpOptions: {
+            headers: {
+                'User-Agent': 'aistudio-build',
+            }
+        }
+    });
     const currentUserFolder = data.familyMembers.find(m => m.linked_user_id === currentUserId);
     const currentUserName = currentUserFolder?.name || "the user";
 
@@ -223,7 +248,7 @@ ${entries || 'No history.'}`;
 
     try {
         const chat = ai.chats.create({
-            model: 'gemini-3-flash-preview',
+            model: 'gemini-3.5-flash',
             config: { systemInstruction: systemPrompt }
         });
         const result: GenerateContentResponse = await withRetry(() => chat.sendMessage({ message: userMessage }));

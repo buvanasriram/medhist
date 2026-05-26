@@ -89,7 +89,8 @@ export const TimelineView: React.FC<TimelineViewProps> = ({
       };
       const fileData = { name: file.name, type: file.type, data: base64, ...(password && { password }) };
       
-      await supabaseService.addTimelineEntry(newEntryData, fileData, extractedData.medications, selectedMember?.name);
+      const targetMember = familyMembers.find(m => m.id === memberId);
+      await supabaseService.addTimelineEntry(newEntryData, fileData, extractedData.medications, targetMember?.name);
       
       onRefreshData();
       setUploadModalOpen(false);
@@ -100,7 +101,7 @@ export const TimelineView: React.FC<TimelineViewProps> = ({
     } finally {
       setIsLoading(false);
     }
-  }, [onRefreshData, selectedMember?.name]);
+  }, [onRefreshData, familyMembers]);
 
   const handleViewReport = useCallback(async (entryToView: TimelineEntry) => {
     if (isDeleting) return;

@@ -79,15 +79,27 @@ const sanitizeDate = (val: any): string | null => {
 };
 
 const checkNameMismatch = (extracted: string | undefined, folder: string | undefined): boolean => {
-    if (!extracted || !folder) return false;
+    // If AI found NO name, we trust the folder selection and auto-link to avoid blocking issues
+    if (!extracted || !extracted.trim()) return false; 
+    if (!folder) return false;
+
     const clean = (s: string) => s.toLowerCase()
-        .replace(/^(mr|mrs|ms|dr|master|miss|prof)\.?\s+/gi, '')
-        .replace(/[^a-z0-9]/gi, '')
+        .replace(/^(mr|mrs|ms|dr|master|miss|prof|baby|md|m\/s)\.?\s+/gi, '')
+        .replace(/[^a-z0-9\s]/gi, '')
+        .replace(/\s+/g, ' ')
         .trim();
+        
     const cExtracted = clean(extracted);
     const cFolder = clean(folder);
+    
     if (!cExtracted || !cFolder) return false;
-    return !(cExtracted.includes(cFolder) || cFolder.includes(cExtracted));
+
+    // Standard direct inclusion check
+    if (cExtracted.includes(cFolder) || cFolder.includes(cExtracted)) {
+        return false;
+    }
+
+    return true; // Actual mismatch
 };
 
 export const getSession = async (): Promise<Session | null> => {
@@ -207,7 +219,7 @@ export const claimFolder = async (memberId: string) => {
     if (profile) {
         await supabase!.from('family_members').update({ linked_user_id: null, relationship: 'Member' }).eq('family_id', profile.family_id).eq('linked_user_id', user.id);
     }
-    const { error } = await supabase!.from('family_members').update({ linked_user_id: user.id, relationship: 'Self' }).eq('id', memberId);
+    const { error = null } = await supabase!.from('family_members').update({ linked_user_id: user.id, relationship: 'Self' }).eq('id', memberId);
     if (error) throw error;
 };
 
@@ -225,48 +237,27 @@ export const getFileForEntry = async (entryId: string) => {
     return files ? files[0] : null;
 };
 
-const normalizeSummary = (text: string): string => text.toLowerCase().replace(/[^a-z0-9]/gi, '').substring(0, 500);
-
 export const addTimelineEntry = async (entryData: any, fileData: any, extractedMedications?: ExtractedMedication[], folderName?: string) => {
     if (isMock) return;
 
     const cleanDate = sanitizeDate(entryData.date) || new Date().toISOString().split('T')[0];
-    const reportType = (entryData.report_type || '').trim();
     const isMismatched = checkNameMismatch(entryData.patient_name, folderName);
 
-    console.debug(`[medHist] Syncing entry for ${folderName}. Mismatch: ${isMismatched}`);
+    console.debug(`[medHist] Syncing entry for ${folderName}. Extracted Name: ${entryData.patient_name || 'None'}. Mismatch: ${isMismatched}`);
 
-    const { data: existing } = await supabase!
-        .from('timeline_entries')
-        .select('id, summary, pending_medications')
-        .eq('family_member_id', entryData.family_member_id)
-        .eq('date', cleanDate)
-        .eq('report_type', reportType)
-        .maybeSingle();
+    // V1.4.1 - NO DEDUPLICATION
+    // We create a fresh entry for every upload to avoid "disappearing" files.
+    const cleanEntry = {
+        ...entryData,
+        date: cleanDate,
+        follow_up_date: sanitizeDate(entryData.follow_up_date),
+        mismatch_ignored: !isMismatched,
+        pending_medications: isMismatched ? extractedMedications : null
+    };
 
-    let targetEntryId = existing?.id;
-
-    if (existing) {
-        const { data: existingFiles } = await supabase!.from('files').select('name').eq('timeline_entry_id', existing.id).eq('name', fileData.name);
-        if (existingFiles && existingFiles.length > 0) throw new Error("Duplicate Upload: This file already exists.");
-        const updatePayload: any = {};
-        if (isMismatched) updatePayload.pending_medications = extractedMedications;
-        const normExisting = normalizeSummary(existing.summary);
-        const normNew = normalizeSummary(entryData.summary);
-        if (normExisting !== normNew && !normExisting.includes(normNew)) updatePayload.summary = `${existing.summary}\n\n[Update]: ${entryData.summary}`;
-        if (Object.keys(updatePayload).length > 0) await supabase!.from('timeline_entries').update(updatePayload).eq('id', existing.id);
-    } else {
-        const cleanEntry = {
-            ...entryData,
-            date: cleanDate,
-            follow_up_date: sanitizeDate(entryData.follow_up_date),
-            mismatch_ignored: !isMismatched,
-            pending_medications: isMismatched ? extractedMedications : null
-        };
-        const { data: entry, error: entryError } = await supabase!.from('timeline_entries').insert(cleanEntry).select().single();
-        if (entryError) throw entryError;
-        targetEntryId = entry.id;
-    }
+    const { data: entry, error: entryError } = await supabase!.from('timeline_entries').insert(cleanEntry).select().single();
+    if (entryError) throw entryError;
+    const targetEntryId = entry.id;
 
     if (fileData && fileData.data && targetEntryId) {
         const blob = base64ToBlob(fileData.data, fileData.type);
@@ -278,8 +269,6 @@ export const addTimelineEntry = async (entryData: any, fileData: any, extractedM
     }
 
     if (!isMismatched && extractedMedications && extractedMedications.length > 0 && targetEntryId) {
-        console.debug(`[medHist] Auto-linking all ${extractedMedications.length} meds from report.`);
-        
         const medsToInsert = extractedMedications.map(m => ({
             family_member_id: entryData.family_member_id,
             timeline_entry_id: targetEntryId,
@@ -303,7 +292,6 @@ export const updateTimelineEntry = async (id: string, updates: Partial<TimelineE
     if (isMock) return;
     
     const payload: any = { ...updates };
-    // Explicitly handle date sanitization to ensure empty strings/nulls are handled correctly by the DB
     if ('date' in updates) {
         payload.date = sanitizeDate(updates.date);
     }

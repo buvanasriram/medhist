@@ -54,7 +54,7 @@ export const EditTimelineEntryModal: React.FC<EditTimelineEntryModalProps> = ({ 
         doctor_name: doctorName,
         facility_name: facilityName,
         patient_name: patientName,
-        follow_up_date: followUpDate || null
+        follow_up_date: followUpDate || undefined
       });
       onUpdate();
       onClose();
